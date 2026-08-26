@@ -19,7 +19,10 @@ afterEach(() => {
 })
 
 function writeConfig(plugins: string[] = []): void {
-  writeFileSync(configPath, `plugins:\n${plugins.map((p) => `  - '${p}'\n`).join('')}\nlogLevel: debug\noutputDir: ./.nx-mk/runs\n`)
+  const pluginsLine = plugins.length === 0
+    ? 'plugins: []\n'
+    : `plugins:\n${plugins.map((p) => `  - '${p}'\n`).join('')}`
+  writeFileSync(configPath, `${pluginsLine}logLevel: debug\noutputDir: ./.nx-mk/runs\n`)
 }
 
 function callsPlugin(): Plugin {
