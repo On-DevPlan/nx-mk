@@ -141,7 +141,7 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
         if (runFinished || state.error) {
           await runPhase('shutdown')
           await logger.flush()
-          eventsStream.end()
+          await new Promise<void>((resolve) => eventsStream.end(() => resolve()))
         }
       }
     },
@@ -151,7 +151,7 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
         logger.info('entering shutdown', { reason: reason ?? 'manual' })
         await runPhase('shutdown')
         await logger.flush()
-        eventsStream.end()
+        await new Promise<void>((resolve) => eventsStream.end(() => resolve()))
       })()
       return shutdownPromise
     },
