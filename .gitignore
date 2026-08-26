@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Runtime artifacts
+.mk/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Test
+playwright-report/
+test-results/
+
+# Generated
+.mk/sdk/
