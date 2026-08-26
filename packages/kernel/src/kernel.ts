@@ -80,9 +80,17 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
     } else if (phase === 'shutdown') {
       // Reverse order
       const reversed = [...plugins].reverse()
-      await runHooksForPhase(phase, 'before', reversed, buildCtx())
-      await runHooksForPhase(phase, 'main', reversed, buildCtx())
-      await runHooksForPhase(phase, 'after', reversed, buildCtx())
+      // Per spec §3.3, shutdown hook errors only log (don't throw)
+      const safeRun = async (timing: 'before' | 'main' | 'after') => {
+        try {
+          await runHooksForPhase(phase, timing, reversed, buildCtx())
+        } catch (err) {
+          logger.error('shutdown hook error (suppressed)', { phase, timing, err: (err as Error).message })
+        }
+      }
+      await safeRun('before')
+      await safeRun('main')
+      await safeRun('after')
     }
 
     const durationMs = Date.now() - (phaseTimers.get(phase) ?? Date.now())
@@ -90,7 +98,21 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
   }
 
   function buildCtx(): PluginContext {
-    if (!config) throw new KernelError('KERNEL_INTERNAL', 'ctx accessed before loadConfig')
+    if (!config) {
+      // During loadConfig's before-hooks, config is not yet loaded.
+      // Build a placeholder ResolvedConfig so plugin hooks receive a usable ctx.
+      const placeholder: ResolvedConfig = {
+        configPath: opts.configPath,
+        runId: opts.runId,
+        envOverrides: {},
+        cliOverrides: {},
+        subcommand: opts.subcommand,
+        plugins: [],
+        logLevel: 'info',
+        outputDir: '.nx-mk/runs',
+      }
+      return { config: placeholder, logger, events, kernel: api }
+    }
     return { config, logger, events, kernel: api }
   }
 
@@ -114,7 +136,6 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
           phase: state.currentPhase ?? 'loadConfig',
           error: { message: (err as Error).message },
         })
-        await safeShutdown()
         throw err
       } finally {
         if (runFinished || state.error) {
@@ -137,25 +158,6 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
     getState: () => ({ ...state }),
     getRunId: () => opts.runId,
     getSubcommand: () => opts.subcommand,
-  }
-
-  async function safeShutdown(): Promise<void> {
-    try {
-      const reversed = [...plugins].reverse()
-      // Per spec §3.3, shutdown hooks use isolated try/catch.
-      const runSafe = async (phase: Phase, timing: 'before' | 'main' | 'after') => {
-        try {
-          await runHooksForPhase(phase, timing, reversed, buildCtx())
-        } catch (err) {
-          logger.error('shutdown hook error (suppressed)', { phase, timing, err: (err as Error).message })
-        }
-      }
-      await runSafe('shutdown', 'before')
-      await runSafe('shutdown', 'main')
-      await runSafe('shutdown', 'after')
-    } catch (err) {
-      logger.error('safeShutdown outer failure (suppressed)', { err: (err as Error).message })
-    }
   }
 
   return api
