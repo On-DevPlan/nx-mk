@@ -1,0 +1,29 @@
+{
+  "name": "@nx-mk/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "nx-mk CLI entry (npx nx-mk)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "nx-mk": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@nx-mk/kernel": "workspace:*",
+    "@nx-mk/config": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "tsup": "^8.0.2",
+    "vitest": "^1.0.4",
+    "@types/node": "^20.10.0"
+  }
+}
