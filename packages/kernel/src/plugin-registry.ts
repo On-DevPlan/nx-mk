@@ -1,97 +1,126 @@
-/**
- * Plugin registry — validates, filters, and orders plugins before bootstrap.
- *
- * Plugins are kept in registration order (FIFO). On bootstrap the registry
- * returns plugins that pass the mode filter and have valid metadata.
- *
- * The kernel uses this internally; tests may also instantiate it directly.
- */
+import { createRequire } from 'node:module'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { KernelError } from './errors'
+import type { Plugin } from './plugin'
 
-import type { KernelPlugin, RuntimeMode } from './types.js'
-
-export interface RegisteredPlugin<TConfig = unknown> {
-  readonly plugin: KernelPlugin<TConfig>
-  readonly index: number
+export interface LoadPluginsOptions {
+  cwd?: string
 }
 
-export class PluginRegistry {
-  private readonly plugins: KernelPlugin[] = []
+const PLUGIN_NAME_RE = /^@?[a-z0-9][a-z0-9-]*(\/[a-z0-9][a-z0-9-]*)?$/
 
-  /** Append a plugin. Throws on invalid metadata or duplicate names. */
-  register(plugin: KernelPlugin): this {
-    validatePlugin(plugin)
-    if (this.plugins.some((p) => p.name === plugin.name)) {
-      throw new Error(`PluginRegistry: duplicate plugin '${plugin.name}'`)
+function isValidPluginName(name: string): boolean {
+  return PLUGIN_NAME_RE.test(name)
+}
+
+export async function loadPlugins(
+  names: string[],
+  opts: LoadPluginsOptions = {},
+): Promise<Plugin[]> {
+  if (names.length === 0) return []
+  const cwd = opts.cwd ?? process.cwd()
+  const require = createRequire(cwd + '/')
+  const plugins: Plugin[] = []
+  for (const name of names) {
+    if (!isValidPluginName(name)) {
+      throw new KernelError(
+        'PLUGIN_LOAD_FAILED',
+        `Invalid plugin name: '${name}' (must match ${PLUGIN_NAME_RE})`,
+      )
     }
-    this.plugins.push(plugin)
-    return this
+    let mod: unknown
+    try {
+      mod = await import(name)
+    } catch (err) {
+      throw new KernelError(
+        'PLUGIN_LOAD_FAILED',
+        `Failed to load plugin '${name}': ${(err as Error).message}`,
+        err,
+      )
+    }
+    const candidate = (mod as { default?: unknown }).default
+    const factory =
+      typeof candidate === 'function'
+        ? candidate
+        : typeof (mod as { createPlugin?: unknown }).createPlugin === 'function'
+          ? (mod as { createPlugin: () => unknown }).createPlugin
+          : null
+    if (!factory) {
+      throw new KernelError(
+        'PLUGIN_SHAPE_INVALID',
+        `Plugin '${name}' must export default a function returning Plugin`,
+      )
+    }
+    let plugin: unknown
+    try {
+      plugin = (factory as () => unknown)()
+    } catch (err) {
+      throw new KernelError(
+        'PLUGIN_SHAPE_INVALID',
+        `Plugin '${name}' factory threw: ${(err as Error).message}`,
+        err,
+      )
+    }
+    validateShape(plugin, name)
+    await validatePackageMatch(plugin as Plugin, name, require)
+    plugins.push(plugin as Plugin)
   }
-
-  /** Append many plugins. Order preserved. */
-  registerAll(plugins: readonly KernelPlugin[]): this {
-    for (const p of plugins) this.register(p)
-    return this
-  }
-
-  /** Return plugins eligible for the given mode, in registration order. */
-  resolveForMode(mode: RuntimeMode): readonly RegisteredPlugin[] {
-    const out: RegisteredPlugin[] = []
-    this.plugins.forEach((plugin, index) => {
-      if (plugin.modes && !plugin.modes.includes(mode)) return
-      out.push({ plugin, index })
-    })
-    return out
-  }
-
-  /** Return plugins in REVERSE order — used for teardown. */
-  resolveForTeardown(): readonly RegisteredPlugin[] {
-    const all = this.plugins.map((plugin, index) => ({ plugin, index }))
-    return all.reverse()
-  }
-
-  /** Number of registered plugins (regardless of mode filter). */
-  get size(): number {
-    return this.plugins.length
-  }
-
-  /** Names in registration order — useful for logging. */
-  list(): readonly string[] {
-    return this.plugins.map((p) => p.name)
-  }
-
-  /** Remove all plugins. */
-  clear(): void {
-    this.plugins.length = 0
-  }
+  return plugins
 }
 
-function validatePlugin(plugin: KernelPlugin): void {
+function validateShape(plugin: unknown, name: string): void {
   if (!plugin || typeof plugin !== 'object') {
-    throw new Error('PluginRegistry: plugin must be an object')
+    throw new KernelError(
+      'PLUGIN_SHAPE_INVALID',
+      `Plugin '${name}' factory must return an object`,
+    )
   }
-  if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
-    throw new Error('PluginRegistry: plugin.name must be a non-empty string')
+  const p = plugin as Record<string, unknown>
+  if (typeof p.name !== 'string' || typeof p.version !== 'string') {
+    throw new KernelError(
+      'PLUGIN_SHAPE_INVALID',
+      `Plugin '${name}' must have string 'name' and 'version'`,
+    )
   }
-  if (typeof plugin.version !== 'string' || plugin.version.length === 0) {
-    throw new Error(`PluginRegistry: plugin '${plugin.name}'.version must be a non-empty string`)
+  if (!p.hooks || typeof p.hooks !== 'object') {
+    throw new KernelError(
+      'PLUGIN_SHAPE_INVALID',
+      `Plugin '${name}' must have 'hooks' object`,
+    )
   }
-  if (typeof plugin.setup !== 'function') {
-    throw new Error(`PluginRegistry: plugin '${plugin.name}'.setup must be a function`)
-  }
-  if (plugin.teardown !== undefined && typeof plugin.teardown !== 'function') {
-    throw new Error(`PluginRegistry: plugin '${plugin.name}'.teardown must be a function if provided`)
-  }
-  if (plugin.modes !== undefined) {
-    if (!Array.isArray(plugin.modes)) {
-      throw new Error(`PluginRegistry: plugin '${plugin.name}'.modes must be an array`)
+}
+
+async function validatePackageMatch(
+  plugin: Plugin,
+  name: string,
+  req: NodeJS.Require,
+): Promise<void> {
+  try {
+    const pkgJsonPath = req.resolve(`${name}/package.json`)
+    const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf8')) as {
+      name?: string
+      version?: string
     }
-    const valid: readonly RuntimeMode[] = ['production', 'development', 'analysis', 'test', 'ci']
-    for (const m of plugin.modes) {
-      if (!valid.includes(m)) {
-        throw new Error(
-          `PluginRegistry: plugin '${plugin.name}' has unknown mode '${m}' (valid: ${valid.join(', ')})`,
-        )
-      }
+    if (pkg.name !== plugin.name) {
+      throw new KernelError(
+        'PLUGIN_SHAPE_INVALID',
+        `Plugin '${name}' name mismatch: factory='${plugin.name}' package.json='${pkg.name}'`,
+      )
     }
+    if (pkg.version !== plugin.version) {
+      throw new KernelError(
+        'PLUGIN_SHAPE_INVALID',
+        `Plugin '${name}' version mismatch: factory='${plugin.version}' package.json='${pkg.version}'`,
+      )
+    }
+  } catch (err) {
+    if (err instanceof KernelError) throw err
+    // package.json not resolvable: not fatal in ESM-only setups; skip.
+    void fileURLToURL
   }
+}
+
+function fileURLToURL(): void {
+  // marker to keep fileURLToURL referenced for future use
 }
