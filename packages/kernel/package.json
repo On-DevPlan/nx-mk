@@ -1,7 +1,8 @@
 {
-  "name": "@mk/kernel",
+  "name": "@nx-mk/kernel",
   "version": "0.1.0",
-  "description": "mk microkernel — plugin system, event bus, lifecycle",
+  "private": true,
+  "description": "nx-mk microkernel: plugin lifecycle + event bus",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,24 +12,22 @@
       "import": "./dist/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
     "build": "tsup",
-    "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'lint placeholder'",
-    "clean": "rm -rf dist .turbo node_modules .tsbuildinfo"
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
-  "dependencies": {
-    "@mk/manifest": "workspace:*"
+  "peerDependencies": {
+    "@nx-mk/config": "workspace:*"
   },
   "devDependencies": {
-    "tsup": "^8.0.2",
     "typescript": "^5.3.3",
-    "vitest": "^1.0.4"
+    "tsup": "^8.0.2",
+    "vitest": "^1.0.4",
+    "@types/node": "^20.10.0",
+    "@nx-mk/config": "workspace:*"
   }
 }
