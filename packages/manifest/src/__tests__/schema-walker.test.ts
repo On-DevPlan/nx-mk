@@ -146,4 +146,54 @@ describe('walkSchema', () => {
     expect(fields[0]?.type).toBe('integer')
     expect(fields[1]?.type).toBe('string')
   })
+
+  it('keeps nested names inside object oneOf variants', () => {
+    const fields = walkSchema(
+      {
+        type: 'object',
+        properties: {
+          foo: {
+            oneOf: [
+              { type: 'object', properties: { a: { type: 'string' } } },
+              { type: 'string' },
+            ],
+          },
+        },
+      },
+      { ...baseCtx, normalizedFieldPath: 'data' }
+    )
+    // The object variant's child keeps its own name 'a'; only the unnamed
+    // primitive variant takes the property name 'foo'.
+    expect(fields.map((f) => f.name).sort()).toEqual(['a', 'foo'])
+    expect(fields.find((f) => f.path === 'data.foo(oneOf[0]).a')?.name).toBe('a')
+    expect(fields.find((f) => f.path === 'data.foo(oneOf[1])')?.name).toBe('foo')
+    expect(fields.find((f) => f.path === 'data.foo(oneOf[0]).a')?.type).toBe('string')
+  })
+
+  it('preserves element-level required inside array-of-object', () => {
+    const fields = walkSchema(
+      {
+        type: 'object',
+        properties: {
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['id'],
+              properties: {
+                id: { type: 'integer' },
+              },
+            },
+          },
+        },
+      },
+      { ...baseCtx, normalizedFieldPath: 'data' }
+    )
+    // The element field's own required flag must survive the array
+    // pass-through (the array property's required flag is not applied).
+    expect(fields).toHaveLength(1)
+    expect(fields[0]?.name).toBe('id')
+    expect(fields[0]?.path).toBe('data.items.id')
+    expect(fields[0]?.required).toBe(true)
+  })
 })

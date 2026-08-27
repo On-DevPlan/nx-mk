@@ -87,7 +87,7 @@ function walk(schema: SchemaNode, ctx: WalkContext, rawPathSoFar: string, normPa
   }
 
   // Array: recurse into items. The raw path stays at the array position;
-  // the normalized path gains the '[]' suffix (spec §4.4).
+  // the normalized path gains the '[]' suffix (spec §6.4 路径归一化).
   if (schema?.type === 'array') {
     const items = schema.items ?? {}
     const itemsPtr = ptrSoFar ? `${ptrSoFar}/items` : '/items'
@@ -143,29 +143,38 @@ function walk(schema: SchemaNode, ctx: WalkContext, rawPathSoFar: string, normPa
       } else if (isArray && itemsIsObject) {
         // Array-of-object elements: childFields are the element object's
         // fields (e.g. data.items.id / data.items.sku) and already carry
-        // their own names — do NOT rename them to the array property name.
-        // Pass them through with the property's required flag; no array
-        // descriptor is emitted.
-        for (const f of childFields) {
-          fields.push({ ...f, required })
-        }
+        // their own names AND element-level required flags — do NOT rename
+        // them to the array property name and do NOT clobber their required
+        // with the array property's. Pass them through exactly as walked; no
+        // array descriptor is emitted (nothing to attach the array's own
+        // required flag to).
+        fields.push(...childFields)
       } else if (isVariant) {
-        // oneOf/anyOf variants produce multiple unnamed leaves (name:'' from
-        // the primitive branch). Propagate the property name + required flag
-        // to ALL returned fields so none keeps a bare name. Each field keeps
-        // its own path / normalizedPath / type / openapiPointer.
-        for (const f of childFields) {
-          fields.push({ ...f, name: propName, required })
-        }
+        // oneOf/anyOf variants: PRIMITIVE variants produce unnamed leaves
+        // (name:'' from the primitive branch) that must take the property
+        // name; but OBJECT/ARRAY variants already emit their own named
+        // descendants (e.g. 'data.foo(oneOf[0]).a'). Only rename fields that
+        // are still unnamed so nested children keep their own names. Each
+        // field keeps its own path / normalizedPath / type / openapiPointer.
+        fields.push(
+          ...childFields.map((f) =>
+            f.name === '' ? { ...f, name: propName, required } : { ...f, required }
+          )
+        )
       } else {
         // Genuine single leaf (primitive or array-of-primitive): childFields[0]
-        // is the leaf descriptor — promote its name/required/source.
-        fields.push({
-          ...childFields[0]!,
-          name: propName,
-          required,
-          source: { openapiPointer: childPtr },
-        })
+        // is the leaf descriptor — promote its name/required/source. Preserve
+        // any surplus fields (exotic children like array-of-array or items
+        // being a oneOf) so they are not silently dropped.
+        fields.push(
+          {
+            ...childFields[0]!,
+            name: propName,
+            required,
+            source: { openapiPointer: childPtr },
+          },
+          ...childFields.slice(1)
+        )
       }
     }
     return fields
