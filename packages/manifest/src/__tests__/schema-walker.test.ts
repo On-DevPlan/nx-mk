@@ -1,0 +1,104 @@
+import { describe, it, expect } from 'vitest'
+import { walkSchema, type WalkContext } from '../schema-walker'
+import type { HttpMethod } from '../field-id'
+
+const userSchema = {
+  type: 'object',
+  required: ['id', 'name'],
+  properties: {
+    id: { type: 'integer', format: 'int64' },
+    name: { type: 'string', example: 'alice' },
+    email: { type: 'string', format: 'email', nullable: true },
+    tags: { type: 'array', items: { type: 'string' } },
+    address: {
+      type: 'object',
+      properties: {
+        city: { type: 'string' },
+        zip: { type: 'string' },
+      },
+    },
+  },
+}
+
+const baseCtx: Omit<WalkContext, 'normalizedFieldPath'> = {
+  method: 'GET' as HttpMethod,
+  path: '/users/{id}',
+  direction: 'response',
+  status: '200',
+  endpointId: 'abcdef012345', // placeholder; walker uses input fields directly
+}
+
+describe('walkSchema', () => {
+  it('produces a field for each top-level property', () => {
+    const fields = walkSchema(userSchema, { ...baseCtx, normalizedFieldPath: 'data' })
+    const names = fields.map((f) => f.name).sort()
+    // address is itself an object → walker flattens it: the address descriptor
+    // plus its children (whose leaf names are 'city' and 'zip').
+    // Full set of leaf names: address, city, email, id, name, tags, zip.
+    expect(names).toEqual(['address', 'city', 'email', 'id', 'name', 'tags', 'zip'])
+  })
+
+  it('flattens nested objects with dotted paths', () => {
+    const fields = walkSchema(userSchema, { ...baseCtx, normalizedFieldPath: 'data' })
+    const address = fields.find((f) => f.name === 'address' && f.schemaName === undefined)
+    expect(address).toBeDefined()
+    // address is itself an object → walker should produce nested fields under it
+    // OR just the object descriptor. Per spec: walker flattens objects.
+    // So we expect fields like 'address.city' and 'address.zip' as separate entries.
+    const city = fields.find((f) => f.path === 'data.address.city')
+    expect(city).toBeDefined()
+    expect(city?.type).toBe('string')
+  })
+
+  it('normalizes array indices → []', () => {
+    const fields = walkSchema(userSchema, { ...baseCtx, normalizedFieldPath: 'data' })
+    const tags = fields.find((f) => f.name === 'tags')
+    expect(tags).toBeDefined()
+    // tags is array of string → walker emits one field descriptor with normalizedPath data.tags[]
+    expect(tags?.normalizedPath).toBe('data.tags[]')
+  })
+
+  it('marks required fields with required: true', () => {
+    const fields = walkSchema(userSchema, { ...baseCtx, normalizedFieldPath: 'data' })
+    expect(fields.find((f) => f.name === 'id')?.required).toBe(true)
+    expect(fields.find((f) => f.name === 'name')?.required).toBe(true)
+    expect(fields.find((f) => f.name === 'email')?.required).toBeUndefined()
+  })
+
+  it('preserves nullable flag', () => {
+    const fields = walkSchema(userSchema, { ...baseCtx, normalizedFieldPath: 'data' })
+    expect(fields.find((f) => f.name === 'email')?.nullable).toBe(true)
+  })
+
+  it('assigns stable fieldId to each field', () => {
+    const fields = walkSchema(userSchema, { ...baseCtx, normalizedFieldPath: 'data' })
+    for (const f of fields) {
+      expect(f.id).toMatch(/^[0-9a-f]{12}$/)
+      expect(f.endpointId).toBe('abcdef012345')
+    }
+  })
+
+  it('preserves the openapiPointer for each field', () => {
+    const fields = walkSchema(userSchema, { ...baseCtx, normalizedFieldPath: 'data' })
+    // User.id: properties.id
+    expect(fields.find((f) => f.name === 'id')?.source.openapiPointer).toBe('/properties/id')
+  })
+
+  it('handles primitive schema (top-level string)', () => {
+    const fields = walkSchema({ type: 'string' }, { ...baseCtx, normalizedFieldPath: 'raw' })
+    expect(fields).toHaveLength(1)
+    expect(fields[0]?.type).toBe('string')
+    expect(fields[0]?.path).toBe('raw')
+  })
+
+  it('handles array of primitives with [] suffix', () => {
+    const fields = walkSchema(
+      { type: 'array', items: { type: 'number' } },
+      { ...baseCtx, normalizedFieldPath: 'list' }
+    )
+    expect(fields).toHaveLength(1)
+    expect(fields[0]?.path).toBe('list')
+    expect(fields[0]?.normalizedPath).toBe('list[]')
+    expect(fields[0]?.type).toBe('number')
+  })
+})
