@@ -2,7 +2,12 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    include: ['packages/*/src/__tests__/*.test.ts'],
+    include: [
+      // When run from a package dir (pnpm filter): match that package's tests
+      'src/__tests__/*.test.ts',
+      // When run from root: match all packages' tests
+      'packages/*/src/__tests__/*.test.ts',
+    ],
     environment: 'node',
     coverage: {
       provider: 'v8',
