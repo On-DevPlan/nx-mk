@@ -51,4 +51,5 @@ export interface PluginContext {
   logger: Logger
   events: EventBus
   kernel: KernelAPI
+  cwd: string                       // ← NEW: 内核运行的工作目录（Phase 1 引入）
 }

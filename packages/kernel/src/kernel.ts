@@ -197,6 +197,7 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
     if (!config) {
       // During loadConfig's before-hooks, config is not yet loaded.
       // Build a placeholder ResolvedConfig so plugin hooks receive a usable ctx.
+      // 占位 ctx 供 loadConfig 的 before-hook 使用（此时 config 还未填充）
       const placeholder: ResolvedConfig = {
         configPath: opts.configPath,
         runId: opts.runId,
@@ -207,9 +208,9 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
         logLevel: 'info',
         outputDir: '.nx-mk/runs',
       }
-      return { config: placeholder, logger, events, kernel: api }
+      return { config: placeholder, logger, events, kernel: api, cwd }
     }
-    return { config, logger, events, kernel: api }
+    return { config, logger, events, kernel: api, cwd }
   }
 
   // 对外暴露的内核 API（同时作为 kernel 句柄注入给插件钩子）
