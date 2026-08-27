@@ -196,4 +196,26 @@ describe('walkSchema', () => {
     expect(fields[0]?.path).toBe('data.items.id')
     expect(fields[0]?.required).toBe(true)
   })
+
+  it('variant branch does not leak parent required onto object-variant descendants', () => {
+    const schema = {
+      type: 'object',
+      required: ['foo'],
+      properties: {
+        foo: {
+          oneOf: [
+            { type: 'object', required: ['a'], properties: { a: { type: 'string' } } },
+            { type: 'string' },
+          ],
+        },
+      },
+    }
+    const fields = walkSchema(schema, { ...baseCtx, normalizedFieldPath: 'data' })
+    const childA = fields.find((f) => f.path === 'data.foo(oneOf[0]).a')
+    const primitiveFoo = fields.find((f) => f.path === 'data.foo(oneOf[1])')
+    // a is required in its own variant object → required: true
+    expect(childA?.required).toBe(true)
+    // primitive variant IS the property foo → required: true (parent required: ['foo'])
+    expect(primitiveFoo?.required).toBe(true)
+  })
 })

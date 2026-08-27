@@ -151,15 +151,22 @@ function walk(schema: SchemaNode, ctx: WalkContext, rawPathSoFar: string, normPa
         fields.push(...childFields)
       } else if (isVariant) {
         // oneOf/anyOf variants: PRIMITIVE variants produce unnamed leaves
-        // (name:'' from the primitive branch) that must take the property
-        // name; but OBJECT/ARRAY variants already emit their own named
-        // descendants (e.g. 'data.foo(oneOf[0]).a'). Only rename fields that
-        // are still unnamed so nested children keep their own names. Each
-        // field keeps its own path / normalizedPath / type / openapiPointer.
+        // (name:'' from the primitive branch) that represent the property
+        // itself — they take the property name + required flag. OBJECT/ARRAY
+        // variants already emit their own named descendants (e.g.
+        // 'data.foo(oneOf[0]).a'); those are walked fields and must be
+        // returned EXACTLY as walked so their own required flags survive and
+        // the parent's required flag does not leak onto them.
         fields.push(
-          ...childFields.map((f) =>
-            f.name === '' ? { ...f, name: propName, required } : { ...f, required }
-          )
+          ...childFields.map((f) => {
+            if (f.name === '') {
+              // This field represents the property itself (primitive variant)
+              // → apply property name + required.
+              return { ...f, name: propName, required }
+            }
+            // Walked descendant — preserve exactly as walked (name + required).
+            return f
+          })
         )
       } else {
         // Genuine single leaf (primitive or array-of-primitive): childFields[0]
