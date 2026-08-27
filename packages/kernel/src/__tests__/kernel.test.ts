@@ -35,10 +35,8 @@ function callsPlugin(): Plugin {
     'beforeInitPlugins',
     'afterInitPlugins',
     'beforeRun',
-    'run',
     'afterRun',
     'beforeShutdown',
-    'shutdown',
     'afterShutdown',
   ] as const
   const hooks: Plugin['hooks'] = {}
@@ -71,10 +69,8 @@ describe('createKernel', () => {
       'beforeInitPlugins',
       'afterInitPlugins',
       'beforeRun',
-      'run',
       'afterRun',
       'beforeShutdown',
-      'shutdown',
       'afterShutdown',
     ])
   })
@@ -87,7 +83,6 @@ describe('createKernel', () => {
       await kernel.run()
       const calls = (p as Plugin & { __calls: string[] }).__calls
       expect(calls).toContain('beforeLoadConfig')
-      expect(calls).toContain('shutdown')
       expect(calls).toContain('afterShutdown')
     }
   })
@@ -109,12 +104,12 @@ describe('createKernel', () => {
       version: '0.1.0',
       hooks: {
         beforeShutdown: () => calls.push('cleanup-beforeShutdown'),
-        shutdown: () => calls.push('cleanup-shutdown'),
+        afterShutdown: () => calls.push('cleanup-afterShutdown'),
       },
     }
     const kernel = createKernel({ configPath, runId: 'r' as never, subcommand: 'run', cwd: workDir, plugins: [p, cleanup] })
     await expect(kernel.run()).rejects.toBeInstanceOf(KernelError)
-    expect(calls).toEqual(['cleanup-beforeShutdown', 'cleanup-shutdown'])
+    expect(calls).toEqual(['cleanup-beforeShutdown', 'cleanup-afterShutdown'])
   })
 
   it('emits plugin:error BEFORE kernel:error when a hook throws', async () => {
@@ -124,7 +119,7 @@ describe('createKernel', () => {
       name: 'p-thrower',
       version: '0.0.1',
       hooks: {
-        run: () => { throw new Error('hook-boom') },
+        afterRun: () => { throw new Error('hook-boom') },
       },
     }
     const kernel = createKernel({
@@ -154,7 +149,7 @@ describe('createKernel', () => {
     expect(pluginErrorEvent).toMatchObject({
       type: 'plugin:error',
       name: 'p-thrower',
-      hook: 'run',
+      hook: 'afterRun',
       phase: 'run',
       error: { message: 'hook-boom' },
     })
@@ -166,7 +161,7 @@ describe('createKernel', () => {
       name: 'p-thrower',
       version: '0.0.1',
       hooks: {
-        run: () => { throw new Error('written-to-error-log') },
+        afterRun: () => { throw new Error('written-to-error-log') },
       },
     }
     const kernel = createKernel({
@@ -194,7 +189,7 @@ describe('createKernel', () => {
     const make = (n: string): Plugin => ({
       name: n,
       version: '0.0.0',
-      hooks: { shutdown: () => order.push(n) },
+      hooks: { afterShutdown: () => order.push(n) },
     })
     const kernel = createKernel({
       configPath,
@@ -214,7 +209,7 @@ describe('createKernel', () => {
       name: 'p',
       version: '0.0.0',
       hooks: {
-        run: ({ kernel }) => {
+        afterRun: ({ kernel }) => {
           observed = kernel.getSubcommand()
         },
       },

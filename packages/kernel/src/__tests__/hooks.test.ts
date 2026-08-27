@@ -31,31 +31,31 @@ function mkPlugin(name: string, hooks: Plugin['hooks']): Plugin {
 describe('runHook', () => {
   it('is a no-op when the plugin does not implement the hook', async () => {
     const plugin = mkPlugin('p', {})
-    await expect(runHook('run', plugin, mkCtx())).resolves.toBeUndefined()
+    await expect(runHook('afterRun', plugin, mkCtx())).resolves.toBeUndefined()
   })
 
   it('awaits the handler before returning', async () => {
     let resolved = false
     const plugin = mkPlugin('p', {
-      run: async () => {
+      afterRun: async () => {
         await new Promise((r) => setTimeout(r, 5))
         resolved = true
       },
     })
-    await runHook('run', plugin, mkCtx())
+    await runHook('afterRun', plugin, mkCtx())
     expect(resolved).toBe(true)
   })
 
   it('wraps a sync throw into a KernelError PLUGIN_HOOK_FAILED', async () => {
     const plugin = mkPlugin('p', {
-      run: () => {
+      afterRun: () => {
         throw new Error('original')
       },
     })
-    await expect(runHook('run', plugin, mkCtx())).rejects.toMatchObject({
+    await expect(runHook('afterRun', plugin, mkCtx())).rejects.toMatchObject({
       name: 'KernelError',
       code: 'PLUGIN_HOOK_FAILED',
-      message: expect.stringContaining("Plugin 'p' hook 'run' failed") as unknown as string,
+      message: expect.stringContaining("Plugin 'p' hook 'afterRun' failed") as unknown as string,
     })
   })
 
@@ -70,15 +70,12 @@ describe('runHook', () => {
 })
 
 describe('runHooksForPhase', () => {
-  it('runs before* → main → after for each plugin in order', async () => {
+  it('runs before → after for each plugin in order', async () => {
     const calls: string[] = []
     const plugins = [
       mkPlugin('a', {
         beforeRun: () => {
           calls.push('a.beforeRun')
-        },
-        run: () => {
-          calls.push('a.run')
         },
         afterRun: () => {
           calls.push('a.afterRun')
@@ -88,22 +85,16 @@ describe('runHooksForPhase', () => {
         beforeRun: () => {
           calls.push('b.beforeRun')
         },
-        run: () => {
-          calls.push('b.run')
-        },
         afterRun: () => {
           calls.push('b.afterRun')
         },
       }),
     ]
     await runHooksForPhase('run', 'before', plugins, mkCtx())
-    await runHooksForPhase('run', 'main', plugins, mkCtx())
     await runHooksForPhase('run', 'after', plugins, mkCtx())
     expect(calls).toEqual([
       'a.beforeRun',
       'b.beforeRun',
-      'a.run',
-      'b.run',
       'a.afterRun',
       'b.afterRun',
     ])
@@ -132,15 +123,15 @@ describe('runHooksForPhase', () => {
   it('skips plugins that do not implement the hook', async () => {
     const calls: string[] = []
     const plugins = [
-      mkPlugin('a', { run: () => calls.push('a') }),
-      mkPlugin('b', {}),  // no run hook
-      mkPlugin('c', { run: () => calls.push('c') }),
+      mkPlugin('a', { afterRun: () => calls.push('a') }),
+      mkPlugin('b', {}),  // no afterRun hook
+      mkPlugin('c', { afterRun: () => calls.push('c') }),
     ]
-    await runHooksForPhase('run', 'main', plugins, mkCtx())
+    await runHooksForPhase('run', 'after', plugins, mkCtx())
     expect(calls).toEqual(['a', 'c'])
   })
 })
 
 // Re-export for typing completeness
-const _types: HookName[] = ['run', 'beforeRun', 'afterRun']
+const _types: HookName[] = ['beforeRun', 'afterRun']
 void _types

@@ -2,7 +2,7 @@
  * @nx-mk/plugin-swagger —— 官方 Swagger 插件（Phase 0 占位实现）
  *
  * 以标准插件工厂（default 导出）形式编写，用于验证内核的插件加载链路；
- * Phase 1 将把 run 钩子替换为真实的 OpenAPI 文档拉取与解析逻辑。
+ * Phase 1 将把 afterRun 钩子替换为真实的 OpenAPI 文档拉取与解析逻辑。
  */
 import type { Plugin } from '@nx-mk/kernel'
 
@@ -17,7 +17,7 @@ export default function createSwaggerPlugin(): Plugin {
         ctx.logger.info('plugin-swagger: registered (placeholder)')
       },
       // 主阶段占位：仅记录当前子命令，Phase 1 替换为真实解析逻辑
-      async run(ctx) {
+      async afterRun(ctx) {
         const cmd = ctx.kernel.getSubcommand()
         ctx.logger.info('plugin-swagger: run noop', { subcommand: cmd })
       },

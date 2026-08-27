@@ -85,7 +85,7 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
    */
   async function runHooksForPhaseWithCapture(
     phase: Phase,
-    timing: 'before' | 'main' | 'after',
+    timing: 'before' | 'after',
     phasePlugins: Plugin[],
     ctx: PluginContext,
   ): Promise<void> {
@@ -163,9 +163,8 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       // 中文：内核默认无动作（插件对象在工厂调用时已构造完成），仅触发前后钩子
       await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
     } else if (phase === 'run') {
-      // —— 阶段 4：run —— 主工作阶段，依次触发 beforeRun / run / afterRun 三类钩子
+      // —— 阶段 4：run —— 主工作阶段，触发 beforeRun / afterRun 两类钩子
       await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
-      await runHooksForPhaseWithCapture(phase, 'main', plugins, buildCtx())
       await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
     } else if (phase === 'shutdown') {
       // —— 阶段 5：shutdown —— 关停收尾，插件按加载的逆序执行
@@ -174,7 +173,7 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       const reversed = [...plugins].reverse()
       // Per spec §3.3, shutdown hook errors only log (don't throw)
       // 中文：shutdown 钩子异常只记录不抛出，保证其余插件也能完成收尾
-      const safeRun = async (timing: 'before' | 'main' | 'after') => {
+      const safeRun = async (timing: 'before' | 'after') => {
         try {
           await runHooksForPhase(phase, timing, reversed, buildCtx())
         } catch (err) {
@@ -182,7 +181,6 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
         }
       }
       await safeRun('before')
-      await safeRun('main')
       await safeRun('after')
     }
 
