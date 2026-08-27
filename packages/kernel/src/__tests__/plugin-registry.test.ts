@@ -64,22 +64,6 @@ describe('loadPlugins', () => {
     })
   })
 
-  it('throws PLUGIN_SHAPE_INVALID when default export is not a function', async () => {
-    // We simulate this by importing a file that exports a non-function default.
-    // Use Node's createRequire resolution path: place a package under a temp
-    // directory, then point loadPlugins at it via the package name after
-    // adding it to node_modules. To keep this self-contained, instead
-    // exercise the validator directly:
-    const mod = { default: { not: 'a function' } }
-    const result = await loadPlugins([]) // sanity: empty works
-    expect(result).toEqual([])
-    // The shape validation is invoked inside loadPlugins; the only way to
-    // hit it from a unit test is to provide a module URL whose default is
-    // malformed. We cover that case in Task 9's integration test using
-    // a real fixture package.
-    void mod
-  })
-
   it('throws KernelError on load failure', async () => {
     try {
       await loadPlugins(['@nx-mk/nonexistent-plugin-abc-123'])
@@ -87,6 +71,107 @@ describe('loadPlugins', () => {
     } catch (err) {
       expect(err).toBeInstanceOf(KernelError)
       expect((err as KernelError).code).toBe('PLUGIN_LOAD_FAILED')
+    }
+  })
+})
+
+describe('loadPlugins — PLUGIN_SHAPE_INVALID paths', () => {
+  // NOTE on package names: plugin-registry.ts validates names against
+  // /^@?[a-z0-9][a-z0-9-]*(\/[a-z0-9][a-z0-9-]*)?$/, so names cannot start
+  // with an underscore. We use `bad-default`, `throw-factory`, and
+  // `mismatch-plugin` (without leading underscore) for the fixture packages.
+
+  it('throws PLUGIN_SHAPE_INVALID when default export is not a function', async () => {
+    // Adapted from brief: the brief's first test did not actually call
+    // loadPlugins — it only verified the import result of a local file.
+    // To exercise the PLUGIN_SHAPE_INVALID throw site in loadPlugins, we
+    // install a fake package under node_modules/@nx-mk/bad-default whose
+    // default export is a plain object (not a function).
+    const wsNm = join(process.cwd(), 'node_modules', '@nx-mk', 'bad-default')
+    mkdirSync(wsNm, { recursive: true })
+    writeFileSync(
+      join(wsNm, 'package.json'),
+      JSON.stringify({
+        name: '@nx-mk/bad-default',
+        version: '1.0.0',
+        type: 'module',
+        main: './index.js',
+      }),
+    )
+    writeFileSync(
+      join(wsNm, 'index.js'),
+      'export default { not: "a function" }',
+    )
+
+    try {
+      await loadPlugins(['@nx-mk/bad-default'])
+      expect.unreachable('should have thrown')
+    } catch (err: unknown) {
+      expect(err).toBeInstanceOf(KernelError)
+      expect((err as KernelError).code).toBe('PLUGIN_SHAPE_INVALID')
+      expect((err as KernelError).message).toContain('must export default a function')
+    } finally {
+      rmSync(wsNm, { recursive: true, force: true })
+    }
+  })
+
+  it('throws PLUGIN_SHAPE_INVALID when factory throws during construction', async () => {
+    const wsNm = join(process.cwd(), 'node_modules', '@nx-mk', 'throw-factory')
+    mkdirSync(wsNm, { recursive: true })
+    writeFileSync(
+      join(wsNm, 'package.json'),
+      JSON.stringify({
+        name: '@nx-mk/throw-factory',
+        version: '1.0.0',
+        type: 'module',
+        main: './index.js',
+      }),
+    )
+    writeFileSync(
+      join(wsNm, 'index.js'),
+      'export default function createThrow() { throw new Error("factory boom") }',
+    )
+
+    try {
+      await loadPlugins(['@nx-mk/throw-factory'])
+      expect.unreachable('should have thrown')
+    } catch (err: unknown) {
+      expect(err).toBeInstanceOf(KernelError)
+      expect((err as KernelError).code).toBe('PLUGIN_SHAPE_INVALID')
+      expect((err as KernelError).message).toContain('factory threw')
+    } finally {
+      rmSync(wsNm, { recursive: true, force: true })
+    }
+  })
+
+  it('throws PLUGIN_SHAPE_INVALID when plugin name/version mismatch with package.json', async () => {
+    const wsNm = join(process.cwd(), 'node_modules', '@nx-mk', 'mismatch-plugin')
+    mkdirSync(wsNm, { recursive: true })
+    // Package declares version 2.0.0...
+    writeFileSync(
+      join(wsNm, 'package.json'),
+      JSON.stringify({
+        name: '@nx-mk/mismatch-plugin',
+        version: '2.0.0',
+        type: 'module',
+        main: './index.js',
+      }),
+    )
+    // ...but the factory claims version is 1.0.0 — triggers version-mismatch path.
+    writeFileSync(
+      join(wsNm, 'index.js'),
+      'export default function createPlugin() { return { name: "@nx-mk/mismatch-plugin", version: "1.0.0", hooks: {} } }',
+    )
+
+    try {
+      await loadPlugins(['@nx-mk/mismatch-plugin'])
+      expect.unreachable('should have thrown')
+    } catch (err: unknown) {
+      expect(err).toBeInstanceOf(KernelError)
+      expect((err as KernelError).code).toBe('PLUGIN_SHAPE_INVALID')
+      expect((err as KernelError).message).toContain('version mismatch')
+    } finally {
+      rmSync(wsNm, { recursive: true, force: true })
     }
   })
 })
