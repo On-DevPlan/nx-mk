@@ -17,6 +17,8 @@ interface LocalApiField {
   description?: string
   example?: unknown
   enum?: string[]
+  // TODO: assigned by the parser (T5) when it walks a named $ref schema.
+  // The walker receives already-dereferenced schemas and cannot know the name.
   schemaName?: string
   source: { openapiPointer: string }
 }
@@ -75,14 +77,17 @@ function walk(schema: SchemaNode, ctx: WalkContext, rawPathSoFar: string, normPa
     variants.forEach((variant: SchemaNode, idx: number) => {
       const variantRaw = `${rawPathSoFar}(${variantKey}[${idx}])`
       const variantNorm = `${normPathSoFar}(${variantKey}[${idx}])`
-      const variantPtr = ptrSoFar ? `${ptrSoFar}/${variantKey}/${idx}` : `${variantKey}/${idx}`
+      // Pointer: mirror the nested-object shape. When there is no ancestor
+      // pointer the variant pointer is rooted at /oneOf/<idx> so it stays a
+      // consistent JSON Pointer (no bare 'oneOf/0' fallback).
+      const variantPtr = ptrSoFar ? `${ptrSoFar}/${variantKey}/${idx}` : `/${variantKey}/${idx}`
       fields.push(...walk(variant, ctx, variantRaw, variantNorm, variantPtr))
     })
     return fields
   }
 
   // Array: recurse into items. The raw path stays at the array position;
-  // the normalized path gains the '[]' suffix (spec §17).
+  // the normalized path gains the '[]' suffix (spec §4.4).
   if (schema?.type === 'array') {
     const items = schema.items ?? {}
     const itemsPtr = ptrSoFar ? `${ptrSoFar}/items` : '/items'
@@ -99,10 +104,22 @@ function walk(schema: SchemaNode, ctx: WalkContext, rawPathSoFar: string, normPa
       const childNorm = normPathSoFar === '' ? propName : `${normPathSoFar}.${propName}`
       const childPtr = ptrSoFar ? `${ptrSoFar}/properties/${propName}` : `/properties/${propName}`
       const childFields = walk(propSchema, ctx, childRaw, childNorm, childPtr)
+      const required = requiredSet.has(propName) ? true : undefined
 
-      const isObject = propSchema?.type === 'object' || (propSchema?.properties && !propSchema?.type)
-      if (isObject) {
-        // Emit parent descriptor first, then the flattened children.
+      // Classify the child schema KIND before promoting fields.
+      const isPlainObject =
+        propSchema?.type === 'object' || (Boolean(propSchema?.properties) && !propSchema?.type)
+      const isAllOf = Array.isArray(propSchema?.allOf)
+      const isArray = propSchema?.type === 'array'
+      const items = propSchema?.items
+      const itemsIsObject =
+        isArray && Boolean(items) && (items!.type === 'object' || (Boolean(items!.properties) && !items!.type))
+      const isVariant = Boolean(propSchema?.oneOf) || Boolean(propSchema?.anyOf)
+
+      if (isPlainObject || isAllOf) {
+        // Object-typed property (plain object or allOf merge): emit the parent
+        // object descriptor first, then the flattened children (which already
+        // carry their own names).
         fields.push({
           id: stableFieldId({
             method: ctx.method,
@@ -118,23 +135,37 @@ function walk(schema: SchemaNode, ctx: WalkContext, rawPathSoFar: string, normPa
           normalizedPath: childNorm,
           name: propName,
           type: 'object',
-          required: requiredSet.has(propName) ? true : undefined,
+          required,
           nullable: propSchema?.nullable ? true : undefined,
           source: { openapiPointer: childPtr },
         })
         fields.push(...childFields)
+      } else if (isArray && itemsIsObject) {
+        // Array-of-object elements: childFields are the element object's
+        // fields (e.g. data.items.id / data.items.sku) and already carry
+        // their own names — do NOT rename them to the array property name.
+        // Pass them through with the property's required flag; no array
+        // descriptor is emitted.
+        for (const f of childFields) {
+          fields.push({ ...f, required })
+        }
+      } else if (isVariant) {
+        // oneOf/anyOf variants produce multiple unnamed leaves (name:'' from
+        // the primitive branch). Propagate the property name + required flag
+        // to ALL returned fields so none keeps a bare name. Each field keeps
+        // its own path / normalizedPath / type / openapiPointer.
+        for (const f of childFields) {
+          fields.push({ ...f, name: propName, required })
+        }
       } else {
-        // Leaf (primitive or array-of-primitive): childFields[0] is the leaf
-        // descriptor — promote its name/source to the property. Keep any
-        // extra fields (array-of-object children) so they are not lost.
-        const [first, ...rest] = childFields
+        // Genuine single leaf (primitive or array-of-primitive): childFields[0]
+        // is the leaf descriptor — promote its name/required/source.
         fields.push({
-          ...first!,
+          ...childFields[0]!,
           name: propName,
-          required: requiredSet.has(propName) ? true : undefined,
+          required,
           source: { openapiPointer: childPtr },
         })
-        fields.push(...rest)
       }
     }
     return fields

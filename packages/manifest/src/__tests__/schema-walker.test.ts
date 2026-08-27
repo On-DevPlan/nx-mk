@@ -101,4 +101,49 @@ describe('walkSchema', () => {
     expect(fields[0]?.normalizedPath).toBe('list[]')
     expect(fields[0]?.type).toBe('number')
   })
+
+  it('names every oneOf variant under a property with the property name', () => {
+    const fields = walkSchema(
+      { type: 'object', properties: { foo: { oneOf: [{ type: 'string' }, { type: 'number' }] } } },
+      { ...baseCtx, normalizedFieldPath: 'data' }
+    )
+    expect(fields).toHaveLength(2)
+    for (const f of fields) {
+      expect(f.name).toBe('foo')
+    }
+    expect(fields.map((f) => f.path)).toEqual([
+      'data.foo(oneOf[0])',
+      'data.foo(oneOf[1])',
+    ])
+    expect(fields[0]?.type).toBe('string')
+    expect(fields[1]?.type).toBe('number')
+  })
+
+  it('keeps element field names for array-of-object properties', () => {
+    const fields = walkSchema(
+      {
+        type: 'object',
+        properties: {
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'integer' },
+                sku: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      { ...baseCtx, normalizedFieldPath: 'data' }
+    )
+    // The array property itself produces no descriptor — only its element
+    // fields, each carrying its own name (id / sku), NOT the array name.
+    expect(fields).toHaveLength(2)
+    expect(fields.map((f) => f.name)).toEqual(['id', 'sku'])
+    expect(fields.map((f) => f.path)).toEqual(['data.items.id', 'data.items.sku'])
+    expect(fields[0]?.type).toBe('integer')
+    expect(fields[1]?.type).toBe('string')
+  })
 })
