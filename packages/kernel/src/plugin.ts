@@ -8,10 +8,11 @@ import type { Logger } from './logger'
 import type { EventBus } from './event-bus'
 import type { Phase, ResolvedConfig, KernelState, RunId } from './types'
 
-// 钩子名 = 阶段名 × 时机：before{Phase} / {phase} / after{Phase}（如 beforeRun、run、afterRun）
+// 钩子名 = 阶段名 × 时机：before{Phase} / after{Phase}（如 beforeRun / afterRun）
+// 不含裸 phase 名：phase 本身的内核默认行为由内核控制，不向插件暴露钩子点。
+// 插件如需在阶段内做事，使用 after<Phase>（如 afterRun、afterShutdown）。
 export type HookName =
   | `before${Capitalize<Phase>}`
-  | Phase
   | `after${Capitalize<Phase>}`
 
 // 钩子签名：接收上下文，可同步可异步，返回 void（钩子间通过事件/日志通信）
