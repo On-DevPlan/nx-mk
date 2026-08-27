@@ -15,6 +15,7 @@ export default defineConfig({
       include: ['packages/*/src/**/*.ts'],
       exclude: [
         'packages/*/src/**/__tests__/**',
+        'packages/manifest/src/__tests__/**',
         'packages/*/src/**/index.ts',
       ],
       thresholds: {
@@ -37,6 +38,12 @@ export default defineConfig({
           functions: 50,
           branches: 40,
           statements: 50,
+        },
+        'packages/manifest/src/**/*.ts': {
+          lines: 70,
+          functions: 70,
+          branches: 60,
+          statements: 70,
         },
       },
     },
