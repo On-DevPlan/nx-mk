@@ -1,6 +1,5 @@
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { KernelError } from './errors'
 import type { Plugin } from './plugin'
 
@@ -117,10 +116,5 @@ async function validatePackageMatch(
   } catch (err) {
     if (err instanceof KernelError) throw err
     // package.json not resolvable: not fatal in ESM-only setups; skip.
-    void fileURLToURL
   }
-}
-
-function fileURLToURL(): void {
-  // marker to keep fileURLToURL referenced for future use
 }
