@@ -115,6 +115,10 @@ importers:
         version: 1.6.1(@types/node@20.19.43)
 
   packages/plugin-swagger:
+    dependencies:
+      '@nx-mk/manifest':
+        specifier: workspace:*
+        version: link:../manifest
     devDependencies:
       '@nx-mk/kernel':
         specifier: workspace:*

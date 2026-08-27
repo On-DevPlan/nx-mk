@@ -1,7 +1,7 @@
 /**
  * 配置 Schema —— nx-mk.config.yml 的 Zod 校验规则
  *
- * 定义 plugins / logLevel / outputDir 三个字段及各自默认值；
+ * 定义 plugins / logLevel / outputDir / openapi 四个字段及各自默认值；
  * passthrough 允许保留未声明的字段，为后续 Phase 扩展留余地。
  */
 import { z } from 'zod'
@@ -24,5 +24,7 @@ export const ConfigSchema = z
       .string()
       .regex(/^\.{1,2}(\/|\w)/, 'must be a relative path')
       .default('.nx-mk/runs'),
+    // openapi: 指向 OpenAPI 3.x 文档的相对/绝对路径（Phase 1，可空）
+    openapi: z.string().optional(),
   })
   .passthrough()

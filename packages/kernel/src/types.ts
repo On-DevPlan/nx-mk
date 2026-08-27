@@ -34,6 +34,8 @@ export interface Config {
   plugins: string[]
   logLevel: LogLevel
   outputDir: string
+  // openapi: 指向 OpenAPI 3.x 文档的相对/绝对路径（Phase 1；未配置则为 undefined）
+  openapi?: string
 }
 
 // 合并 env / CLI 覆盖后的最终配置，附带运行期上下文字段（configPath、runId 等）
