@@ -1,13 +1,22 @@
+/**
+ * doctor 子命令 —— 4 步环境体检
+ *
+ * 依次检查：①Node >= 20 ②nx-mk.config.yml 存在 ③.nx-mk/ 目录可写
+ * ④配置声明的插件可加载（实际跑一次 doctor 生命周期）。
+ * 逐项打印 ✔/✖ 结果；任一项失败以退出码 2 结束，适合放进 CI 做前置校验。
+ */
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { createKernel, makeRunId, type LogLevel } from '@nx-mk/kernel'
 
+// doctor 入参：configPath 可为 undefined（配置缺失时仍可体检其余项）
 export interface RunDoctorOptions {
   configPath: string | undefined
   runId: string
   cliOverrides?: { logLevel?: LogLevel; outputDir?: string }
 }
 
+// 单项检查结果：名称 + 是否通过 + 可选补充说明
 interface Check {
   name: string
   ok: boolean
@@ -15,9 +24,11 @@ interface Check {
 }
 
 export async function runDoctor(opts: RunDoctorOptions): Promise<void> {
+  // 体检结果收集器：全部检查跑完后统一输出
   const checks: Check[] = []
 
   // 1. Node version
+  // 中文：检查 ① 主版本号 >= 20（内核用了较新的 node:fs / 动态 import 特性）
   const nodeVer = process.versions.node
   const major = parseInt(nodeVer.split('.')[0] ?? '0', 10)
   checks.push({
@@ -27,6 +38,7 @@ export async function runDoctor(opts: RunDoctorOptions): Promise<void> {
   })
 
   // 2. config file
+  // 中文：检查 ② 配置文件存在；缺失时提示先跑 init 脚手架
   if (opts.configPath) {
     checks.push({
       name: 'nx-mk.config.yml',
@@ -42,6 +54,7 @@ export async function runDoctor(opts: RunDoctorOptions): Promise<void> {
   }
 
   // 3. .nx-mk/ writable
+  // 中文：检查 ③ 运行目录可写——写入再删除探针文件 .doctor-test
   try {
     mkdirSync('.nx-mk', { recursive: true })
     writeFileSync('.nx-mk/.doctor-test', 'ok')
@@ -52,6 +65,7 @@ export async function runDoctor(opts: RunDoctorOptions): Promise<void> {
   }
 
   // 4. plugins loadable
+  // 中文：检查 ④ 实际跑一次 doctor 生命周期验证插件可加载（含动态 import 与校验链路）
   if (opts.configPath) {
     try {
       const kernel = createKernel({
@@ -71,6 +85,7 @@ export async function runDoctor(opts: RunDoctorOptions): Promise<void> {
     }
   }
 
+  // 汇总输出：每项一行 ✔/✖ + 说明；任一项失败则以退出码 2 结束（CI 可感知）
   for (const c of checks) {
     const mark = c.ok ? '✔' : '✖'
     const tail = c.detail ? ` — ${c.detail}` : ''
@@ -81,4 +96,5 @@ export async function runDoctor(opts: RunDoctorOptions): Promise<void> {
     process.exit(2)
   }
   void dirname
+  // 中文：void dirname 同 loader.ts 的做法，抑制未使用导入告警
 }
