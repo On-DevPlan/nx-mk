@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { join, dirname } from 'node:path'
 import { createKernel, makeRunId, type LogLevel } from '@nx-mk/kernel'
 
 export interface RunInitOptions {
@@ -27,14 +27,14 @@ export async function runInit(opts: RunInitOptions): Promise<void> {
     console.log(`✔ Created ${opts.configPath}`)
   }
 
-  mkdirSync('.nx-mk/runs', { recursive: true })
+  mkdirSync(join(dirname(opts.configPath), '.nx-mk', 'runs'), { recursive: true })
   console.log('✔ Created .nx-mk/runs/')
 
   const kernel = createKernel({
     configPath: opts.configPath,
     runId: makeRunId('init'),
     subcommand: 'init',
-    cwd: process.cwd(),
+    cwd: dirname(opts.configPath),
   })
   await kernel.run()
   console.log('✔ Kernel lifecycle exercised; see .nx-mk/runs/init/')
