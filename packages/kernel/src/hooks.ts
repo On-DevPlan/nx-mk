@@ -1,53 +1,54 @@
 /**
- * AsyncSeriesHook — minimal in-house implementation of tapable's hook contract.
+ * 钩子执行器 —— 按插件声明顺序 fail-fast 执行钩子
  *
- * Handlers run sequentially in registration order. If any handler throws,
- * the error propagates and subsequent handlers are skipped.
- *
- * The kernel uses hooks for lifecycle events that plugins can subscribe to.
- * Plugins should always `tap()` inside their `setup()` method.
+ * 钩子名由「阶段 + 时机」推导（如 beforeRun / afterRun）；
+ * 任一插件钩子抛错即包装为 KernelError(PLUGIN_HOOK_FAILED) 中断后续执行，
+ * 由内核统一走 shutdown 收尾。
  */
+import { KernelError } from './errors'
+import type { Plugin, PluginContext, HookName } from './plugin'
+import type { Phase } from './types'
 
-import type { AsyncSeriesHook } from './types.js'
-
-interface Tap<TArgs extends readonly unknown[]> {
-  readonly name: string
-  readonly fn: (...args: TArgs) => Promise<void> | void
+// 首字母大写工具，用于拼接 beforeXxx / afterXxx 钩子名
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-export class AsyncSeriesHookImpl<TArgs extends readonly unknown[]> implements AsyncSeriesHook<TArgs> {
-  private readonly taps: Tap<TArgs>[] = []
+// 由「阶段 + 时机」推导钩子名：before/after 加上对应前缀
+export function hookNameForPhase(phase: Phase, timing: 'before' | 'after'): HookName {
+  if (timing === 'before') return `before${capitalize(phase)}` as HookName
+  return `after${capitalize(phase)}` as HookName
+}
 
-  get size(): number {
-    return this.taps.length
-  }
-
-  tap(name: string, fn: (...args: TArgs) => Promise<void> | void): void {
-    if (typeof name !== 'string' || name.length === 0) {
-      throw new Error('AsyncSeriesHook.tap: name must be a non-empty string')
-    }
-    if (typeof fn !== 'function') {
-      throw new Error(`AsyncSeriesHook.tap('${name}'): fn must be a function`)
-    }
-    // Disallow duplicate names so log lines are unambiguous.
-    if (this.taps.some((t) => t.name === name)) {
-      throw new Error(`AsyncSeriesHook.tap: handler '${name}' already registered`)
-    }
-    this.taps.push({ name, fn })
-  }
-
-  async call(...args: TArgs): Promise<void> {
-    // Iterate over a snapshot so handlers can safely tap/untap during dispatch.
-    const snapshot = this.taps.slice()
-    for (const tap of snapshot) {
-      await tap.fn(...args)
-    }
+// 执行单个插件的一个钩子；插件未注册该钩子则静默跳过。
+// 抛错时包装为 KernelError(PLUGIN_HOOK_FAILED) 并把原始错误挂到 cause 上。
+export async function runHook(
+  name: HookName,
+  plugin: Plugin,
+  ctx: PluginContext,
+): Promise<void> {
+  const handler = plugin.hooks[name]
+  if (!handler) return
+  try {
+    await handler(ctx)
+  } catch (err) {
+    throw new KernelError(
+      'PLUGIN_HOOK_FAILED',
+      `Plugin '${plugin.name}' hook '${name}' failed: ${(err as Error).message}`,
+      err,
+    )
   }
 }
 
-/** Factory: produce a fresh hook instance. */
-export function createAsyncSeriesHook<
-  TArgs extends readonly unknown[],
->(): AsyncSeriesHook<TArgs> {
-  return new AsyncSeriesHookImpl<TArgs>()
+// 对插件列表按声明顺序串行执行同一钩子；前一个抛错则后续不再执行（fail-fast）
+export async function runHooksForPhase(
+  phase: Phase,
+  timing: 'before' | 'after',
+  plugins: Plugin[],
+  ctx: PluginContext,
+): Promise<void> {
+  const name = hookNameForPhase(phase, timing)
+  for (const plugin of plugins) {
+    await runHook(name, plugin, ctx)
+  }
 }

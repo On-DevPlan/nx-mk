@@ -1039,6 +1039,16 @@ SPEC #1 引入 `@nx-mk/client` / `@nx-mk/runtime` / `@nx-mk/client-codegen` 时�
 - 远程 plugin（从 URL / git 加载）
 - Plugin marketplace / registry
 
+### 11.4 Known Design Constraints (Phase 0 close)
+
+The following 2 issues were identified during Task 18 E2E verification but are NOT addressed in Phase 0 — they require architectural changes deferred to Phase 1+:
+
+1. **Plugin resolution location**: When a plugin is installed in a user's project (`<user-project>/node_modules/@nx-mk/foo/`), the kernel's dynamic `import(name)` resolves from the kernel's own location (`packages/kernel/dist/index.js`), not the user's cwd. This means plugins MUST be reachable from the kernel's install path, not just the user's project. E2E test 2 only worked because the thrower was copied into the workspace's `node_modules/`, not the user's. Mitigation for users: install plugins as workspace deps in the user's project (so they end up in the same `node_modules/` tree).
+
+2. **Cyclic workspace dep (kernel ↔ config)**: `@nx-mk/kernel` declares `@nx-mk/config` as a peer+devDep for type-sharing. This creates a cycle that produces `pnpm` warnings at install and complicates tsup's DTS generation. Architectural fix deferred to Phase 1 (likely: extract shared types to a new `@nx-mk/types` package that both kernel and config depend on).
+
+Neither constraint blocks Phase 0 functionality — both 4 E2E scenarios pass with correct exit codes.
+
 ---
 
 ## 12. 自检（spec self-review checklist）

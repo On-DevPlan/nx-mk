@@ -1,33 +1,29 @@
 {
-  "name": "@nx-mk/kernel",
+  "name": "@nx-mk/cli",
   "version": "0.1.0",
   "private": true,
-  "description": "nx-mk microkernel: plugin lifecycle + event bus",
+  "description": "nx-mk CLI entry (npx nx-mk)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+  "bin": {
+    "nx-mk": "./dist/index.js"
   },
   "files": ["dist"],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
-    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
-  "peerDependencies": {
+  "dependencies": {
+    "@nx-mk/kernel": "workspace:*",
     "@nx-mk/config": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
     "tsup": "^8.0.2",
     "vitest": "^1.0.4",
-    "@types/node": "^20.10.0",
-    "@nx-mk/config": "workspace:*"
+    "@types/node": "^20.10.0"
   }
 }
