@@ -15,7 +15,7 @@ import { loadPlugins } from './plugin-registry'
 import { KernelError, mapErrorCodeToExit } from './errors'
 import type { KernelAPI, Plugin, PluginContext, RunResult } from './plugin'
 import type { KernelState, Phase, ResolvedConfig, RunId } from './types'
-import { makeRunId } from './types'
+import { makeRunId, PHASES } from './types'
 
 // 创建内核的入参：configPath 必填；plugins 仅供测试注入，生产环境走配置动态加载
 export interface CreateKernelOptions {
@@ -217,7 +217,8 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
     async run(): Promise<RunResult> {
       const start = Date.now()
       // 前 4 个阶段顺序执行；shutdown 留给 finally 统一触发
-      const ordered: Phase[] = ['loadConfig', 'resolvePlugins', 'initPlugins', 'run']
+      // 顺序由 PHASES 常量驱动（types.ts）作为单一来源，避免与 runPhase 分支重复
+      const ordered = PHASES.filter((p) => p !== 'shutdown')
       try {
         for (const phase of ordered) {
           await runPhase(phase)
