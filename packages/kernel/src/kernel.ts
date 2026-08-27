@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, createWriteStream } from 'node:fs'
 import { join } from 'node:path'
 import { createLogger } from './logger'
 import { EventBus } from './event-bus'
-import { runHooksForPhase } from './hooks'
+import { runHook, runHooksForPhase, hookNameForPhase } from './hooks'
 import { loadPlugins } from './plugin-registry'
 import { KernelError, mapErrorCodeToExit } from './errors'
 import type { KernelAPI, Plugin, PluginContext, RunResult } from './plugin'
@@ -45,6 +45,53 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
   let phaseTimers = new Map<Phase, number>()
   let shutdownPromise: Promise<void> | null = null
   let runFinished = false
+  let lastPluginError: {
+    name: string
+    hook: string
+    error: { message: string; stack?: string }
+  } | null = null
+
+  /**
+   * Wrapper around runHooksForPhase that captures which plugin + hook failed,
+   * so the top-level catch in api.run() can emit a `plugin:error` event
+   * and write a structured line to error.log per spec §3.4 + §5.1.
+   */
+  async function runHooksForPhaseWithCapture(
+    phase: Phase,
+    timing: 'before' | 'main' | 'after',
+    phasePlugins: Plugin[],
+    ctx: PluginContext,
+  ): Promise<void> {
+    const name = hookNameForPhase(phase, timing)
+    for (const plugin of phasePlugins) {
+      try {
+        await runHook(name, plugin, ctx)
+      } catch (err) {
+        // Prefer the inner cause's message (the original plugin error)
+        // so downstream consumers see "hook-boom", not the wrapper
+        // "Plugin 'p-thrower' hook 'run' failed: hook-boom".
+        const innerMessage =
+          err instanceof KernelError && err.cause instanceof Error
+            ? err.cause.message
+            : (err as Error).message
+        const innerStack =
+          err instanceof KernelError && err.cause instanceof Error
+            ? err.cause.stack
+            : err instanceof Error
+              ? err.stack
+              : undefined
+        lastPluginError = {
+          name: plugin.name,
+          hook: name,
+          error: {
+            message: innerMessage,
+            stack: innerStack,
+          },
+        }
+        throw err
+      }
+    }
+  }
 
   async function runPhase(phase: Phase): Promise<void> {
     state.currentPhase = phase
@@ -52,15 +99,15 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
     events.emit({ type: 'phase:start', phase, timestamp: new Date().toISOString() })
 
     if (phase === 'loadConfig') {
-      await runHooksForPhase(phase, 'before', plugins, buildCtx())
+      await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
       if (!existsSync(opts.configPath)) {
         throw new KernelError('CONFIG_NOT_FOUND', `Config file not found: ${opts.configPath}`)
       }
       const { loadConfig } = await import('@nx-mk/config')
       config = await loadConfig({ path: opts.configPath, cwd, runId: opts.runId, subcommand: opts.subcommand })
-      await runHooksForPhase(phase, 'after', plugins, buildCtx())
+      await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
     } else if (phase === 'resolvePlugins') {
-      await runHooksForPhase(phase, 'before', plugins, buildCtx())
+      await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
       if (opts.plugins === undefined) {
         plugins = await loadPlugins(config!.plugins, { cwd })
         for (const p of plugins) {
@@ -68,15 +115,15 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
           state.loadedPlugins.push(p.name)
         }
       }
-      await runHooksForPhase(phase, 'after', plugins, buildCtx())
+      await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
     } else if (phase === 'initPlugins') {
-      await runHooksForPhase(phase, 'before', plugins, buildCtx())
+      await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
       // kernel default: no-op (plugin instance is already constructed)
-      await runHooksForPhase(phase, 'after', plugins, buildCtx())
+      await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
     } else if (phase === 'run') {
-      await runHooksForPhase(phase, 'before', plugins, buildCtx())
-      await runHooksForPhase(phase, 'main', plugins, buildCtx())
-      await runHooksForPhase(phase, 'after', plugins, buildCtx())
+      await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
+      await runHooksForPhaseWithCapture(phase, 'main', plugins, buildCtx())
+      await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
     } else if (phase === 'shutdown') {
       // Reverse order
       const reversed = [...plugins].reverse()
@@ -130,6 +177,28 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
         state.error = {
           code: err instanceof KernelError ? err.code : 'KERNEL_INTERNAL',
           message: (err as Error).message,
+        }
+        if (lastPluginError) {
+          // Per spec §3.4: emit plugin:error BEFORE kernel:error.
+          // Per spec §5.1: write a structured error line to error.log so it
+          // exists on disk for postmortem tools even when logLevel=silent.
+          const originalMessage =
+            (err instanceof KernelError && err.cause instanceof Error)
+              ? err.cause.message
+              : (err as Error).message
+          logger.error('plugin hook failed', {
+            phase: state.currentPhase ?? 'loadConfig',
+            plugin: lastPluginError.name,
+            hook: lastPluginError.hook,
+            error: new Error(`Plugin hook failed: ${originalMessage}`),
+          })
+          events.emit({
+            type: 'plugin:error',
+            name: lastPluginError.name,
+            hook: lastPluginError.hook,
+            phase: state.currentPhase ?? 'loadConfig',
+            error: lastPluginError.error,
+          })
         }
         events.emit({
           type: 'kernel:error',

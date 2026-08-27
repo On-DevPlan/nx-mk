@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createKernel } from '../kernel'
@@ -117,6 +117,77 @@ describe('createKernel', () => {
     expect(calls).toEqual(['cleanup-beforeShutdown', 'cleanup-shutdown'])
   })
 
+  it('emits plugin:error BEFORE kernel:error when a hook throws', async () => {
+    writeConfig([])
+    const eventsSeen: string[] = []
+    const plugin: Plugin = {
+      name: 'p-thrower',
+      version: '0.0.1',
+      hooks: {
+        run: () => { throw new Error('hook-boom') },
+      },
+    }
+    const kernel = createKernel({
+      configPath,
+      runId: 'r' as never,
+      subcommand: 'run',
+      cwd: workDir,
+      plugins: [plugin],
+    })
+    // Attach a one-shot listener before run
+    // We need access to events; createKernel currently doesn't expose it.
+    // Workaround: read events.jsonl AFTER run (which already happens in test 7).
+    // For this test, assert on events.jsonl content instead.
+    await expect(kernel.run()).rejects.toMatchObject({ code: 'PLUGIN_HOOK_FAILED' })
+    const eventsContent = readFileSync(join(workDir, '.nx-mk', 'runs', 'r', 'events.jsonl'), 'utf8')
+    const eventTypes = eventsContent
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l).type as string)
+    const pluginErrorIdx = eventTypes.indexOf('plugin:error')
+    const kernelErrorIdx = eventTypes.indexOf('kernel:error')
+    expect(pluginErrorIdx).toBeGreaterThanOrEqual(0)
+    expect(kernelErrorIdx).toBeGreaterThanOrEqual(0)
+    expect(pluginErrorIdx).toBeLessThan(kernelErrorIdx)
+    // Verify plugin:error carries full payload
+    const pluginErrorEvent = JSON.parse(eventsContent.trim().split('\n')[pluginErrorIdx]!)
+    expect(pluginErrorEvent).toMatchObject({
+      type: 'plugin:error',
+      name: 'p-thrower',
+      hook: 'run',
+      phase: 'run',
+      error: { message: 'hook-boom' },
+    })
+  })
+
+  it('writes the error line to .nx-mk/runs/{runId}/error.log', async () => {
+    writeConfig([])
+    const plugin: Plugin = {
+      name: 'p-thrower',
+      version: '0.0.1',
+      hooks: {
+        run: () => { throw new Error('written-to-error-log') },
+      },
+    }
+    const kernel = createKernel({
+      configPath,
+      runId: 'r' as never,
+      subcommand: 'run',
+      cwd: workDir,
+      plugins: [plugin],
+    })
+    await expect(kernel.run()).rejects.toBeInstanceOf(KernelError)
+    const errorLogPath = join(workDir, '.nx-mk', 'runs', 'r', 'error.log')
+    const errorContent = readFileSync(errorLogPath, 'utf8')
+    const lines = errorContent.trim().split('\n').map((l) => JSON.parse(l))
+    expect(lines.length).toBeGreaterThanOrEqual(1)
+    expect(lines[0]).toMatchObject({
+      level: 'error',
+      msg: expect.stringContaining('plugin hook failed'),
+      meta: { error: { message: 'Plugin hook failed: written-to-error-log' } },
+    })
+  })
+
   it('runs shutdown hooks in reverse plugin order', async () => {
     writeConfig()
     const order: string[] = []
@@ -163,7 +234,6 @@ describe('createKernel', () => {
     const kernel = createKernel({ configPath, runId: 'r1' as never, subcommand: 'run', cwd: workDir, plugins: [] })
     await kernel.run()
     const eventsPath = join(workDir, '.nx-mk', 'runs', 'r1', 'events.jsonl')
-    const { readFileSync } = await import('node:fs')
     const lines = readFileSync(eventsPath, 'utf8').trim().split('\n')
     expect(lines.length).toBeGreaterThanOrEqual(10) // 5 phase:start + 5 phase:end
   })

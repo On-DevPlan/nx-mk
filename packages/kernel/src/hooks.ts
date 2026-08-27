@@ -6,7 +6,7 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-function hookNameForPhase(phase: Phase, timing: 'before' | 'main' | 'after'): HookName {
+export function hookNameForPhase(phase: Phase, timing: 'before' | 'main' | 'after'): HookName {
   if (timing === 'main') return phase
   if (timing === 'before') return `before${capitalize(phase)}` as HookName
   return `after${capitalize(phase)}` as HookName
