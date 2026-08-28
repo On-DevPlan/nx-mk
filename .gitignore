@@ -39,3 +39,6 @@ test-results/
 
 # Generated
 .mk/sdk/
+
+# Cloned repositories (nested git repos, isolated from project git tracking)
+.claude/repo/
