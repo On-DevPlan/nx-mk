@@ -15,7 +15,7 @@ import { loadPlugins, resolveDependencies } from './plugin-registry'
 import { KernelError, mapErrorCodeToExit } from './errors'
 import type { KernelAPI, Plugin, PluginContext, RunResult } from './plugin'
 import type { KernelState, Phase, PluginWorkerState, ResolvedConfig, RunId } from './types'
-import { makePluginName, makeRunId, PHASES } from './types'
+import { assertNever, makePluginName, makeRunId, PHASES } from './types'
 
 // 创建内核的入参：configPath 必填；plugins 仅供测试注入，生产环境走配置动态加载
 export interface CreateKernelOptions {
@@ -81,6 +81,9 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
    * 转移插件状态并发出 plugin:state-change 事件（M1）。
    * 若目标状态与当前状态一致则跳过（避免冗余事件）。
    * 中文：集中所有状态转移，便于未来加入 invariant 检查与日志。
+   *
+   * M5 增强：用 switch + assertNever 显式列举 PluginWorkerState 所有 kind，
+   * 编译期保证新增状态时所有分支都会被检查。
    */
   function transitionPlugin(
     name: string,
@@ -96,14 +99,31 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       state.loadedPlugins.push(name)
     }
     if (fromKind === toKind) return
-    events.emit({
-      type: 'plugin:state-change',
+    // 构造事件载荷：error 字段仅 failed 状态携带
+    const baseEvent = {
+      type: 'plugin:state-change' as const,
       name,
       from: fromKind,
       to: toKind,
       timestamp: new Date().toISOString(),
-      ...(to.kind === 'failed' && to.error ? { error: to.error } : {}),
-    })
+    }
+    let event: typeof baseEvent & { error?: { code: string; message: string } }
+    switch (toKind) {
+      case 'active':
+      case 'done':
+      case 'pending':
+      case 'loading':
+      case 'unloading':
+      case 'disposed':
+        event = baseEvent
+        break
+      case 'failed':
+        event = { ...baseEvent, error: to.error }
+        break
+      default:
+        assertNever(toKind)
+    }
+    events.emit(event)
   }
 
   // 中文说明：带错误捕获的钩子批量执行器。除了透传 fail-fast 语义外，

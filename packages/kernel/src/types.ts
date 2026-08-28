@@ -38,6 +38,31 @@ export function makePluginName(s: string): PluginName {
 }
 
 /**
+ * assertNever —— 判别联合 switch 的编译期+运行期收尾保护（M5）
+ *
+ * 用法：在对判别联合（discriminated union）的 switch 末尾调用，
+ * 让 TypeScript 强制要求所有 union 成员都被处理。
+ *
+ * 编译期：`x: never` 表示"如果还有未被 switch 处理的 union 变体，这里会编译错误"。
+ * 运行期：若意外走到该分支（说明代码与类型契约不一致），抛出明确错误。
+ *
+ * @example
+ * ```ts
+ * type Event = { type: 'a' } | { type: 'b' }
+ * function handle(e: Event) {
+ *   switch (e.type) {
+ *     case 'a': ...; break
+ *     case 'b': ...; break
+ *     default: assertNever(e)  // ← 若新增 'c' 变体但未处理，编译失败
+ *   }
+ * }
+ * ```
+ */
+export function assertNever(x: never): never {
+  throw new Error(`Unhandled discriminant: ${JSON.stringify(x)}`)
+}
+
+/**
  * 插件 lifecycle 状态机（M1 引入）
  *
  * 每个插件在生命周期内会经历的状态：
