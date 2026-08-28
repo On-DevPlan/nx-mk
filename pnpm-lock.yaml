@@ -82,6 +82,37 @@ importers:
       '@nx-mk/config':
         specifier: workspace:*
         version: link:../config
+      '@nx-mk/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@standard-schema/spec':
+        specifier: ^1.0.0
+        version: 1.1.0
+      '@types/node':
+        specifier: ^20.10.0
+        version: 20.19.43
+      tsup:
+        specifier: ^8.0.2
+        version: 8.5.1(postcss@8.5.26)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^1.0.4
+        version: 1.6.1(@types/node@20.19.43)
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+
+  packages/manifest:
+    dependencies:
+      '@apidevtools/swagger-parser':
+        specifier: ^10.1.0
+        version: 10.1.1(openapi-types@12.1.3)
+      '@nx-mk/manifest-schema':
+        specifier: workspace:*
+        version: link:../manifest-schema
+    devDependencies:
       '@types/node':
         specifier: ^20.10.0
         version: 20.19.43
@@ -95,11 +126,7 @@ importers:
         specifier: ^1.0.4
         version: 1.6.1(@types/node@20.19.43)
 
-  packages/manifest:
-    dependencies:
-      '@apidevtools/swagger-parser':
-        specifier: ^10.1.0
-        version: 10.1.1(openapi-types@12.1.3)
+  packages/manifest-schema:
     devDependencies:
       '@types/node':
         specifier: ^20.10.0
@@ -119,6 +146,9 @@ importers:
       '@nx-mk/manifest':
         specifier: workspace:*
         version: link:../manifest
+      '@nx-mk/manifest-schema':
+        specifier: workspace:*
+        version: link:../manifest-schema
     devDependencies:
       '@nx-mk/kernel':
         specifier: workspace:*
@@ -135,6 +165,27 @@ importers:
       vitest:
         specifier: ^1.0.4
         version: 1.6.1(@types/node@20.19.43)
+
+  packages/schema:
+    devDependencies:
+      '@standard-schema/spec':
+        specifier: ^1.0.0
+        version: 1.1.0
+      '@types/node':
+        specifier: ^20.10.0
+        version: 20.19.43
+      tsup:
+        specifier: ^8.0.2
+        version: 8.5.1(postcss@8.5.26)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^1.0.4
+        version: 1.6.1(@types/node@20.19.43)
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
 
 packages:
 
@@ -491,6 +542,9 @@ packages:
 
   '@sinclair/typebox@0.27.12':
     resolution: {integrity: sha512-hhyNJ+nbR6ZR7pToHvllEFun9TL0sbL+tk/ON75lo+Xas054uez98qRbsuNt7MBCyZKK4+8Yli/OAGZhmfBZ/g==}
+
+  '@standard-schema/spec@1.1.0':
+    resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
@@ -1311,6 +1365,8 @@ snapshots:
     optional: true
 
   '@sinclair/typebox@0.27.12': {}
+
+  '@standard-schema/spec@1.1.0': {}
 
   '@types/estree@1.0.9': {}
 

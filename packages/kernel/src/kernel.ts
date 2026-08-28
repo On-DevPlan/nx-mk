@@ -11,11 +11,11 @@ import { join } from 'node:path'
 import { createLogger } from './logger'
 import { EventBus } from './event-bus'
 import { runHook, runHooksForPhase, hookNameForPhase } from './hooks'
-import { loadPlugins } from './plugin-registry'
+import { loadPlugins, resolveDependencies } from './plugin-registry'
 import { KernelError, mapErrorCodeToExit } from './errors'
 import type { KernelAPI, Plugin, PluginContext, RunResult } from './plugin'
-import type { KernelState, Phase, ResolvedConfig, RunId } from './types'
-import { makeRunId, PHASES } from './types'
+import type { KernelState, Phase, PluginWorkerState, ResolvedConfig, RunId } from './types'
+import { assertNever, makePluginName, makeRunId, PHASES } from './types'
 
 // 创建内核的入参：configPath 必填；plugins 仅供测试注入，生产环境走配置动态加载
 export interface CreateKernelOptions {
@@ -55,6 +55,8 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
     currentPhase: null,
     startedAt: new Date().toISOString(),
     loadedPlugins: [],
+    // M1：每个插件的 lifecycle 状态（key = PluginName）
+    pluginStates: new Map(),
   }
 
   // —— 闭包内的可变运行时状态（随生命周期推进而更新）——
@@ -74,6 +76,55 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
     hook: string
     error: { message: string; stack?: string }
   } | null = null
+
+  /**
+   * 转移插件状态并发出 plugin:state-change 事件（M1）。
+   * 若目标状态与当前状态一致则跳过（避免冗余事件）。
+   * 中文：集中所有状态转移，便于未来加入 invariant 检查与日志。
+   *
+   * M5 增强：用 switch + assertNever 显式列举 PluginWorkerState 所有 kind，
+   * 编译期保证新增状态时所有分支都会被检查。
+   */
+  function transitionPlugin(
+    name: string,
+    to: PluginWorkerState,
+  ): void {
+    const key = makePluginName(name)
+    const previous = state.pluginStates.get(key)
+    const fromKind: PluginWorkerState['kind'] = previous?.kind ?? 'pending'
+    const toKind = to.kind
+    state.pluginStates.set(key, to)
+    // 旧字段同步：loadedPlugins 记录"已加载"集合（active 之前的转移都算加载）
+    if (toKind === 'active' && !state.loadedPlugins.includes(name)) {
+      state.loadedPlugins.push(name)
+    }
+    if (fromKind === toKind) return
+    // 构造事件载荷：error 字段仅 failed 状态携带
+    const baseEvent = {
+      type: 'plugin:state-change' as const,
+      name,
+      from: fromKind,
+      to: toKind,
+      timestamp: new Date().toISOString(),
+    }
+    let event: typeof baseEvent & { error?: { code: string; message: string } }
+    switch (toKind) {
+      case 'active':
+      case 'done':
+      case 'pending':
+      case 'loading':
+      case 'unloading':
+      case 'disposed':
+        event = baseEvent
+        break
+      case 'failed':
+        event = { ...baseEvent, error: to.error }
+        break
+      default:
+        assertNever(toKind)
+    }
+    events.emit(event)
+  }
 
   // 中文说明：带错误捕获的钩子批量执行器。除了透传 fail-fast 语义外，
   // 额外记录「哪个插件的哪个钩子」失败及原始错误，供 api.run() 顶层 catch
@@ -118,6 +169,15 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
             stack: innerStack,
           },
         }
+        // M1：钩子失败时把插件状态置为 failed
+        transitionPlugin(plugin.name, {
+          kind: 'failed',
+          error: {
+            code: err instanceof KernelError ? err.code : 'PLUGIN_HOOK_FAILED',
+            message: innerMessage,
+          },
+          failedAt: new Date().toISOString(),
+        })
         throw err
       }
     }
@@ -148,17 +208,30 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
       // 测试注入了 plugins 则跳过加载，否则走 plugin-registry 的动态 import 链路
       if (opts.plugins === undefined) {
-        plugins = await loadPlugins(config!.plugins, { cwd })
+        plugins = await loadPlugins(config!.plugins, { cwd, config: config! })
         // 每加载成功一个插件：发 plugin:loaded 事件并写入内核状态
         for (const p of plugins) {
           events.emit({ type: 'plugin:loaded', name: p.name, version: p.version })
           state.loadedPlugins.push(p.name)
+          // M1：每个加载成功的插件立即置为 active
+          transitionPlugin(p.name, { kind: 'active', activatedAt: new Date().toISOString() })
+        }
+      } else {
+        // 测试路径：注入的 plugins 也走 active 转移以保证 pluginStates 与 loadedPlugins 一致
+        for (const p of plugins) {
+          if (!state.loadedPlugins.includes(p.name)) {
+            state.loadedPlugins.push(p.name)
+          }
+          transitionPlugin(p.name, { kind: 'active', activatedAt: new Date().toISOString() })
         }
       }
       await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
     } else if (phase === 'initPlugins') {
-      // —— 阶段 3：initPlugins —— 预留的插件初始化阶段
+      // —— 阶段 3：initPlugins —— 校验插件依赖 + 预留的插件初始化阶段
       await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
+      // M3：检查所有插件的 inject 依赖是否被 provide 满足
+      // 不满足时抛 PLUGIN_DEPENDENCY_MISSING（退出码 7），fail-fast
+      resolveDependencies(plugins)
       // kernel default: no-op (plugin instance is already constructed)
       // 中文：内核默认无动作（插件对象在工厂调用时已构造完成），仅触发前后钩子
       await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
@@ -287,7 +360,8 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       return shutdownPromise
     },
     // 只读访问器：返回状态浅拷贝 / 运行 ID / 子命令（无副作用）
-    getState: () => ({ ...state }),
+    // M1：pluginStates Map 返回浅拷贝的新 Map，避免外部直接修改闭包内状态
+    getState: () => ({ ...state, pluginStates: new Map(state.pluginStates) }),
     getRunId: () => opts.runId,
     getSubcommand: () => opts.subcommand,
   }

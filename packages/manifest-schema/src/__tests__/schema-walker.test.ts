@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { walkSchema, type WalkContext } from '../schema-walker'
-import type { HttpMethod } from '../field-id'
+import { walkSchema } from '../schema-walker'
+import type { HttpMethod, WalkContext } from '../types'
 
 const userSchema = {
   type: 'object',

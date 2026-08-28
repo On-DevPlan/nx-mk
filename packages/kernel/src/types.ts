@@ -29,6 +29,64 @@ export function makeRunId(s: string): RunId {
   return s as RunId
 }
 
+// 品牌类型：插件名（仅类型层面收窄，运行时与 string 等价）
+export type PluginName = string & { readonly __brand: 'PluginName' }
+
+// 把普通字符串标记为 PluginName（运行时无任何转换，仅类型层面收窄）
+export function makePluginName(s: string): PluginName {
+  return s as PluginName
+}
+
+/**
+ * assertNever —— 判别联合 switch 的编译期+运行期收尾保护（M5）
+ *
+ * 用法：在对判别联合（discriminated union）的 switch 末尾调用，
+ * 让 TypeScript 强制要求所有 union 成员都被处理。
+ *
+ * 编译期：`x: never` 表示"如果还有未被 switch 处理的 union 变体，这里会编译错误"。
+ * 运行期：若意外走到该分支（说明代码与类型契约不一致），抛出明确错误。
+ *
+ * @example
+ * ```ts
+ * type Event = { type: 'a' } | { type: 'b' }
+ * function handle(e: Event) {
+ *   switch (e.type) {
+ *     case 'a': ...; break
+ *     case 'b': ...; break
+ *     default: assertNever(e)  // ← 若新增 'c' 变体但未处理，编译失败
+ *   }
+ * }
+ * ```
+ */
+export function assertNever(x: never): never {
+  throw new Error(`Unhandled discriminant: ${JSON.stringify(x)}`)
+}
+
+/**
+ * 插件 lifecycle 状态机（M1 引入）
+ *
+ * 每个插件在生命周期内会经历的状态：
+ * - active: 已加载并参与后续阶段
+ * - done: 主动声明完成（如 emitSignal({ kind: 'done' })）
+ * - failed: 加载或钩子执行失败
+ *
+ * 预留状态（M2+ 启用）：
+ * - pending: 等待依赖满足
+ * - loading: 正在加载（异步加载场景）
+ * - unloading: 正在清理（shutdown 阶段）
+ * - disposed: 已彻底移除（M8 reloadPlugin 用）
+ *
+ * 注：本里程碑仅启用 active / done / failed；其他状态先在类型上保留以备扩展。
+ */
+export type PluginWorkerState =
+  | { kind: 'active'; activatedAt: string }
+  | { kind: 'done'; reason: string; finishedAt: string }
+  | { kind: 'failed'; error: { code: string; message: string }; failedAt: string }
+  | { kind: 'pending'; waitedFor: string[] }
+  | { kind: 'loading' }
+  | { kind: 'unloading' }
+  | { kind: 'disposed' }
+
 // nx-mk.config.yml 的字段结构（对应 @nx-mk/config 中 Zod schema 的解析结果）
 export interface Config {
   plugins: string[]
@@ -52,6 +110,9 @@ export interface KernelState {
   runId: RunId
   currentPhase: Phase | null
   startedAt: string
+  // 旧字段：仅保留插件名列表（向后兼容，M1 期间不删除）
   loadedPlugins: string[]
+  // 新字段（M1）：每个插件的 lifecycle 状态
+  pluginStates: Map<PluginName, PluginWorkerState>
   error?: { code: ErrorCode; message: string }
 }

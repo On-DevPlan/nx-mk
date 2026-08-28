@@ -4,20 +4,11 @@
  * 规则：rawKey = method:path:direction:status:normalizedFieldPath，sha1 后取前 12 位 hex。
  * 同一 OpenAPI 文档每次解析 → 相同 ID（可跨运行比较）；不同字段 → 不同 ID。
  * 该稳定性是"manifest.json 可做增量 diff"的基础。
+ *
+ * 相关类型（HttpMethod / FieldIdInput）见 ./types。
  */
 import { createHash } from 'node:crypto'
-
-// HTTP 方法联合：OpenAPI 支持的请求动词
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD'
-
-// 生成字段 ID 所需的全部输入
-export interface FieldIdInput {
-  method: HttpMethod
-  path: string                              // OpenAPI 路径模板，如 '/users/{id}'（不是实例路径）
-  direction: 'request' | 'response'         // 请求方向 or 响应方向
-  status?: string                           // 仅 response 有；request 省略
-  normalizedFieldPath: string              // 归一化后的字段路径，如 'data[].user.id'
-}
+import type { FieldIdInput } from './types'
 
 // 把 FieldIdInput 编码成 12 位 hex 的稳定 ID
 export function stableFieldId(input: FieldIdInput): string {
