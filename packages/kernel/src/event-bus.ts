@@ -6,7 +6,7 @@
  * 插件经 PluginContext.events 订阅感兴趣的事件类型。
  */
 import { EventEmitter } from 'node:events'
-import type { Phase } from './types'
+import type { Phase, PluginWorkerState } from './types'
 
 // 内核全部事件的判别联合：按 type 字段区分（阶段流转 / 插件加载 / 错误 / 日志）
 export type KernelEvent =
@@ -21,6 +21,14 @@ export type KernelEvent =
       error: { message: string; stack?: string }
     }
   | { type: 'kernel:error'; phase: Phase; error: { message: string } }
+  | {
+      type: 'plugin:state-change'  // ← M1 新增：插件 lifecycle 状态变化
+      name: string
+      from: PluginWorkerState['kind']
+      to: PluginWorkerState['kind']
+      timestamp: string
+      error?: { code: string; message: string }
+    }
   | {
       type: 'log'
       level: 'debug' | 'info' | 'warn' | 'error'
