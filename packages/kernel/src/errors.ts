@@ -12,6 +12,7 @@ export type ErrorCode =
   | 'CONFIG_INVALID'
   | 'PLUGIN_LOAD_FAILED'
   | 'PLUGIN_SHAPE_INVALID'
+  | 'PLUGIN_CONFIG_INVALID'  // ← M2：插件 configSchema 校验失败
   | 'PLUGIN_HOOK_FAILED'
   | 'KERNEL_INTERNAL'
 
@@ -28,7 +29,7 @@ export class KernelError extends Error {
 }
 
 // 错误码 → 进程退出码映射；1 为兜底（未分类错误），见 CLI 顶层 catch
-export function mapErrorCodeToExit(code: ErrorCode | undefined): 1 | 2 | 3 | 4 | 5 {
+export function mapErrorCodeToExit(code: ErrorCode | undefined): 1 | 2 | 3 | 4 | 5 | 6 {
   switch (code) {
     // 配置类：文件缺失或内容非法 → 退出码 2
     case 'CONFIG_NOT_FOUND':
@@ -38,6 +39,9 @@ export function mapErrorCodeToExit(code: ErrorCode | undefined): 1 | 2 | 3 | 4 |
     case 'PLUGIN_LOAD_FAILED':
     case 'PLUGIN_SHAPE_INVALID':
       return 3
+    // 插件配置校验失败（M2） → 退出码 6
+    case 'PLUGIN_CONFIG_INVALID':
+      return 6
     // 插件钩子执行期抛错 → 退出码 4
     case 'PLUGIN_HOOK_FAILED':
       return 4

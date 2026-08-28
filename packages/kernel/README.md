@@ -90,6 +90,35 @@ M1 不破坏现有 API：
 - `pluginStates: Map<PluginName, PluginWorkerState>` 为新增字段
 - `KernelState.getState()` 返回浅拷贝（新 Map）
 
+## 插件配置校验（M2）
+
+插件可声明 `configSchema?: StandardSchemaV1<unknown, unknown>` 做配置校验：
+
+```ts
+import { z } from 'zod'
+import type { Plugin } from '@nx-mk/kernel'
+
+export const configSchema = z.object({
+  openapi: z.object({
+    path: z.string().min(1),
+    servers: z.array(z.object({ url: z.string().url() })).min(1),
+  }),
+})
+
+const plugin: Plugin = {
+  name: '@nx-mk/my-plugin',
+  version: '1.0.0',
+  hooks: {},
+  configSchema,  // ← 声明后由 @nx-mk/schema 在加载时校验
+}
+```
+
+校验失败抛 `KernelError(PLUGIN_CONFIG_INVALID)`，退出码 6。
+
+支持的库：所有符合 `@standard-schema/spec` 的库（zod / valibot / arktype 等）。
+
+未声明 `configSchema` 的旧插件继续工作（向后兼容）。
+
 ## 测试
 
 ```bash
@@ -98,13 +127,11 @@ pnpm test
 
 覆盖：
 
-- 6 个原有测试文件
-- `plugin-state.test.ts`（M1 新增，4 个测试）
-  - 加载成功时 `pluginStates` 反映状态
-  - `plugin:state-change` 事件被正确发出
-  - 钩子失败时状态转为 `failed`
-  - `loadedPlugins` 字段仍可用（向后兼容）
+- 6 个原有测试文件 + M1 新增 `plugin-state.test.ts`（4 测试）
+- M2 新增 `plugin-schema.test.ts`（3 测试）
 
 ## 设计参考
 
-详细设计见 [`docx/plan/2026-08-28-foundation-modification-plan.md`](../../docx/plan/2026-08-28-foundation-modification-plan.md) M1 章节。
+详细设计见：
+- [`docx/plan/2026-08-28-foundation-modification-plan.md`](../../docx/plan/2026-08-28-foundation-modification-plan.md) M1-M2 章节
+- 配套包：`@nx-mk/schema`（standard-schema 适配层）

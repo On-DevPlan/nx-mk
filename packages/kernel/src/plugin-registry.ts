@@ -9,10 +9,13 @@ import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { KernelError } from './errors'
 import type { Plugin } from './plugin'
+import type { ResolvedConfig } from './types'
 
 // cwd 决定插件包的解析基准（默认取当前进程工作目录）
+// config 用于 M2 configSchema 校验（可选）
 export interface LoadPluginsOptions {
   cwd?: string
+  config?: ResolvedConfig
 }
 
 // 合法插件名 = 合法 npm 包名（可含 scope），用于拦截路径穿越等危险输入
@@ -79,8 +82,9 @@ export async function loadPlugins(
         err,
       )
     }
-    // 校验段 ④ + ⑤：结构校验，以及与 package.json 的 name/version 对照
+    // 校验段 ④ + ⑤：结构校验 + configSchema 校验 + package.json 对照
     validateShape(plugin, name)
+    await validateConfigSchema(plugin as Plugin, name, opts.config ?? {} as ResolvedConfig)
     await validatePackageMatch(plugin as Plugin, name, require)
     plugins.push(plugin as Plugin)
   }
@@ -106,6 +110,42 @@ function validateShape(plugin: unknown, name: string): void {
     throw new KernelError(
       'PLUGIN_SHAPE_INVALID',
       `Plugin '${name}' must have 'hooks' object`,
+    )
+  }
+}
+
+/**
+ * M2：用插件声明的 configSchema 校验传入的配置对象。
+ * 若插件未声明 schema，跳过校验。不修改传入的 config 对象（只读）。
+ *
+ * @param plugin - 已通过 validateShape 的插件对象
+ * @param name - 插件名（错误信息用）
+ * @param rawConfig - ResolvedConfig 全量配置（插件可从中读取自己的字段）
+ */
+async function validateConfigSchema(
+  plugin: Plugin,
+  name: string,
+  rawConfig: ResolvedConfig,
+): Promise<void> {
+  if (!plugin.configSchema) return  // 不声明则跳过（向后兼容）
+  try {
+    // 动态 import @nx-mk/schema 避免与 kernel 包的硬依赖耦合
+    // 实际部署时 @nx-mk/schema 通过 peerDependencies 注入
+    const { validateConfig } = await import('@nx-mk/schema')
+    validateConfig(plugin.configSchema, rawConfig)
+  } catch (err) {
+    // ValidationError 来自 @nx-mk/schema；其他错误视为配置校验失败
+    if (err instanceof Error && err.name === 'ValidationError') {
+      throw new KernelError(
+        'PLUGIN_CONFIG_INVALID',
+        `Plugin '${name}' config invalid: ${err.message}`,
+        err,
+      )
+    }
+    throw new KernelError(
+      'PLUGIN_CONFIG_INVALID',
+      `Plugin '${name}' config validation failed: ${(err as Error).message ?? String(err)}`,
+      err,
     )
   }
 }

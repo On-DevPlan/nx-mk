@@ -188,7 +188,7 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
       // 测试注入了 plugins 则跳过加载，否则走 plugin-registry 的动态 import 链路
       if (opts.plugins === undefined) {
-        plugins = await loadPlugins(config!.plugins, { cwd })
+        plugins = await loadPlugins(config!.plugins, { cwd, config: config! })
         // 每加载成功一个插件：发 plugin:loaded 事件并写入内核状态
         for (const p of plugins) {
           events.emit({ type: 'plugin:loaded', name: p.name, version: p.version })
