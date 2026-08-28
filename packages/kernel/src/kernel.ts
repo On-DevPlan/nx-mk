@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { createLogger } from './logger'
 import { EventBus } from './event-bus'
 import { runHook, runHooksForPhase, hookNameForPhase } from './hooks'
-import { loadPlugins } from './plugin-registry'
+import { loadPlugins, resolveDependencies } from './plugin-registry'
 import { KernelError, mapErrorCodeToExit } from './errors'
 import type { KernelAPI, Plugin, PluginContext, RunResult } from './plugin'
 import type { KernelState, Phase, PluginWorkerState, ResolvedConfig, RunId } from './types'
@@ -207,8 +207,11 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       }
       await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
     } else if (phase === 'initPlugins') {
-      // —— 阶段 3：initPlugins —— 预留的插件初始化阶段
+      // —— 阶段 3：initPlugins —— 校验插件依赖 + 预留的插件初始化阶段
       await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
+      // M3：检查所有插件的 inject 依赖是否被 provide 满足
+      // 不满足时抛 PLUGIN_DEPENDENCY_MISSING（退出码 7），fail-fast
+      resolveDependencies(plugins)
       // kernel default: no-op (plugin instance is already constructed)
       // 中文：内核默认无动作（插件对象在工厂调用时已构造完成），仅触发前后钩子
       await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())

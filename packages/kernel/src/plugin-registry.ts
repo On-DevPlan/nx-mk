@@ -9,6 +9,7 @@ import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { KernelError } from './errors'
 import type { Plugin } from './plugin'
+import { CORE_SERVICES } from './plugin'
 import type { ResolvedConfig } from './types'
 
 // cwd 决定插件包的解析基准（默认取当前进程工作目录）
@@ -146,6 +147,66 @@ async function validateConfigSchema(
       'PLUGIN_CONFIG_INVALID',
       `Plugin '${name}' config validation failed: ${(err as Error).message ?? String(err)}`,
       err,
+    )
+  }
+}
+
+/**
+ * M3：检查所有插件的 inject 依赖是否被其他插件的 provide 满足。
+ *
+ * 依赖图构建规则：
+ * - 提供方（provide）：收集所有 plugin.provide 的服务名到 union 集合
+ * - 消费方（inject）：对每个 plugin.inject 中的服务名，检查是否在 union 中
+ * - 核心服务（logger/events/kernel/config/cwd）由内核提供，不视为外部依赖
+ *
+ * 注意：本函数不处理循环依赖（拓扑排序）。M3 范围内仅做存在性检查，
+ * 循环依赖检测留待 M14 Goal Loop / Profile 阶段再做。
+ *
+ * @throws {KernelError} PLUGIN_DEPENDENCY_MISSING：任意插件有未满足的 inject
+ */
+export function resolveDependencies(plugins: Plugin[]): void {
+  if (plugins.length === 0) return
+
+  // 第一轮：收集所有 provide 的服务名（排除核心服务）
+  const coreSet = new Set<string>(CORE_SERVICES)
+  const provided = new Set<string>()
+  for (const p of plugins) {
+    for (const svc of p.provide ?? []) {
+      // provide 中的核心服务名是合法的（不视为自我依赖）
+      provided.add(svc)
+    }
+  }
+
+  // 第二轮：检查每个插件的 inject 是否全部满足
+  // 规则：依赖必须由其他插件提供。自我提供不算依赖（避免循环）。
+  // 核心服务（logger/events/kernel/config/cwd）由内核直接注入，不视为外部依赖。
+  const errors: Array<{ plugin: string; missing: string[] }> = []
+  for (const p of plugins) {
+    const injectList = p.inject ?? []
+    const missing: string[] = []
+    for (const svc of injectList) {
+      if (coreSet.has(svc)) continue  // 核心服务默认可用
+      // 自我 provide 不算依赖（防止 plugin 自我循环）
+      // 这也意味着：仅当其他插件提供了同名服务时才视为满足
+      const providedByOthers = Array.from(plugins).some(
+        (other) => other !== p && (other.provide ?? []).includes(svc),
+      )
+      if (!providedByOthers) {
+        missing.push(svc)
+      }
+    }
+    if (missing.length > 0) {
+      errors.push({ plugin: p.name, missing })
+    }
+  }
+
+  if (errors.length > 0) {
+    const lines = errors.map(
+      (e) => `  Plugin '${e.plugin}' missing [${e.missing.join(', ')}]`,
+    )
+    throw new KernelError(
+      'PLUGIN_DEPENDENCY_MISSING',
+      `Plugin dependencies not satisfied:\n${lines.join('\n')}`,
     )
   }
 }

@@ -36,7 +36,18 @@ export interface Plugin {
   // 声明后，loadPlugins 会调用 @nx-mk/schema 的 validateConfig 校验 rawConfig。
   // 校验失败抛 PLUGIN_CONFIG_INVALID 错误。不声明时跳过校验（向后兼容）。
   configSchema?: StandardSchemaV1<unknown, unknown>
+  // M3：声明式依赖注入。inject 列出插件需要的服务名（其他插件的 provide）。
+  // 不声明 inject 的旧插件继续工作（向后兼容）。
+  inject?: string[]
+  // M3：声明此插件对外提供的服务名（被其他插件的 inject 引用）。
+  provide?: string[]
 }
+
+// 核心服务常量（M3 引入）—— 这些服务由内核直接注入到 PluginContext，
+// 无需在 inject 中显式声明（向后兼容）。
+// 显式声明 inject 时，这些名字依然会被识别（不视为外部依赖）。
+export const CORE_SERVICES = ['logger', 'events', 'kernel', 'config', 'cwd'] as const
+export type CoreService = typeof CORE_SERVICES[number]
 
 // run() 的返回值：运行 ID 与总耗时
 export interface RunResult {

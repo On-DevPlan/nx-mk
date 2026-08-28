@@ -90,6 +90,50 @@ M1 不破坏现有 API：
 - `pluginStates: Map<PluginName, PluginWorkerState>` 为新增字段
 - `KernelState.getState()` 返回浅拷贝（新 Map）
 
+## 插件依赖声明（M3）
+
+插件可声明 `inject?: string[]` 与 `provide?: string[]` 做显式依赖管理：
+
+```ts
+import type { Plugin } from '@nx-mk/kernel'
+
+// 提供方：声明此插件对外暴露的能力
+const providerPlugin: Plugin = {
+  name: '@nx-mk/sdk-interceptor',
+  version: '1.0.0',
+  hooks: {},
+  provide: ['request-store', 'coverage-report'],
+}
+
+// 消费方：声明依赖
+const consumerPlugin: Plugin = {
+  name: '@nx-mk/coverage-aggregator',
+  version: '1.0.0',
+  hooks: {},
+  inject: ['request-store', 'coverage-report'],
+}
+```
+
+### 核心服务（无需声明）
+
+内核直接注入以下核心服务，不视为外部依赖：
+
+- `logger` — 内核 logger
+- `events` — 事件总线
+- `kernel` — 内核句柄（`KernelAPI`）
+- `config` — 解析后的配置
+- `cwd` — 当前工作目录
+
+### 校验时机
+
+`initPlugins` 阶段会调用 `resolveDependencies()` 检查所有 inject 是否被 provide 满足。
+
+未满足时抛 `KernelError(PLUGIN_DEPENDENCY_MISSING)`，退出码 7。
+
+### 向后兼容
+
+不声明 `inject` / `provide` 的旧插件继续工作（无依赖检查）。
+
 ## 插件配置校验（M2）
 
 插件可声明 `configSchema?: StandardSchemaV1<unknown, unknown>` 做配置校验：
@@ -129,6 +173,7 @@ pnpm test
 
 - 6 个原有测试文件 + M1 新增 `plugin-state.test.ts`（4 测试）
 - M2 新增 `plugin-schema.test.ts`（3 测试）
+- M3 新增 `plugin-inject.test.ts`（6 测试）
 
 ## 设计参考
 
