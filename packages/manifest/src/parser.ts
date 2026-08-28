@@ -4,89 +4,23 @@
  * 流程：读文件 → sha1 源哈希 → SwaggerParser 解引用 $ref 并校验 → 遍历 paths/methods →
  * 解析请求参数 + 响应字段（走 schema-walker）→ 组装 ApiManifest。
  * 产物（ApiManifest）是 Phase 2 字段代理的字段来源，也是 .nx-mk/manifest.json 的内容。
+ *
+ * M4 拆分：本文件只保留 OpenAPI 解析逻辑。
+ * 所有数据结构（ApiField / ApiEndpoint / ApiManifest / ...）见 @nx-mk/manifest-schema。
+ * schema-walker / normalizer / field-id 工具见 @nx-mk/manifest-schema。
  */
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import SwaggerParser from '@apidevtools/swagger-parser'
-import { walkSchema } from './schema-walker'
-
-// HTTP 方法联合（field-id 里的同款；这里作为权威类型被 index.ts re-export）
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD'
-
-// 单条字段记录（Plan §16.3）：一个叶子/对象/数组字段的完整描述
-export interface ApiField {
-  id: string                                // stableFieldId 生成的稳定 ID
-  endpointId: string                        // 所属 endpoint 的 ID
-  direction: 'request' | 'response'
-  status?: string                           // 仅 response 有
-  path: string                              // 原始字段路径（如 'data.id'）
-  normalizedPath: string                    // 归一化路径（数组下标 → []）
-  name: string
-  type: string
-  required?: boolean
-  nullable?: boolean
-  description?: string
-  example?: unknown
-  enum?: string[]
-  schemaName?: string                       // 引用的 components.schemas 名称（若有）
-  source: { openapiPointer: string }        // 指向 OpenAPI 文档原文
-}
-
-// 单个 API 端点（Plan §16.2）
-export interface ApiEndpoint {
-  id: string
-  method: HttpMethod
-  path: string                              // 路径模板，如 '/users/{id}'
-  operationId?: string
-  summary?: string
-  tags?: string[]
-  request?: {
-    pathParams?: ApiField[]
-    query?: ApiField[]
-    headers?: ApiField[]
-    body?: SchemaRef                         // Phase 1 未解析 requestBody，保持 undefined
-  }
-  responses: Array<{
-    status: string
-    schema?: SchemaRef
-    fields: ApiField[]
-  }>
-}
-
-// 响应/请求 body 的 schema 引用（Phase 1 粗粒度：dereference 后只能标 'object'；kind 细分留给 Phase 2）
-export type SchemaRef =
-  | { kind: 'named'; name: string }
-  | { kind: 'inline' }
-  | { kind: 'array' }
-  | { kind: 'object' }
-  | { kind: 'primitive'; type: string }
-
-// 整个 Manifest（Plan §16.1）：一次 OpenAPI 解析的全部产物
-export interface ApiManifest {
-  version: string                           // 固定 '1'
-  source: {
-    type: 'openapi'
-    input: string                            // 源文件路径
-    hash: string                             // 源文件 sha1 前 16 hex（跟踪上游变化）
-  }
-  generatedAt: string                       // ISO 8601 生成时间（每次运行都变）
-  endpoints: ApiEndpoint[]
-  schemas: Record<string, ApiSchema>        // components.schemas（解引用后的内联版本）
-  fields: ApiField[]                        // 全部 endpoint 的响应字段展平
-}
-
-// components.schemas 里单个 schema 的扁平描述
-export interface ApiSchema {
-  type: string
-  properties?: Record<string, ApiSchema>
-  items?: ApiSchema
-  required?: string[]
-  nullable?: boolean
-}
-
-export interface ParseOptions {
-  cwd?: string                              // Phase 1 预留；调用方通常传绝对路径
-}
+import { walkSchema } from '@nx-mk/manifest-schema'
+import type {
+  HttpMethod,
+  ApiField,
+  ApiEndpoint,
+  ApiManifest,
+  ApiSchema,
+  ParseOptions,
+} from '@nx-mk/manifest-schema'
 
 // JSON Pointer 转义：RFC 6901 规定 ~ → ~0、/ → ~1
 function escapePointerSegment(seg: string): string {
@@ -183,9 +117,11 @@ export async function parseOpenApi(
         summary: operation.summary,
         tags: operation.tags,
         request: pathParams.length || query.length || headers.length
-          ? { pathParams: pathParams.length ? pathParams : undefined,
+          ? {
+              pathParams: pathParams.length ? pathParams : undefined,
               query: query.length ? query : undefined,
-              headers: headers.length ? headers : undefined }
+              headers: headers.length ? headers : undefined,
+            }
           : undefined,
         responses,
       })

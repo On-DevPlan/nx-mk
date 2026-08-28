@@ -9,65 +9,25 @@
  *   normPathSoFar — 归一化路径（如 'data.tags[]'，数组加 [] 后缀）
  *   ptrSoFar      — JSON Pointer（无前导 '#'，如 '/properties/tags'）
  * 三者可以不同（array-of-primitive 的 path 和 normalizedPath 就不同）。
+ *
+ * 所有数据结构（WalkContext / SchemaNode / ApiField）见 ./types。
  */
 import { stableFieldId } from './field-id'
 import { normalizePath } from './normalizer'
-import type { HttpMethod, FieldIdInput } from './field-id'
-
-// 本地字段结构（与 parser.ts 的 ApiField 形状一致；index.ts 在 T6 统一 re-export）
-interface LocalApiField {
-  id: string
-  endpointId: string
-  direction: 'request' | 'response'
-  status?: string
-  path: string                              // 原始字段路径（如 'data.user.id'）
-  normalizedPath: string                    // normalizePath() 之后
-  name: string
-  type: string                              // OpenAPI 类型名：'string' | 'integer' | 'object' ...
-  required?: boolean
-  nullable?: boolean
-  description?: string
-  example?: unknown
-  enum?: string[]
-  // TODO: 由 parser（T5）在遇到命名 $ref schema 时赋值；遍历器拿到的是已解引用的 schema，无法得知名字
-  schemaName?: string
-  source: { openapiPointer: string }        // 指向 OpenAPI 文档原文的 JSON Pointer
-}
-
-// 遍历上下文：稳定 ID 所需的全部信息 + 当前归一化路径前缀 + Pointer 前缀
-export interface WalkContext extends Omit<FieldIdInput, 'normalizedFieldPath'> {
-  endpointId: string
-  normalizedFieldPath: string              // 当前正在遍历的路径前缀
-  pointerPrefix?: string                    // JSON Pointer 前缀，如 '/components/schemas/User'
-}
-
-// 遍历器认识的 OpenAPI Schema 对象子集（只取需要处理的字段）
-interface SchemaNode {
-  type?: string
-  nullable?: boolean
-  description?: string
-  example?: unknown
-  enum?: string[]
-  properties?: Record<string, SchemaNode>
-  items?: SchemaNode
-  required?: string[]
-  allOf?: SchemaNode[]
-  oneOf?: SchemaNode[]
-  anyOf?: SchemaNode[]
-}
+import type { ApiField, WalkContext, SchemaNode } from './types'
 
 // 入口：剥掉 Pointer 前导 '#'（容忍调用方传 '/components/...' 或 '#/components/...'），开始递归
-export function walkSchema(schema: SchemaNode, ctx: WalkContext): LocalApiField[] {
+export function walkSchema(schema: SchemaNode, ctx: WalkContext): ApiField[] {
   const base = (ctx.pointerPrefix ?? '').replace(/^#/, '')
   return walk(schema, ctx, ctx.normalizedFieldPath, ctx.normalizedFieldPath, base)
 }
 
 // 递归核心。三个路径参数见文件头注释。
-function walk(schema: SchemaNode, ctx: WalkContext, rawPathSoFar: string, normPathSoFar: string, ptrSoFar: string): LocalApiField[] {
+function walk(schema: SchemaNode, ctx: WalkContext, rawPathSoFar: string, normPathSoFar: string, ptrSoFar: string): ApiField[] {
   // allOf：把多个子 schema 合并成一个 object schema（properties 合并 + required 拼接）
   if (Array.isArray(schema?.allOf)) {
     const merged: SchemaNode = { type: 'object', properties: {}, required: [] }
-    for (const sub of schema.allOf) {
+    for (const sub of schema?.allOf ?? []) {
       const props = sub?.properties ?? {}
       Object.assign(merged.properties!, props)
       if (Array.isArray(sub?.required)) {
@@ -81,7 +41,7 @@ function walk(schema: SchemaNode, ctx: WalkContext, rawPathSoFar: string, normPa
   // oneOf/anyOf：每个 variant 各走一遍，路径加 '(oneOf[<idx>])' / '(anyOf[<idx>])' 后缀
   const variantKey = schema?.oneOf ? 'oneOf' : schema?.anyOf ? 'anyOf' : null
   if (variantKey) {
-    const fields: LocalApiField[] = []
+    const fields: ApiField[] = []
     const variants: SchemaNode[] = schema[variantKey] ?? []
     variants.forEach((variant: SchemaNode, idx: number) => {
       const variantRaw = `${rawPathSoFar}(${variantKey}[${idx}])`
@@ -102,7 +62,7 @@ function walk(schema: SchemaNode, ctx: WalkContext, rawPathSoFar: string, normPa
 
   // object：为 object 类型的属性产出对象描述符，再扁平化其子字段
   if (schema?.type === 'object' || (schema?.properties && !schema?.type)) {
-    const fields: LocalApiField[] = []
+    const fields: ApiField[] = []
     const properties: Record<string, SchemaNode> = schema.properties ?? {}
     const requiredSet = new Set<string>(schema.required ?? [])
     for (const [propName, propSchema] of Object.entries(properties)) {
@@ -183,7 +143,7 @@ function walk(schema: SchemaNode, ctx: WalkContext, rawPathSoFar: string, normPa
   }
 
   // primitive：产出一条叶子字段描述符
-  const field: LocalApiField = {
+  const field: ApiField = {
     id: stableFieldId({
       method: ctx.method,
       path: ctx.path,

@@ -2,7 +2,7 @@
   "name": "@nx-mk/manifest",
   "version": "0.1.0",
   "private": true,
-  "description": "nx-mk OpenAPI manifest generator (Phase 1)",
+  "description": "nx-mk OpenAPI Manifest Provider (M4 split: Provider role; types live in @nx-mk/manifest-schema)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,12 +21,14 @@
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
-    "@apidevtools/swagger-parser": "^10.1.0"
+    "@apidevtools/swagger-parser": "^10.1.0",
+    "@nx-mk/manifest-schema": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
     "tsup": "^8.0.2",
     "vitest": "^1.0.4",
-    "@types/node": "^20.10.0"
+    "@types/node": "^20.10.0",
+    "@nx-mk/manifest-schema": "workspace:*"
   }
 }
