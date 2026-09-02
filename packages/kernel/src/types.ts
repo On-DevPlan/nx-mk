@@ -94,6 +94,8 @@ export interface Config {
   outputDir: string
   // openapi: 指向 OpenAPI 3.x 文档的相对/绝对路径（Phase 1；未配置则为 undefined）
   openapi?: string
+  // M14：可选 Goal Loop 配置（不设置则使用 push-based beforeRun/afterRun）
+  goal?: GoalConfig
 }
 
 // 合并 env / CLI 覆盖后的最终配置，附带运行期上下文字段（configPath、runId 等）

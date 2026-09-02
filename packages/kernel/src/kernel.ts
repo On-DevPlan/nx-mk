@@ -12,6 +12,7 @@ import { createLogger } from './logger'
 import { EventBus } from './event-bus'
 import { runHook, runHooksForPhase, hookNameForPhase } from './hooks'
 import { loadPlugins, resolveDependencies } from './plugin-registry'
+import { runGoalLoop } from './goal-loop'
 import { KernelError, mapErrorCodeToExit } from './errors'
 import type { KernelAPI, Plugin, PluginContext, RunResult } from './plugin'
 import type { KernelState, Phase, PluginWorkerState, ResolvedConfig, RunId } from './types'
@@ -77,6 +78,18 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
     hook: string
     error: { message: string; stack?: string }
   } | null = null
+
+  /**
+   * M14：Goal Loop 共享状态（mutable）。run 阶段触发 Goal Loop 时填充。
+   * buildCtx 的 emit/emitSignal/getTurn/getCoverage 方法读/写这里。
+   * 中文：把循环状态集中在 createKernel 闭包内，避免与外部状态耦合。
+   */
+  const loopState = {
+    reports: [] as PluginReport[],
+    turn: 0,
+    coverage: { total: 0, covered: 0, ratio: 1.0, missing: [] as MissingItem[] } as Coverage,
+    idleTurns: 0,
+  }
 
   /**
    * 转移插件状态并发出 plugin:state-change 事件（M1）。
@@ -237,8 +250,66 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       // 中文：内核默认无动作（插件对象在工厂调用时已构造完成），仅触发前后钩子
       await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
     } else if (phase === 'run') {
-      // —— 阶段 4：run —— 主工作阶段，触发 beforeRun / afterRun 两类钩子
+      // —— 阶段 4：run —— 主工作阶段，触发 beforeRun 钩子后运行 Goal Loop（M14），
+      // 最后触发 afterRun 钩子。Goal Loop 仅在 config.goal 定义时启用，否则保持
+      // 原 push-based 行为（向后兼容）。
       await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
+      if (config?.goal) {
+        // Goal Loop 路径：构建共享循环状态 + AbortController
+        // 注意：initial coverage 默认全未覆盖（manifest 接入后由 manifest 计算）
+        // 当前用 placeholder 确保 loop 至少跑一轮（demo 模式）。
+        loopState.reports = []
+        loopState.turn = 0
+        loopState.coverage = {
+          total: 1,
+          covered: 0,
+          ratio: 0,
+          missing: [{ kind: 'field', fieldId: '__placeholder__' }],
+        }
+        loopState.idleTurns = 0
+        const goalAbort = new AbortController()
+        // 触发手动 shutdown 时同步终止 goal loop
+        if (shutdownPromise) goalAbort.abort()
+        try {
+          const goalResult = await runGoalLoop({
+            plugins,
+            goal: config.goal,
+            initialCoverage: loopState.coverage,
+            ctx: buildCtx(),
+            signal: goalAbort.signal,
+          })
+          state.collectionResult = goalResult
+          // 发出 goal:met 或 goal:unmet 事件
+          if (goalResult.kind === 'met') {
+            events.emit({
+              type: 'goal:met',
+              coverage: goalResult.coverage,
+              turns: goalResult.turns,
+              durationMs: goalResult.durationMs,
+            })
+          } else {
+            events.emit({
+              type: 'goal:unmet',
+              reason:
+                goalResult.terminatedBy === 'max-turns' ||
+                goalResult.terminatedBy === 'idle' ||
+                goalResult.terminatedBy === 'timeout' ||
+                goalResult.terminatedBy === 'all-failed'
+                  ? goalResult.terminatedBy
+                  : 'idle',
+              coverage: goalResult.coverage,
+              turns: goalResult.turns,
+            })
+          }
+        } catch (err) {
+          // Goal Loop 内部错误：包装为 KERNEL_INTERNAL，让上层 fail-fast 处理
+          throw new KernelError(
+            'KERNEL_INTERNAL',
+            `Goal loop failed: ${(err as Error).message}`,
+            err,
+          )
+        }
+      }
       await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
     } else if (phase === 'shutdown') {
       // —— 阶段 5：shutdown —— 关停收尾，插件按加载的逆序执行
@@ -267,21 +338,19 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
    * 构造传给插件钩子的上下文（config + logger + events + kernel 句柄）。
    * config 尚未加载时（loadConfig 的 before 钩子）使用占位配置，保证 ctx 字段可用。
    *
-   * M14：注入 Goal Loop 报告/信号 API。
-   * 当前为 stub 形态（不真正连接 runGoalLoop），等 M14 集成时切换为真实接入。
+   * M14：注入 Goal Loop 报告/信号 API，直接读写 loopState。
    */
   function buildCtx(): PluginContext {
-    // M14 stubs：未来 runGoalLoop 集成时，这些函数会从 loopState 读写
     const goalCtx = {
-      emitReport: (_report: PluginReport): void => {
-        /* TODO M14 集成：push 到 reports queue */
+      emitReport: (report: PluginReport): void => {
+        loopState.reports.push(report)
       },
       emitSignal: (_signal: PluginSignal): void => {
-        /* TODO M14 集成：push 到 signal queue */
+        /* signal 处理留作未来 milestone（M14 当前仅记录 report） */
       },
-      getTurn: (): number => 0,
-      getCoverage: (): Coverage => ({ total: 0, covered: 0, ratio: 0, missing: [] }),
-      getMissing: (): MissingItem[] => [],
+      getTurn: (): number => loopState.turn,
+      getCoverage: (): Coverage => loopState.coverage,
+      getMissing: (): MissingItem[] => loopState.coverage.missing,
     }
     if (!config) {
       // During loadConfig's before-hooks, config is not yet loaded.

@@ -136,11 +136,30 @@ export default createPlugin((ctx) => ({
 5. `now - start >= absoluteTimeoutMs` → `unmet: timeout`
 6. 所有 active 插件 failed → `unmet: all-failed`
 
-### 当前状态（M14 first delivery）
+### 当前状态（M14 已完整集成）
 
-`goal-loop.ts` 模块已实现并通过独立测试。**kernel.run() 的完整 Goal Loop 集成留作后续工作**（下一轮 PR）。
+kernel.run() 的 `run` 阶段已集成 Goal Loop：
 
-当前 PluginContext 的 emit/emitSignal/getTurn/getCoverage/getMissing 为 stub（返回空 / 默认值）。
+- **`config.goal` 存在** → 触发 runGoalLoop（多轮 + 覆盖率目标终止）
+- **`config.goal` 不存在** → 保持 push-based beforeRun/afterRun（向后兼容）
+
+集成测试覆盖（`goal-loop-integration.test.ts`，3 测试）：
+- config.goal 存在时 state.collectionResult 被填充
+- turn:start / turn:end / goal:* 事件被发出
+- 无 goal config 时使用原 push-based 路径
+
+### 配置示例（nx-mk.config.yml）
+
+```yaml
+plugins:
+  - plugin-swagger
+  - plugin-sdk-interceptor
+goal:
+  targetRatio: 1.0
+  maxTurns: 100
+  idleTurnsLimit: 3
+  absoluteTimeoutMs: 600000
+```
 
 详细设计见 [`docx/plan/2026-08-28-goal-oriented-loop-design.md`](../../docx/plan/2026-08-28-goal-oriented-loop-design.md)。
 
