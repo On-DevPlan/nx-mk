@@ -6,9 +6,9 @@
  * 插件经 PluginContext.events 订阅感兴趣的事件类型。
  */
 import { EventEmitter } from 'node:events'
-import type { Phase, PluginWorkerState } from './types'
+import type { Coverage, Phase, PluginWorkerState } from './types'
 
-// 内核全部事件的判别联合：按 type 字段区分（阶段流转 / 插件加载 / 错误 / 日志）
+// 内核全部事件的判别联合：按 type 字段区分（阶段流转 / 插件加载 / 错误 / 日志 / M14 goal loop）
 export type KernelEvent =
   | { type: 'phase:start'; phase: Phase; timestamp: string }
   | { type: 'phase:end'; phase: Phase; durationMs: number; error?: { message: string } }
@@ -22,12 +22,41 @@ export type KernelEvent =
     }
   | { type: 'kernel:error'; phase: Phase; error: { message: string } }
   | {
-      type: 'plugin:state-change'  // ← M1 新增：插件 lifecycle 状态变化
+      type: 'plugin:state-change'
       name: string
       from: PluginWorkerState['kind']
       to: PluginWorkerState['kind']
       timestamp: string
       error?: { code: string; message: string }
+    }
+  | {
+      // M14: Goal Loop 事件
+      type: 'turn:start'
+      turn: number
+      timestamp: string
+      idleTurns: number
+    }
+  | {
+      // M14: Goal Loop 事件
+      type: 'turn:end'
+      turn: number
+      timestamp: string
+      coverage: Coverage
+      progress: 'improved' | 'stagnant' | 'regressed'
+    }
+  | {
+      // M14: Goal Loop 终止事件
+      type: 'goal:met'
+      coverage: Coverage
+      turns: number
+      durationMs: number
+    }
+  | {
+      // M14: Goal Loop 未达目标
+      type: 'goal:unmet'
+      reason: 'max-turns' | 'idle' | 'timeout' | 'all-failed'
+      coverage: Coverage
+      turns: number
     }
   | {
       type: 'log'

@@ -15,6 +15,7 @@ import { loadPlugins, resolveDependencies } from './plugin-registry'
 import { KernelError, mapErrorCodeToExit } from './errors'
 import type { KernelAPI, Plugin, PluginContext, RunResult } from './plugin'
 import type { KernelState, Phase, PluginWorkerState, ResolvedConfig, RunId } from './types'
+import type { Coverage, MissingItem, PluginReport, PluginSignal } from './types'
 import { assertNever, makePluginName, makeRunId, PHASES } from './types'
 
 // 创建内核的入参：configPath 必填；plugins 仅供测试注入，生产环境走配置动态加载
@@ -265,8 +266,23 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
   /**
    * 构造传给插件钩子的上下文（config + logger + events + kernel 句柄）。
    * config 尚未加载时（loadConfig 的 before 钩子）使用占位配置，保证 ctx 字段可用。
+   *
+   * M14：注入 Goal Loop 报告/信号 API。
+   * 当前为 stub 形态（不真正连接 runGoalLoop），等 M14 集成时切换为真实接入。
    */
   function buildCtx(): PluginContext {
+    // M14 stubs：未来 runGoalLoop 集成时，这些函数会从 loopState 读写
+    const goalCtx = {
+      emitReport: (_report: PluginReport): void => {
+        /* TODO M14 集成：push 到 reports queue */
+      },
+      emitSignal: (_signal: PluginSignal): void => {
+        /* TODO M14 集成：push 到 signal queue */
+      },
+      getTurn: (): number => 0,
+      getCoverage: (): Coverage => ({ total: 0, covered: 0, ratio: 0, missing: [] }),
+      getMissing: (): MissingItem[] => [],
+    }
     if (!config) {
       // During loadConfig's before-hooks, config is not yet loaded.
       // Build a placeholder ResolvedConfig so plugin hooks receive a usable ctx.
@@ -281,9 +297,9 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
         logLevel: 'info',
         outputDir: '.nx-mk/runs',
       }
-      return { config: placeholder, logger, events, kernel: api, cwd }
+      return { config: placeholder, logger, events, kernel: api, cwd, ...goalCtx }
     }
-    return { config, logger, events, kernel: api, cwd }
+    return { config, logger, events, kernel: api, cwd, ...goalCtx }
   }
 
   // 对外暴露的内核 API（同时作为 kernel 句柄注入给插件钩子）

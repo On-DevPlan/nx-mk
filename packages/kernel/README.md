@@ -90,6 +90,60 @@ M1 不破坏现有 API：
 - `pluginStates: Map<PluginName, PluginWorkerState>` 为新增字段
 - `KernelState.getState()` 返回浅拷贝（新 Map）
 
+## Goal Loop（M14）
+
+`runGoalLoop` 提供多轮目标驱动的覆盖率采集循环：
+
+```ts
+import { runGoalLoop, computeCoverage } from '@nx-mk/kernel'
+
+const result = await runGoalLoop({
+  plugins,
+  goal: { targetRatio: 1.0, maxTurns: 100, idleTurnsLimit: 3, absoluteTimeoutMs: 600_000 },
+  initialCoverage: { total: 20, covered: 0, ratio: 0, missing: [...] },
+  ctx,
+  signal: abortController.signal,
+})
+
+// result.kind: 'met' | 'unmet' | 'aborted'
+// result.coverage: { total, covered, ratio, missing }
+// result.turns: number
+// result.terminatedBy: 'goal-met' | 'max-turns' | 'idle' | 'timeout' | 'aborted' | 'all-failed'
+```
+
+### 插件 API（M14）
+
+```ts
+export default createPlugin((ctx) => ({
+  name: '@nx-mk/my-plugin',
+  version: '1.0.0',
+  hooks: {
+    afterRun(ctx) {
+      // 在 Goal Loop 中上报数据
+      ctx.emitReport({ kind: 'endpoint-called', method: 'GET', path: '/users', turn: ctx.getTurn() })
+      ctx.emitSignal({ kind: 'done', reason: 'all-collected', turn: ctx.getTurn() })
+    },
+  },
+}))
+```
+
+### 终止决策（按优先级）
+
+1. `signal.aborted` → `aborted`
+2. `coverage.ratio >= targetRatio` → `met`
+3. `turn >= maxTurns` → `unmet: max-turns`
+4. `idleTurns >= idleTurnsLimit` → `unmet: idle`
+5. `now - start >= absoluteTimeoutMs` → `unmet: timeout`
+6. 所有 active 插件 failed → `unmet: all-failed`
+
+### 当前状态（M14 first delivery）
+
+`goal-loop.ts` 模块已实现并通过独立测试。**kernel.run() 的完整 Goal Loop 集成留作后续工作**（下一轮 PR）。
+
+当前 PluginContext 的 emit/emitSignal/getTurn/getCoverage/getMissing 为 stub（返回空 / 默认值）。
+
+详细设计见 [`docx/plan/2026-08-28-goal-oriented-loop-design.md`](../../docx/plan/2026-08-28-goal-oriented-loop-design.md)。
+
 ## 插件依赖声明（M3）
 
 插件可声明 `inject?: string[]` 与 `provide?: string[]` 做显式依赖管理：
