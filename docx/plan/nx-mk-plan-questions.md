@@ -2,7 +2,7 @@
 
 > 目的：在进入实现规划前，把方案中影响整体走向的关键决策点钉死。
 > 工作方式：AI 在下面按主题列出问题 + 候选项 + 推荐；用户回答后，AI 把答案回填到对应位置，并补充新的追问（若有）。
-> 当前状态：**待回答**。
+> 当前状态：**所有决策已盖棺定论（2026-09-03 收口）**。下一步进入 spec 撰写阶段。
 
 ---
 
@@ -12,35 +12,33 @@
 
 ### A1. 目标用户是？
 
-- [ ] (a) 独立前端开发者 / 自由职业者，单兵使用
-- [ ] (b) 小型团队（≤10 人），共享一份 mk.config.yml
+- [x] (a) 独立前端开发者 / 自由职业者，单兵使用
+- [x] (b) 小型团队（≤10 人），共享一份 mk.config.yml
 - [ ] (c) 中型团队（10–50 人），需要权限/隔离
 - [ ] (d) 大型组织（≥50 人），需中央化 dashboard / 审计 / 合规
 
 **AI 推荐**：(b)。MVP 应聚焦"小团队愿意每天用"，(c)(d) 是商业版/企业版的事。
 
-a--最契合，b--常见可行（手搓型需要自行配置）
+**最终**：(a) + (b)。独立开发者最契合 + 小型团队（≤10 人）常见可行；后者需自行处理配置。
 
 ### A2. 主要使用场景是？
 
-- [ ] (a) 本地开发自检（`npx mk` 边开发边看 coverage）
+- [x] (a) 本地开发自检（`npx mk` 边开发边看 coverage）
 - [ ] (b) PR review 辅助（reviewer 看 coverage diff）
 - [ ] (c) CI 阻断门（coverage 不达标合不进 main）
 - [ ] (d) 阶段性技术债盘点（季度/半年度）
 
 **AI 推荐**：(a) + (c) 组合。MVP 主打本地体验，CI 作为硬性出口。
 
-开发为主
+**最终**：(a) 本地开发自检为主。CI 决策见 E 段：暂不实施。
 
 ### A3. 用户对结果的容忍度？
 
-- [ ] (a) 0 容忍 - 任何 suspicious 都阻断
+- [x] (a) 0 容忍 - 任何 suspicious 都阻断
 - [ ] (b) 默认宽松，按需开启严格
 - [ ] (c) 只看覆盖率数字，不看可疑性
 
-
-
-默认严格，可配置宽松
+**最终**：默认严格（suspicious 阻断），可配置宽松（anti-cheat 全开 default；policy 严格模式为 default，宽松模式 opt-in）。
 
 ---
 
@@ -53,28 +51,28 @@ a--最契合，b--常见可行（手搓型需要自行配置）
 - [ ] (a) 假设 OpenAPI 完整、准确，缺失即 mk 报错退出
 - [ ] (b) 接受 OpenAPI 有缺失，运行时用真实响应补充 schema
 - [ ] (c) 完全从运行时 HAR/抓包生成 manifest，不需要 OpenAPI
-- [ ] (d) OpenAPI 优先 + 运行时校验漂移
+- [x] (d) OpenAPI 优先 + 运行时校验漂移
 
 **AI 推荐**：(d)。Section 5 把"OpenAPI 驱动"放在定位，但 Section 43 又承认 "Swagger 不准" 是已知风险。需要在 spec 写清楚 fallback 路径。
 
-d
+**最终**：(d)。
 
 ### B2. 字段"实际类型" 与 OpenAPI schema 不一致时？
 
-- [ ] (a) 信任实际响应，覆盖 schema（推荐 - 但要写 diff 报告）
+- [x] (a) 信任实际响应，覆盖 schema（推荐 - 但要写 diff 报告）
 - [ ] (b) 标记为 suspicious，要求用户修复 schema
 - [ ] (c) 静默忽略差异
 - [ ] (d) 仅警告，不阻断
 
-a
+**最终**：(a)。
 
 ### B3. 是否支持 GraphQL / tRPC / 内部 RPC（非 REST）？
 
 - [ ] (a) 不支持 - 只做 REST/OpenAPI
-- [ ] (b) 通过 plugin 扩展
+- [x] (b) 通过 plugin 扩展
 - [ ] (c) MVP 不支持，但 spec 必须预留扩展点
 
-b
+**最终**：(b)。plugin 协议已稳定（M4 Capability seam 落地），GraphQL/tRPC 不进 MVP，可后置。
 
 ---
 
@@ -85,31 +83,36 @@ b
 ### C1. 接入 mk 需要改业务代码吗？
 
 - [ ] (a) **零侵入** - 只配 mk.config.yml，mk 自动注入 proxy（可能用 Vite/webpack plugin 或 playwright route）
-- [ ] (b) **轻侵入** - 业务代码用 `api.user.getUser()` 风格的 SDK（替换 fetch 调用）
-- [ ] (c) **中侵入** - 还要加 `<Field field="...">` 包裹或 `data-mk-field` 属性
+- [x] (b) **轻侵入** - 业务代码用 `api.user.getUser()` 风格的 SDK（替换 fetch 调用）  ← **SDK Facade 接入（X1-A）**
+- [x] (c) **中侵入** - 还要加 `<Field field="...">` 包裹或 `data-mk-field` 属性  ← **UI Evidence 增强**
 - [ ] (d) **重侵入** - 需要 codemod / loader / 构建配置改动
 
-**AI 推荐**：分层
+**AI 推荐**：分层（C1a 字段读取零侵入 / C1b UI evidence 中侵入）。
 
-- C1a: 字段读取追踪（proxy 注入在 Vite plugin 层）
-- C1b: UI evidence 必须用 `<Field>`（因为无法可靠推断 React 渲染意图）
-
-但要确认：你能不能接受"必须用 `<Field>` 才能拿到 UI evidence"？
+**最终（X1-A 决议，详见下方 ✅ 已解决冲突段）**：
+- 接入路径 = 用户装 `@mk/client`，业务代码改用 SDK Facade（`api.user.getUser()`）
+- 业务代码不感知模式（生产 vs analysis），由 SDK 根据模式自动切换内部行为
+- "零侵入"在此语境 = **业务代码无 if/else 分支**，**不是"不改代码"**
+- UI Evidence 仍需 `<Field>` 或 `data-mk-field` 显式标记
 
 ### C2. 生产 bundle 是否会带 mk 运行时？
 
-- [ ] (a) 完全剥离 - 生产打包 0 字节 mk
+- [x] (a) 完全剥离 - 生产打包 0 字节 mk  ← tracker 类 0 字节；SDK 薄壳 1-3KB 可接受（不含分析逻辑）
 - [ ] (b) 运行时条件 import - 生产仅保留 noop fallback
 - [ ] (c) 接受小体积残留（<5KB）
 
 **AI 推荐**：(a)。生产污染是已知风险（Section 43 列出）。
 
+**最终**：(a)。实现策略：分析期构建注入 + 条件虚拟模块 + tree-shaking alias（详见下方 C2 实现策略）。
+
 ### C3. 框架支持范围？
 
-- [ ] (a) React only
+- [x] (a) React only  ← MVP：React + Vite 先打穿闭环
 - [ ] (b) React + Vue
 - [ ] (c) React + Vue + Svelte
 - [ ] (d) 任意 SPA（含原生 JS）
+
+**最终**：(a)。后续扩展：Phase 2 Next Client → Phase 3 Vue → Phase 4 任意 SPA。
 
 
 
@@ -118,7 +121,9 @@ c类问题回复：
 
 我的建议答案如下：
 
-## C. 运行时侵入性决策
+> ⚠️ **历史保留段（已 superseded）**：下方是 AI 早期对 C1/C2/C3 的"分层"提案（默认零侵入 + UI evidence 中侵入）。该提案后被 **C-X1 → X1-A 决议**替代（业务代码用 SDK Facade，"零侵入"= 无 if/else 分支而非"不改代码"）。保留这段仅为决策溯源，**最终决策以 🚨 → ✅ 已解决冲突 段为准**。
+
+## C. 运行时侵入性决策（历史提案，superseded by X1-A）
 
 ### C1. 接入 mk 需要改业务代码吗？
 
@@ -409,7 +414,7 @@ npx mk
 
 ---
 
-## 最终决策汇总
+## 最终决策汇总（历史草案，superseded by X1-A）
 
 ```markdown
 ## C. 运行时侵入性
@@ -445,9 +450,11 @@ mk 所有运行时逻辑只存在于 analysis session，不进入用户生产构
 MVP 支持 React + Vite；后续扩展 Next Client、Vue，再扩展任意 SPA 的请求级分析。
 ```
 
+> ⚠️ 上方汇总中的 C1 决策（C1a + C1c = 默认零侵入 + UI evidence 中侵入）已被 **C-X1 → X1-A** 替代（业务代码改用 SDK Facade）。C2/C3 维持不变。**最终请参考下方 🚨 → ✅ 已解决冲突 段 + 已确认决策表格**。
+
 ---
 
-## 我建议你在完整方案中改成这句话
+## 我建议你在完整方案中改成这句话（历史文案，已不准确）
 
 > mk 采用“默认零侵入、证据增强可选侵入”的接入策略。用户只需配置 `mk.config.yml` 即可获得请求捕获、响应字段分析、Coverage Policy、Request Trace 和 Replay；若需要高置信度 UI Evidence，则通过 `<Field field="...">` 或 `data-mk-field` 显式标记。所有 mk runtime 只在 `npx mk` 启动的 analysis session 中注入，生产构建 0 字节残留。MVP 仅支持 React + Vite，优先打穿完整闭环。
 
@@ -459,29 +466,31 @@ MVP 支持 React + Vite；后续扩展 Next Client、Vue，再扩展任意 SPA �
 
 ### D1. MVP Agent 的具体能力？
 
-- [ ] (a) 只能产出 patch 文本 / diff，用户手动 apply
+- [x] (a) 只能产出 patch 文本 / diff，用户手动 apply  ← MVP 推荐
 - [ ] (b) 能写入文件，需用户 commit
 - [ ] (c) 能 apply + 自动 commit（不允许直接 push）
 - [ ] (d) 全自动 apply + commit + push + 开 PR
 
-**AI 推荐**：(a) 做 MVP，(c) 作为 opt-in 后置能力。(d) 永远不会是默认。
+**AI 推荐**：(a) 做 MVP，(b)/(c) 作为 Phase 5+ 后置能力。(d) 永远不会是默认。
+
+**最终**：(a)。MVP 不实现 workspace-write、git auto-commit；agent 输出直接展示在 dashboard。
 
 ### D2. Agent 必须支持哪些 provider？
 
-- [ ] (a) Claude Code SDK only
+- [x] (a) Claude Code SDK only
 - [ ] (b) Claude Code SDK + HTTP adapter（接任意 LLM）
 - [ ] (c) Claude Code SDK + HTTP + Command adapter（接本地脚本）
 - [ ] (d) 全部上述 + OpenAI 原生 SDK
 
-先a吧
+**最终**：(a)。简化 provider，agent-sdk 接口更简洁。
 
 ### D3. Agent 是否能修改 Coverage Policy / mk.config.yml？
 
 - [ ] (a) 不能 - policy 永远由用户决定
 - [ ] (b) 只能给建议（policy-agent 默认模式）
-- [ ] (c) 可以，但需明确审计
+- [x] (c) 可以，但需明确审计  ← 需明确 diff
 
-c，而且给出明确diff
+**最终**：(c)。policy-agent 必须输出 diff，可被 review/reject。
 
 ---
 
@@ -494,17 +503,13 @@ c，而且给出明确diff
 - [ ] (c) Docker 镜像内置 Chromium
 - [ ] (d) 默认接受 Chromium 由 mk 自动下载
 
-
-
 ### E2. CI 模式下 Dashboard 行为？
 
 - [ ] (a) 不启动 dashboard
 - [ ] (b) 启动但不开浏览器，仅监听本地端口
 - [ ] (c) 上传报告到中央服务（需要 SaaS）
 
-
-
-**先不考虑ci及其工程化，这个ci插件先不实施**
+**最终**：E1/E2 **暂不实施**——MVP 不实现 `npx mk ci`，roadmap 删除 Phase 5 后的 CI 优先级。
 
 ---
 
@@ -531,10 +536,12 @@ d
 ### F3. Scenario 并发度？
 
 - [ ] (a) 串行 - 简单但慢
-- [ ] (b) 并发 N 个（可配置）
+- [x] (b) 并发 N 个（可配置，默认 3，最大 10）  ← 每个 scenario 独立 browser context 避免状态污染
 - [ ] (c) 智能调度（按 endpoint 依赖图）
 
-你先思考
+**AI 推荐**：(b)。3 个 context ≈ 30s vs 串行 90s。配置项 `scenarios.concurrency`，默认 3。
+
+**最终**：(b)。
 
 ---
 
@@ -542,34 +549,32 @@ d
 
 ### G1. `.mk/runs/` 保留策略？
 
-- [ ] (a) 保留最近 N 次（默认 10）
+- [x] (a) 保留最近 N 次（默认 10）  ← 可用户配置
 - [ ] (b) 保留总大小上限（默认 1GB）
 - [ ] (c) 永不自动清理
 - [ ] (d) 用户自定义
 
-
-
-a，可以用户自行配置
+**最终**：(a)。配置项 `runtime.retainRuns`。
 
 ### G2. 单次 run SQLite 大小预估？
 
 > 用于估算磁盘占用。100 endpoints × 100 fields × 50 requests ≈ 50k 行。粗算 5-20 MB/run。
 
-- [ ] (a) 接受 10-50 MB/run
+- [x] (a) 接受 10-50 MB/run
 - [ ] (b) 必须 < 10 MB/run
 - [ ] (c) 无所谓
 
-a
+**最终**：(a)。无存储压缩需求，SQLite 直存。
 
 ### G3. Dashboard 历史 run 浏览？
 
 - [ ] (a) 默认显示全部历史 run
 - [ ] (b) 默认只显示最新 run
-- [ ] (c) 按需切换
+- [x] (c) 按需切换（配置项 `dashboard.defaultView: latest | history`，默认 latest）
 
+**AI 推荐**：(c)。开发者使用频率 ≈ 90% 查最新 run / 10% 回看历史；默认 latest + 配置可改最优。
 
-
-详细解释
+**最终**：(c)。
 
 ---
 
@@ -577,20 +582,20 @@ a
 
 ### H1. CLI license？
 
-- [ ] (a) MIT - 纯开源
+- [x] (a) MIT - 纯开源
 - [ ] (b) Apache 2.0 - 带专利授权
 - [ ] (c) 商业 license - 闭源
 - [ ] (d) 双 license（开源 + 商业）
 
-a
+**最终**：(a)。全商用。
 
 ### H2. 是否计划 SaaS（中心化 dashboard / 数据聚合）？
 
-- [ ] (a) 永远本地化
+- [x] (a) 永远本地化  ← MVP 暂时本地化
 - [ ] (b) 提供可选 SaaS（团队版）
 - [ ] (c) 完全 SaaS 化
 
-暂时本地化（因为快）
+**最终**：(a)。dashboard 不上传数据，所有产物本地。
 
 ---
 
@@ -600,19 +605,17 @@ a
 
 - [ ] (a) 锁定 v1，强约束
 - [ ] (b) 渐进演进，semver 严格
-- [ ] (c) 不承诺，向后兼容按尽力而为
+- [x] (c) 不承诺，向后兼容按尽力而为  ← 后置决策
 
-
+**最终**：(c)。plugin 协议 v1 可快速演进，不需 semver 严格承诺。
 
 ### I2. 是否暴露内部协议（如 OpenAPI manifest 格式、coverage report schema）？
 
 - [ ] (a) 完全私有
 - [ ] (b) 公开 schema spec，方便第三方工具互操作
-- [ ] (c) 部分公开（coverage report 公开，manifest 私有）
+- [x] (c) 部分公开（coverage report 公开，manifest 私有）  ← 后置决策
 
-
-
-后置
+**最终**：(c)。MVP 不讨论实现细节，先把 core 跑通。
 
 ---
 
@@ -620,25 +623,29 @@ a
 
 ### J1. 默认隐私策略？
 
-- [ ] (a) 默认 masked（推荐）
+- [x] (a) 默认 masked（推荐）  ← 邮箱/电话/token 自动脱敏；raw 模式需显式开启
 - [ ] (b) 默认 raw（开发友好）
 - [ ] (c) 默认 none（不存响应值）
 
+**AI 推荐**：(a)。git history 一旦 push 就收不回，默认 masked 最稳。
+
+**最终**：(a)。配置项 `privacy.responseValues.mode: masked | raw | none`。
+
 ### J2. 是否需要审计日志（谁在何时跑了 mk）？
 
-- [ ] (a) 不需要
+- [x] (a) 不需要  ← 本地单人项目，无审计
 - [ ] (b) 需要（写本地）
 - [ ] (c) 需要（写远程）
 
+**最终**：(a)。团队版后置时再补。
+
 ### J3. 响应值 raw 模式的访问控制？
 
-- [ ] (a) 任何人都能切
+- [x] (a) 任何人都能切  ← 但 dashboard 切到 raw 时显示红色 banner 警告
 - [ ] (b) 需要显式开启 + 警告
 - [ ] (c) 需要密码 / 二次确认
 
-
-
-本地项目，用户就是开发兼维护者
+**最终**：(a)。
 
 ---
 
@@ -653,18 +660,29 @@ a
 - [ ] (c) 必须包含 missing required 和 suspicious coverage 示例
 - [ ] (d) 必须包含至少 1 个 DSL scenario + 1 个 GET replay 成功案例
 
-**AI 推荐**：(b) + (c) + (d)，因为这是 anti-cheat 和 coverage policy 的最小验证集。
+**AI 推荐**：(b) + (c) + (d)。
 
-ok
+**最终**：(b) + (c) + (d)。
 
 
 ### K2. 是否需要 mock 后端？
 
 - [ ] (a) 需要 - demo 内置 mock server
-- [ ] (b) 不需要 - 依赖真实后端
+- [x] (b) 不需要 - 依赖真实后端  ← demo 自带真实后端（见 K-X1）
 - [ ] (c) 两者皆可，mk 自动识别
 
-b
+**最终**：(b)。
+
+### K-X1：demo app 后端用什么实现？
+
+- [ ] (a) **Express** —— 最常见，教程多
+- [ ] (b) **Fastify** —— 与 mk dashboard-server 同栈
+- [x] (c) **Hono**  ← TypeScript-native、<50KB、zod-openapi 自动导出 swagger.json 给 mk
+- [ ] (d) **JSON Server** —— 零代码 REST mock
+
+**AI 推荐**：(c)。TypeScript-native，与 dashboard-server 风格统一，OpenAPI 自动导出。
+
+**最终**：(c) Hono。
 
 ---
 
@@ -701,6 +719,9 @@ b
 
 ### D. Agent 边界
 
+- **D1**：**(a) 只产出 patch 文本 / diff，用户手动 apply**。
+  - 影响：MVP 不实现 workspace-write、git auto-commit 等能力；agent 输出直接展示在 dashboard
+  - 后续可加：(b) 写入文件、(c) 自动 commit，作为 Phase 5+ 能力
 - **D2**：**(a) Claude Code SDK only**。
   - 影响：不需要 HTTP/Command adapter，agent-sdk 接口更简洁
 - **D3**：**(c) 可以修改 Coverage Policy，但需明确 diff**。
@@ -717,6 +738,8 @@ b
   - 影响：进度条 + Live Metrics 必要（方案已有，无需改动）
 - **F2**：**(b) OpenAPI 变 → 只重跑 manifest + affected scenarios**。
   - 影响：watch 模式需做 endpoint → scenario 依赖图
+- **F3**：**(b) 并发 3 个独立 browser context，默认 N=3，可配（最大 10）**。
+  - 影响：spec 必须定义 `scenarios.concurrency` 配置项；每个 scenario 用 `browser.newContext()` 隔离
 
 ### G. 数据生命周期
 
@@ -724,6 +747,8 @@ b
   - 影响：mk.config.yml 增加 `runtime.retainRuns` 字段
 - **G2**：**(a) 接受 10-50 MB/run**。
   - 影响：无存储压缩需求，SQLite 直存
+- **G3**：**(c) 默认显示最新 run，按需切历史**。
+  - 影响：配置项 `dashboard.defaultView: latest | history`，默认 latest
 
 ### H. 商业模式与分发
 
@@ -742,31 +767,15 @@ b
 - **K1**：(b)+(c)+(d)。demo 必须覆盖 required/optional/ignored + 含 missing required + 至少 1 DSL + 1 GET replay。
   - 影响：demo app 必须有真实的后端 + 真实的前端页面 + 至少一个可复现场景
 - **K2**：**(b) mk 自身不需要内置 mock server，依赖真实后端**。
-- **K-X1**：**后端技术栈不限制，只需 demo 后端能输出 OpenAPI/Swagger**。
-  - 影响：demo 可以用 Hono/Express/Fastify/任何栈，只要它能产出 OpenAPI 文档供 mk 解析
-  - 与方案原文差异：方案 §41 列了 "examples/react-vite-demo"，但未指定后端栈——本次决策明确"无栈约束"
+- **K-X1**：**(c) Hono** —— TypeScript-native、<50KB、zod-openapi 自动导出 swagger.json 给 mk。
+  - 影响：与 mk dashboard-server 风格统一；demo 全栈 TS；OpenAPI 自动产出
+  - 候选被排除：(a) Express 不同栈 + 不 TS-native；(b) Fastify 同栈但生态重；(d) JSON Server 不能产 OpenAPI
 
 ### J. 隐私与合规
 
 - **J1**：**(a) 默认 masked**。邮箱/电话/token 自动脱敏；raw 模式需用户显式切换。
 - **J2**：**(a) 不需要审计日志**（本地单人项目）。
 - **J3**：**(a) 任何人都能切 raw 模式**，但 dashboard 切换时显示**红色 banner 警告**提醒"响应值将以明文存储"。
-
-### F3. Scenario 并发度
-
-- **决策**：**(b) 并发 3 个独立 browser context，默认 N=3，可配（最大 10）**。
-  - 影响：spec 必须定义 `scenarios.concurrency` 配置项；每个 scenario 用 `browser.newContext()` 隔离
-
-### G3. Dashboard 历史 run 浏览
-
-- **决策**：**(c) 默认显示最新 run，按需切历史**。
-  - 影响：配置项 `dashboard.defaultView: latest | history`，默认 latest
-
-### D-X1. MVP Agent 能力
-
-- **决策**：**(a) 只产出 patch 文本 / diff，用户手动 apply**。
-  - 影响：MVP 不实现 workspace-write、git auto-commit 等能力；agent 输出直接展示在 dashboard
-  - 后续可加：(b) 写入文件、(c) 自动 commit，作为 Phase 5+ 能力
 
 ---
 
@@ -821,7 +830,7 @@ b
 | J3 | 任何人都能切 + 红色 banner | dashboard UX |
 | K1 | (b)+(c)+(d) | demo 验证集 |
 | K2 | mk 不带 mock | demo 自带后端 |
-| K-X1 | 后端栈不限制，只需 OpenAPI | demo 后端自由 |
+| K-X1 | (c) Hono | zod-openapi 自动导出 swagger.json |
 | C-X1 | **X1-A + α** | SDK Facade + tracker 0 字节 |
 | SDK-CG1 | session 生成 SDK | 动态生成 endpoint |
 | SDK-CG2 | 编译期 codegen | 静态类型 |
@@ -851,7 +860,9 @@ b
 
 > 回答上述问题后，AI 根据答案衍生的新追问会追加到这里。
 
-### ✅ 已全部清空：所有关键决策均已落定，无未答问题。
+### ✅ 已全部清空（2026-09-03 收口）
+
+所有 Q&A（A→K + X1-X 衍生的 D-X1 / F3 / G3 / J1 / K-X1）已落定，无未答问题。
 
 ---
 
@@ -861,7 +872,7 @@ b
 
 ---
 
-## 🚨 已发现冲突（必须先解决）
+## 🚨 → ✅ 已解决冲突（C-X1 → X1-A）
 
 ### ✅ 已解决：C-X1
 
@@ -912,151 +923,27 @@ const user = await api.user.getUser(id)
 
 #### 后续 spec 必须澄清
 
-1. SDK Facade 代码生成方式：
-   - 方案 A：mk 提供 `@mk/client` 包（含 OpenAPI Manifest → 自动生成 SDK）
-   - 方案 B：mk 在 session 启动时基于 OpenAPI 临时生成 SDK 文件
-2. OpenAPI Manifest → API Client 的代码生成路径
-3. 用户已有 axios/原生 fetch 项目如何迁移（向后兼容策略）
+1. SDK Facade 代码生成方式（已在 SDK-CG1 落地：session 启动时临时生成）
+2. OpenAPI Manifest → API Client 的代码生成路径（已在 SDK-CG2 落地：编译期 codegen）
+3. 用户已有 axios/原生 fetch 项目如何迁移（已在 SDK-CG3 落地：codemod + fetch monkey-patch）
 
 ---
 
-## 待补充追问
+## 收口说明（2026-09-03）
 
-> 回答上述问题后，AI 根据答案衍生的新追问会追加到这里。
+> 本 doc 历经多轮 Q&A，2026-09-03 完成最终收口。所有 A-K 决策 + X1-X 衍生项 + SDK 路径决策已固化进 markdown。
 
-### 🚨 C-X1（已在 🚨 已发现冲突 中详述，需用户必答）
+**结构**：
+- A→K 章节保留原始 Q&A 格式 + `[x]` 标记 + 最终决策行（便于回溯）
+- 124→453 行 = 早期"分层 (a)+(c)" 提案（**superseded by X1-A**，仅作溯源保留）
+- "已确认决策" 段化化归档（按主题），便于 spec 撰写时引用
+- "完整决策清单" 表格 = 一页纸摘要
+- C-X1 冲突 + SDK 路径决策单独成段
+- "方案修订清单" 列出 mk-plan.md 需更新的章节
 
----
-
-### D-X1：MVP Agent 的具体能力？
-（承接 D1 未答）
-
-- [ ] (a) **只产出 patch 文本 / diff** —— 用户手动 apply，最保守
-- [ ] (b) **可写入文件，需用户 commit** —— agent 直接编辑 fs，但不自动 git commit
-- [ ] (c) **可 apply + 自动 commit（不允许 push）** —— agent 直接改 + commit，loop 中可工作
-- [ ] (d) **可 apply + commit + push + 开 PR** —— 全自动
-
-**AI 推荐**：(a) 做 MVP，(b) 作为 Phase 5 后续能力。
-理由：
-- MVP 是验证"agent 能产生有用 diff"，不需要验证"agent 能写文件"
-- 写入文件涉及 workspace-write 权限、diff 审核 UI、git 状态管理 —— 这些是 review 复杂度的大头
-- (a) 的输出可直接粘到 dashboard 让人看，不依赖文件系统
+**下一步**：
+1. 把"方案修订清单"中的 5 项修订落到 `docx/plan/nx-mk-plan.md`
+2. 进入 spec 撰写：Phase 1.5 SDK Codegen → Phase 2 SDK Facade + Field Proxy
+3. 起 `examples/react-vite-demo` + Hono 后端，验证 SDK 闭环
 
 ---
-
-### F3：Scenario 并发度？
-（用户标注"你先思考"）
-
-#### 选项分析
-
-| 选项 | 复杂度 | 速度 | 适用场景 |
-|------|--------|------|----------|
-| (a) 串行 | 极低 | 慢 | MVP 快速验证 |
-| (b) 并发 N（默认 3，可配） | 中 | 较快 | 推荐 MVP |
-| (c) 智能调度（依赖图） | 高 | 最快 | Phase 4+ |
-
-**关键技术约束**：
-- Scenario 之间共享 localStorage / cookie / sessionStorage
-- 直接并发 → 状态污染
-- 解决方案：每个 scenario 独立 browser context（Playwright 支持），但启动开销 ×N
-
-**AI 推荐**：**(b) 并发 N 个 browser context（默认 3）**
-- 默认 N=3 是经验值：3 个 scenario 大约 30s 内完成 vs 串行 90s
-- 每个 scenario 独立 context 避免状态污染
-- 配置项 `scenarios.concurrency: 3`（默认 3，最大 10）
-
-**需要用户决策**：接受这个方案吗？
-
----
-
-### G3：Dashboard 历史 run 浏览？
-（用户标注"详细解释"）
-
-#### 三个选项的实际 UX 差异
-
-**(a) 默认显示全部历史 run 列表**
-- 进入 dashboard 首页是 "All Runs" 表格
-- 用户点进某个 run 看报告详情
-- 优点：符合"工作台"心智，用户清楚有哪些 run 可查
-- 缺点：日常开发"我刚跑完想看结果"，多一次点击
-
-**(b) 默认显示最新 run 详情**
-- 进入 dashboard 直接看到 "Run #N" 报告
-- 顶部有一个 "History" 按钮 → 切到全部 run
-- 优点：开发者日常使用更顺畅（"我刚跑完，结果在这"）
-- 缺点：新用户不知道有历史
-
-**(c) 按需切换（配置项 `dashboard.defaultView: latest | history`，默认 latest）**
-- 等于 (b) 但可配
-- 增加一个配置项
-
-**AI 推荐**：**(c)，默认 latest**。
-理由：开发者使用频率 = 90% 查最新 run，10% 回看历史。默认 latest + 配置可改是最优。
-
-**需要用户决策**：(c) 默认 latest 行不行？
-
----
-
-### J1：默认隐私策略？
-（用户方向已定："本地项目，用户即开发兼维护者"）
-
-- [x] (a) **默认 masked**（推荐）—— 邮箱、电话、token 自动脱敏；raw 需切换
-- [ ] (b) **默认 raw** —— 开发友好，但 v0.1 容易"忘记脱敏就 push"
-- [ ] (c) **默认 none** —— 不存响应值
-
-**AI 推荐**：(a)。即使本地项目，git history 一旦 push 就无法收回。默认 masked 是最稳妥的产品决策，raw 模式可显式开启。
-
-**需要用户确认**：(a) 默认 masked，行吗？
-
----
-
-### J2：审计日志？
-（用户方向已定："本地项目，用户即开发兼维护者"）
-
-- [x] (a) **不需要** —— 本地项目，单人使用，无需审计
-- [ ] (b) 需要（写本地 `.mk/audit.log`）
-- [ ] (c) 需要（写远程）
-
-**AI 推荐**：(a)。后续若要做团队版再补。
-
----
-
-### J3：raw 模式访问控制？
-（用户方向已定）
-
-- [x] (a) **任何人都能切** —— 本地项目，不需要二次确认
-- [ ] (b) 需要显式开启 + 警告
-- [ ] (c) 需要密码
-
-**AI 推荐**：(a)，但 dashboard 切到 raw 模式时给一个明显的红色 banner 提醒。
-
----
-
-### K-X1：demo app 后端用什么实现？
-
-`examples/react-vite-demo` 自带后端的话，用什么？
-
-- [ ] (a) **Express** —— 最常见，教程多
-- [ ] (b) **Fastify** —— 与 mk dashboard-server 同栈，技术统一
-- [ ] (c) **Hono** —— 轻量、TypeScript-native，适合 demo
-- [ ] (d) **JSON Server** —— 零代码 REST mock，最快搭
-
-**AI 推荐**：**(c) Hono**。
-理由：
-- TypeScript-native，demo 全栈 TS 统一
-- 轻量（核心 < 50KB）
-- OpenAPI 自动导出（hono 的 zod-openapi 中间件）—— demo 天然产出 swagger.json 给 mk 用
-- 与 mk dashboard-server 风格一致
-
-**需要用户决策**：(c) Hono 行吗？
-
----
-
-### 优先级建议
-
-按对 spec 影响排序：
-1. **C-X1**（冲突解决，决定整体架构）
-2. **D-X1**（决定 MVP Agent 能力上限）
-3. **K-X1**（决定 demo app 技术栈）
-4. **F3 / G3**（细节，影响 spec 但不改变方向）
-5. **J1 / J2 / J3**（默认值已推，可快速确认）
