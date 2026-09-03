@@ -145,21 +145,28 @@ function buildResult(
  *   - 不做 turn boundary 信号（plugin 通过 emitReport 决定何时声明 done）
  *   - 不持久化 session log（复用 events.jsonl）
  *
+ * M14 收尾：
+ *   - reports 通过 opts.getReports() 从 kernel 闭包读取（插件 emitReport 写到那里）
+ *   - 当前 turn 通过 opts.onTurn(n  回写到 kernel 闭包，供插件 getTurn() 查询
+ *
  * @param opts.plugins   - 参与本轮采集的插件列表
  * @param opts.goal      - 终止配置
  * @param opts.initialCoverage - 初始 Coverage（含 total + missing）
- * @param opts.ctx       - 共享 PluginContext（含 events emit API）
+ * @param opts.getReports - 从 kernel loopState 读取当前累积的 PluginReport 列表
+ * @param opts.onTurn    - 把当前 turn 写回 kernel loopState（供插件 getTurn 读取）
+ * @param opts.ctx       - 共享 PluginContext（用于 events.emit）
  * @param opts.signal    - AbortSignal（外部取消）
  */
 export async function runGoalLoop(opts: {
   plugins: import('./plugin').Plugin[]
   goal: GoalConfig
   initialCoverage: Coverage
+  getReports: () => PluginReport[]
+  onTurn: (turn: number) => void
   ctx: import('./plugin').PluginContext
   signal: AbortSignal
 }): Promise<GoalResult> {
   const startTime = Date.now()
-  const reports: PluginReport[] = []
   let coverage = opts.initialCoverage
   let turn = 0
   let idleTurns = 0
@@ -167,11 +174,12 @@ export async function runGoalLoop(opts: {
 
   // 边界：初始已达成
   if (coverage.ratio >= opts.goal.targetRatio) {
-    return buildResult('met', 'goal-met', coverage, 0, reports, Date.now() - startTime)
+    return buildResult('met', 'goal-met', coverage, 0, [], Date.now() - startTime)
   }
 
   while (true) {
     turn++
+    opts.onTurn(turn)
 
     // 1. 边界检查
     const decision = checkTermination({
@@ -185,7 +193,7 @@ export async function runGoalLoop(opts: {
     })
 
     if (decision.kind !== 'continue' && decision.reason) {
-      return buildResult(decision.kind, decision.reason, coverage, turn, reports, Date.now() - startTime)
+      return buildResult(decision.kind, decision.reason, coverage, turn, opts.getReports(), Date.now() - startTime)
     }
 
     // 2. turn 起点
@@ -199,9 +207,9 @@ export async function runGoalLoop(opts: {
     // 3. drain microtask 让插件报告有机会注入
     await Promise.resolve()
 
-    // 4. turn 终点 + 计算新覆盖率
+    // 4. turn 终点 + 计算新覆盖率（从 kernel loopState 读取本轮累计 reports）
     const previousRatio = coverage.ratio
-    coverage = computeCoverage(reports, opts.initialCoverage)
+    coverage = computeCoverage(opts.getReports(), opts.initialCoverage)
     const progress: 'improved' | 'stagnant' | 'regressed' =
       coverage.ratio > previousRatio
         ? 'improved'
@@ -222,7 +230,7 @@ export async function runGoalLoop(opts: {
 
     // 5. 目标检查（在 turn:end 后立即判定，避免多余一轮）
     if (coverage.ratio >= opts.goal.targetRatio) {
-      return buildResult('met', 'goal-met', coverage, turn, reports, Date.now() - startTime)
+      return buildResult('met', 'goal-met', coverage, turn, opts.getReports(), Date.now() - startTime)
     }
   }
 }

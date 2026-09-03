@@ -1,14 +1,12 @@
 /**
- * @nx-mk/plugin-swagger —— afterRun hook 集成测试
+ * @nx-mk/plugin-swagger —— beforeRun hook 集成测试（M14 收尾）
  *
  * 共享 manifest 的 fixture：直接按相对路径读取
  * packages/manifest/src/__tests__/fixtures/openapi-minimal.json
  * （跨包耦合已确认，见 Phase 1 spec §8.2 的 Option B）。
  *
- * 钩子时机说明：Phase 0 内核钩子名是 before<Phase> / after<Phase>，
- * 不存在裸 `run` 钩子（见 kernel/src/hooks.ts）。因此插件在 run 阶段
- * 的主工作挂在 `afterRun` 上 —— 与 Phase 1 spec §5.1 的意图一致，
- * 但钩子键名按内核实际契约为 `afterRun`。
+ * 钩子时机（M14 收尾后）：在 beforeRun 触发，让 .nx-mk/manifest.json
+ * 在 kernel.run() 的 Goal Loop 启动前可用（kernel 据此构造 initial coverage）。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
@@ -62,11 +60,11 @@ afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true })
 })
 
-describe('plugin-swagger afterRun hook', () => {
+describe('plugin-swagger beforeRun hook', () => {
   it('generates manifest.json when openapi is configured and file exists', async () => {
     const ctx = makeMockCtx({ cwd: tmpDir, openapi: './swagger.json' })
     const plugin = createSwaggerPlugin()
-    await plugin.hooks.afterRun!(ctx)
+    await plugin.hooks.beforeRun!(ctx)
     const manifestPath = join(tmpDir, '.nx-mk', 'manifest.json')
     expect(existsSync(manifestPath)).toBe(true)
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
@@ -77,20 +75,20 @@ describe('plugin-swagger afterRun hook', () => {
   it('skips silently when openapi not configured', async () => {
     const ctx = makeMockCtx({ cwd: tmpDir, openapi: undefined })
     const plugin = createSwaggerPlugin()
-    await plugin.hooks.afterRun!(ctx)
+    await plugin.hooks.beforeRun!(ctx)
     expect(existsSync(join(tmpDir, '.nx-mk', 'manifest.json'))).toBe(false)
   })
 
   it('throws KernelError(PLUGIN_HOOK_FAILED) when openapi file missing', async () => {
     const ctx = makeMockCtx({ cwd: tmpDir, openapi: './missing.json' })
     const plugin = createSwaggerPlugin()
-    await expect(plugin.hooks.afterRun!(ctx)).rejects.toBeInstanceOf(KernelError)
+    await expect(plugin.hooks.beforeRun!(ctx)).rejects.toBeInstanceOf(KernelError)
   })
 
   it('writes manifest.json atomically (temp + rename)', async () => {
     const ctx = makeMockCtx({ cwd: tmpDir, openapi: './swagger.json' })
     const plugin = createSwaggerPlugin()
-    await plugin.hooks.afterRun!(ctx)
+    await plugin.hooks.beforeRun!(ctx)
     // No .tmp file should remain
     expect(existsSync(join(tmpDir, '.nx-mk', 'manifest.json.tmp'))).toBe(false)
   })

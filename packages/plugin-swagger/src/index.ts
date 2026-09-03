@@ -1,12 +1,13 @@
 /**
- * @nx-mk/plugin-swagger —— OpenAPI → Manifest 生成插件（Phase 1）
+ * @nx-mk/plugin-swagger —— OpenAPI → Manifest 生成插件（Phase 1 + M14 收尾）
  *
- * 在 afterRun hook 期间读取 config.openapi 指向的 OpenAPI 3.x 文档，
- * 通过 @nx-mk/manifest 解析并写入项目根 .nx-mk/manifest.json。可被 Phase 2 的
+ * 在 beforeRun 钩子期间读取 config.openapi 指向的 OpenAPI 3.x 文档，
+ * 通过 @nx-mk/manifest 解析并写入项目根 .nx-mk/manifest.json。
+ *
+ * 钩子时机：M14 Goal Loop 在 beforeRun 之后、afterRun 之前的 run 阶段触发；
+ * 改用 beforeRun 让 manifest.json 在 Goal Loop 启动前可用 —— kernel 据此构造
+ * 真实初始覆盖率（见 @nx-mk/kernel/initial-coverage.ts）。可被 Phase 2 的
  * 字段代理作为 endpoint / field 来源使用。
- *
- * 钩子时机：Phase 0 内核只有 before<Phase> / after<Phase> 两类钩子，
- * run 阶段的主工作挂在 afterRun 上（内核不识别裸 `run` 钩子键）。
  */
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join } from 'node:path'
@@ -23,7 +24,8 @@ export default function createSwaggerPlugin(): Plugin {
         ctx.logger.info('plugin-swagger: registered')
       },
       // 主阶段：解析 config.openapi 并写入项目根 .nx-mk/manifest.json
-      async afterRun(ctx) {
+      // 在 beforeRun 触发：让 Goal Loop 能读到这份 manifest 当 initial coverage
+      async beforeRun(ctx) {
         const cmd = ctx.kernel.getSubcommand()
         // 仅 run / doctor 触发；init 不应解析 OpenAPI（避免副作用）
         if (cmd !== 'run' && cmd !== 'doctor') return
