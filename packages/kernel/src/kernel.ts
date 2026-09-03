@@ -13,6 +13,7 @@ import { EventBus } from './event-bus'
 import { runHook, runHooksForPhase, hookNameForPhase } from './hooks'
 import { loadPlugins, resolveDependencies } from './plugin-registry'
 import { runGoalLoop } from './goal-loop'
+import { readInitialCoverageFromManifest } from './initial-coverage'
 import { KernelError, mapErrorCodeToExit } from './errors'
 import type { KernelAPI, Plugin, PluginContext, RunResult } from './plugin'
 import type { KernelState, Phase, PluginWorkerState, ResolvedConfig, RunId } from './types'
@@ -256,16 +257,11 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
       if (config?.goal) {
         // Goal Loop 路径：构建共享循环状态 + AbortController
-        // 注意：initial coverage 默认全未覆盖（manifest 接入后由 manifest 计算）
-        // 当前用 placeholder 确保 loop 至少跑一轮（demo 模式）。
+        // initial coverage 从 .nx-mk/manifest.json 读（plugin-swagger 在 beforeRun 写入）；
+        // 文件缺失则回退 placeholder，让 demo 模式仍能跑通。
         loopState.reports = []
         loopState.turn = 0
-        loopState.coverage = {
-          total: 1,
-          covered: 0,
-          ratio: 0,
-          missing: [{ kind: 'field', fieldId: '__placeholder__' }],
-        }
+        loopState.coverage = readInitialCoverageFromManifest(cwd)
         loopState.idleTurns = 0
         const goalAbort = new AbortController()
         // 触发手动 shutdown 时同步终止 goal loop
@@ -275,6 +271,9 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
             plugins,
             goal: config.goal,
             initialCoverage: loopState.coverage,
+            // 把 loopState 访问器注入 runGoalLoop —— 让 reports / turn 真正双向流动
+            getReports: () => loopState.reports,
+            onTurn: (t) => { loopState.turn = t },
             ctx: buildCtx(),
             signal: goalAbort.signal,
           })
@@ -288,18 +287,30 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
               durationMs: goalResult.durationMs,
             })
           } else {
-            events.emit({
-              type: 'goal:unmet',
-              reason:
-                goalResult.terminatedBy === 'max-turns' ||
-                goalResult.terminatedBy === 'idle' ||
-                goalResult.terminatedBy === 'timeout' ||
-                goalResult.terminatedBy === 'all-failed'
-                  ? goalResult.terminatedBy
-                  : 'idle',
-              coverage: goalResult.coverage,
-              turns: goalResult.turns,
-            })
+            // GoalResult.terminatedBy 在 kind='unmet' 时只能是 4 种之一；其余视为内核 bug
+            const reason = goalResult.terminatedBy
+            switch (reason) {
+              case 'max-turns':
+              case 'idle':
+              case 'timeout':
+              case 'all-failed':
+                events.emit({
+                  type: 'goal:unmet',
+                  reason,
+                  coverage: goalResult.coverage,
+                  turns: goalResult.turns,
+                })
+                break
+              case 'goal-met':
+              case 'aborted':
+                // met 不应走 else 分支；aborted 单独事件类型，这里不应到达
+                throw new KernelError(
+                  'KERNEL_INTERNAL',
+                  `Unexpected unmet terminatedBy: ${reason}`,
+                )
+              default:
+                assertNever(reason)
+            }
           }
         } catch (err) {
           // Goal Loop 内部错误：包装为 KERNEL_INTERNAL，让上层 fail-fast 处理

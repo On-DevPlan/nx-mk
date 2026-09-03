@@ -123,6 +123,8 @@ describe('M14: runGoalLoop termination', () => {
       plugins: [],
       goal: { targetRatio: 1.0, maxTurns: 10, idleTurnsLimit: 3, absoluteTimeoutMs: 30000 },
       initialCoverage: initial,
+      getReports: () => [],
+      onTurn: () => {},
       ctx: makeCtx(events, []),
       signal: new AbortController().signal,
     })
@@ -150,6 +152,8 @@ describe('M14: runGoalLoop termination', () => {
       plugins: [idlePlugin],
       goal,
       initialCoverage: initial,
+      getReports: () => [],
+      onTurn: () => {},
       ctx: makeCtx(events, [idlePlugin]),
       signal: new AbortController().signal,
     })
@@ -175,11 +179,73 @@ describe('M14: runGoalLoop termination', () => {
       plugins: [idlePlugin],
       goal,
       initialCoverage: initial,
+      getReports: () => [],
+      onTurn: () => {},
       ctx: makeCtx(events, [idlePlugin]),
       signal: new AbortController().signal,
     })
     expect(result.kind).toBe('unmet')
     expect(result.terminatedBy).toBe('max-turns')
     expect(result.turns).toBeLessThanOrEqual(3)
+  })
+
+  it('reads reports via getReports() — coverage advances when reports arrive', async () => {
+    // M14 收尾验证：runGoalLoop 通过 getReports 访问器读到 emitReport 推入的 reports。
+    // 模拟场景：插件一次性 emit 全部 field-hit 报告，Goal Loop 应在 turn 1 后 100% 覆盖。
+    const events = new EventBus()
+    const initial = makeInitialCoverage()  // 10 个 missing items
+    const reports: PluginReport[] = [
+      { kind: 'endpoint-called', method: 'GET', path: '/users', turn: 1 },
+      { kind: 'endpoint-called', method: 'POST', path: '/users', turn: 1 },
+      { kind: 'route-visited', route: '/home', turn: 1 },
+      { kind: 'route-visited', route: '/about', turn: 1 },
+      ...(['f1', 'f2', 'f3', 'f4', 'f5', 'f6'] as const).map((id) => ({
+        kind: 'field-hit' as const,
+        fieldId: id,
+        count: 1,
+        turn: 1,
+      })),
+    ]
+    const goal: GoalConfig = {
+      targetRatio: 1.0,
+      maxTurns: 5,
+      idleTurnsLimit: 2,
+      absoluteTimeoutMs: 60000,
+    }
+    const result = await runGoalLoop({
+      plugins: [],
+      goal,
+      initialCoverage: initial,
+      getReports: () => reports,
+      onTurn: () => {},
+      ctx: makeCtx(events, []),
+      signal: new AbortController().signal,
+    })
+    expect(result.kind).toBe('met')
+    expect(result.coverage.ratio).toBe(1.0)
+    expect(result.turns).toBe(1)
+  })
+
+  it('onTurn callback is invoked with current turn number', async () => {
+    // M14 收尾验证：plugins 通过 getTurn() 读 loopState.turn，kernel 通过 onTurn 回写
+    const events = new EventBus()
+    const initial = makeInitialCoverage()
+    const turnsSeen: number[] = []
+    const goal: GoalConfig = {
+      targetRatio: 1.0,
+      maxTurns: 3,
+      idleTurnsLimit: 100,
+      absoluteTimeoutMs: 60000,
+    }
+    await runGoalLoop({
+      plugins: [],
+      goal,
+      initialCoverage: initial,
+      getReports: () => [],
+      onTurn: (t) => { turnsSeen.push(t) },
+      ctx: makeCtx(events, []),
+      signal: new AbortController().signal,
+    })
+    expect(turnsSeen).toEqual([1, 2, 3])
   })
 })
