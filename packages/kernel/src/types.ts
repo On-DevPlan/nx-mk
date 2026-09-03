@@ -94,6 +94,8 @@ export interface Config {
   outputDir: string
   // openapi: 指向 OpenAPI 3.x 文档的相对/绝对路径（Phase 1；未配置则为 undefined）
   openapi?: string
+  // M14：可选 Goal Loop 配置（不设置则使用 push-based beforeRun/afterRun）
+  goal?: GoalConfig
 }
 
 // 合并 env / CLI 覆盖后的最终配置，附带运行期上下文字段（configPath、runId 等）
@@ -114,5 +116,83 @@ export interface KernelState {
   loadedPlugins: string[]
   // 新字段（M1）：每个插件的 lifecycle 状态
   pluginStates: Map<PluginName, PluginWorkerState>
+  // M14：Goal Loop 收集的覆盖率报告（按 turn 聚合）
+  reports?: PluginReport[]
+  // M14：Goal Loop 终态（run 阶段完成后填充）
+  collectionResult?: GoalResult
   error?: { code: ErrorCode; message: string }
+}
+
+// =====================================================================
+// Goal-Oriented Multi-Turn Loop（M14 引入）
+// 设计依据：docx/plan/2026-08-28-goal-oriented-loop-design.md
+// 模式：多生产者（plugins emit reports） + 协调者（kernel 计算覆盖率）
+// + 目标驱动终止（goal-met / max-turns / idle / timeout / aborted）
+// =====================================================================
+
+/**
+ * 覆盖率模型：以 initial missing items 为全集，从 reports 中提取已覆盖项。
+ */
+export interface Coverage {
+  total: number
+  covered: number
+  ratio: number                 // covered / total
+  missing: MissingItem[]
+}
+
+export type MissingItem =
+  | { kind: 'endpoint'; method: string; path: string }
+  | { kind: 'route'; route: string; component?: string }
+  | { kind: 'field'; fieldId: string }
+  | { kind: 'schema'; path: string }
+
+/**
+ * Goal 终止配置 —— 所有字段必填，调用方用 DEFAULT_GOAL_CONFIG 简化构造。
+ */
+export interface GoalConfig {
+  /** 目标覆盖率（默认 1.0 = 100%） */
+  targetRatio: number
+  /** 最大 turn 数（默认 100） */
+  maxTurns: number
+  /** 连续无进展 turn 数上限（默认 3） */
+  idleTurnsLimit: number
+  /** 整体超时（默认 600000ms = 10 分钟） */
+  absoluteTimeoutMs: number
+}
+
+export const DEFAULT_GOAL_CONFIG: GoalConfig = {
+  targetRatio: 1.0,
+  maxTurns: 100,
+  idleTurnsLimit: 3,
+  absoluteTimeoutMs: 600_000,
+}
+
+/**
+ * Plugin 上报的覆盖率贡献（M14 Plugin API）
+ */
+export type PluginReport =
+  | { kind: 'endpoint-called'; method: string; path: string; turn: number }
+  | { kind: 'route-visited'; route: string; turn: number }
+  | { kind: 'field-hit'; fieldId: string; count: number; turn: number }
+  | { kind: 'no-data'; reason: string; turn: number }
+  | { kind: 'analysis'; missing: MissingItem[]; recommendations: string[]; turn: number }
+
+/**
+ * Plugin 完成信号（M14 Plugin API）
+ */
+export type PluginSignal =
+  | { kind: 'idle'; turn: number }
+  | { kind: 'done'; reason: 'all-collected' | 'timeout'; turn: number }
+  | { kind: 'failed'; error: { code: string; message: string }; turn: number }
+
+/**
+ * Goal Loop 终态（M14）
+ */
+export interface GoalResult {
+  kind: 'met' | 'unmet' | 'aborted'
+  coverage: Coverage
+  turns: number
+  durationMs: number
+  reports: PluginReport[]
+  terminatedBy: 'goal-met' | 'max-turns' | 'idle' | 'timeout' | 'aborted' | 'all-failed'
 }

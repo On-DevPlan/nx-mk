@@ -9,7 +9,16 @@
  */
 import type { Logger } from './logger'
 import type { EventBus } from './event-bus'
-import type { Phase, ResolvedConfig, KernelState, RunId } from './types'
+import type {
+  Coverage,
+  MissingItem,
+  Phase,
+  PluginReport,
+  PluginSignal,
+  ResolvedConfig,
+  KernelState,
+  RunId,
+} from './types'
 import type { StandardSchemaV1 } from '@nx-mk/schema'
 
 // 钩子名 = 阶段名 × 时机：before{Phase} / after{Phase}（如 beforeRun / afterRun）
@@ -71,4 +80,11 @@ export interface PluginContext {
   events: EventBus
   kernel: KernelAPI
   cwd: string                       // ← NEW: 内核运行的工作目录（Phase 1 引入）
+  signal?: AbortSignal              // ← M14：Goal Loop 终止信号
+  // M14：Goal Loop 报告 / 信号 API
+  emitReport(report: PluginReport): void
+  emitSignal(signal: PluginSignal): void
+  getTurn(): number
+  getCoverage(): Coverage
+  getMissing(): MissingItem[]
 }

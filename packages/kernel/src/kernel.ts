@@ -12,9 +12,11 @@ import { createLogger } from './logger'
 import { EventBus } from './event-bus'
 import { runHook, runHooksForPhase, hookNameForPhase } from './hooks'
 import { loadPlugins, resolveDependencies } from './plugin-registry'
+import { runGoalLoop } from './goal-loop'
 import { KernelError, mapErrorCodeToExit } from './errors'
 import type { KernelAPI, Plugin, PluginContext, RunResult } from './plugin'
 import type { KernelState, Phase, PluginWorkerState, ResolvedConfig, RunId } from './types'
+import type { Coverage, MissingItem, PluginReport, PluginSignal } from './types'
 import { assertNever, makePluginName, makeRunId, PHASES } from './types'
 
 // 创建内核的入参：configPath 必填；plugins 仅供测试注入，生产环境走配置动态加载
@@ -76,6 +78,18 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
     hook: string
     error: { message: string; stack?: string }
   } | null = null
+
+  /**
+   * M14：Goal Loop 共享状态（mutable）。run 阶段触发 Goal Loop 时填充。
+   * buildCtx 的 emit/emitSignal/getTurn/getCoverage 方法读/写这里。
+   * 中文：把循环状态集中在 createKernel 闭包内，避免与外部状态耦合。
+   */
+  const loopState = {
+    reports: [] as PluginReport[],
+    turn: 0,
+    coverage: { total: 0, covered: 0, ratio: 1.0, missing: [] as MissingItem[] } as Coverage,
+    idleTurns: 0,
+  }
 
   /**
    * 转移插件状态并发出 plugin:state-change 事件（M1）。
@@ -236,8 +250,66 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       // 中文：内核默认无动作（插件对象在工厂调用时已构造完成），仅触发前后钩子
       await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
     } else if (phase === 'run') {
-      // —— 阶段 4：run —— 主工作阶段，触发 beforeRun / afterRun 两类钩子
+      // —— 阶段 4：run —— 主工作阶段，触发 beforeRun 钩子后运行 Goal Loop（M14），
+      // 最后触发 afterRun 钩子。Goal Loop 仅在 config.goal 定义时启用，否则保持
+      // 原 push-based 行为（向后兼容）。
       await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
+      if (config?.goal) {
+        // Goal Loop 路径：构建共享循环状态 + AbortController
+        // 注意：initial coverage 默认全未覆盖（manifest 接入后由 manifest 计算）
+        // 当前用 placeholder 确保 loop 至少跑一轮（demo 模式）。
+        loopState.reports = []
+        loopState.turn = 0
+        loopState.coverage = {
+          total: 1,
+          covered: 0,
+          ratio: 0,
+          missing: [{ kind: 'field', fieldId: '__placeholder__' }],
+        }
+        loopState.idleTurns = 0
+        const goalAbort = new AbortController()
+        // 触发手动 shutdown 时同步终止 goal loop
+        if (shutdownPromise) goalAbort.abort()
+        try {
+          const goalResult = await runGoalLoop({
+            plugins,
+            goal: config.goal,
+            initialCoverage: loopState.coverage,
+            ctx: buildCtx(),
+            signal: goalAbort.signal,
+          })
+          state.collectionResult = goalResult
+          // 发出 goal:met 或 goal:unmet 事件
+          if (goalResult.kind === 'met') {
+            events.emit({
+              type: 'goal:met',
+              coverage: goalResult.coverage,
+              turns: goalResult.turns,
+              durationMs: goalResult.durationMs,
+            })
+          } else {
+            events.emit({
+              type: 'goal:unmet',
+              reason:
+                goalResult.terminatedBy === 'max-turns' ||
+                goalResult.terminatedBy === 'idle' ||
+                goalResult.terminatedBy === 'timeout' ||
+                goalResult.terminatedBy === 'all-failed'
+                  ? goalResult.terminatedBy
+                  : 'idle',
+              coverage: goalResult.coverage,
+              turns: goalResult.turns,
+            })
+          }
+        } catch (err) {
+          // Goal Loop 内部错误：包装为 KERNEL_INTERNAL，让上层 fail-fast 处理
+          throw new KernelError(
+            'KERNEL_INTERNAL',
+            `Goal loop failed: ${(err as Error).message}`,
+            err,
+          )
+        }
+      }
       await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
     } else if (phase === 'shutdown') {
       // —— 阶段 5：shutdown —— 关停收尾，插件按加载的逆序执行
@@ -265,8 +337,21 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
   /**
    * 构造传给插件钩子的上下文（config + logger + events + kernel 句柄）。
    * config 尚未加载时（loadConfig 的 before 钩子）使用占位配置，保证 ctx 字段可用。
+   *
+   * M14：注入 Goal Loop 报告/信号 API，直接读写 loopState。
    */
   function buildCtx(): PluginContext {
+    const goalCtx = {
+      emitReport: (report: PluginReport): void => {
+        loopState.reports.push(report)
+      },
+      emitSignal: (_signal: PluginSignal): void => {
+        /* signal 处理留作未来 milestone（M14 当前仅记录 report） */
+      },
+      getTurn: (): number => loopState.turn,
+      getCoverage: (): Coverage => loopState.coverage,
+      getMissing: (): MissingItem[] => loopState.coverage.missing,
+    }
     if (!config) {
       // During loadConfig's before-hooks, config is not yet loaded.
       // Build a placeholder ResolvedConfig so plugin hooks receive a usable ctx.
@@ -281,9 +366,9 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
         logLevel: 'info',
         outputDir: '.nx-mk/runs',
       }
-      return { config: placeholder, logger, events, kernel: api, cwd }
+      return { config: placeholder, logger, events, kernel: api, cwd, ...goalCtx }
     }
-    return { config, logger, events, kernel: api, cwd }
+    return { config, logger, events, kernel: api, cwd, ...goalCtx }
   }
 
   // 对外暴露的内核 API（同时作为 kernel 句柄注入给插件钩子）
