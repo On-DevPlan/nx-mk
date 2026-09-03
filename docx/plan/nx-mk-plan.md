@@ -2,8 +2,11 @@
 ```markdown
 # mk 完整实现方案
 
-> 项目名：**mk**  
+> 项目名：**mk**（repo: nx-mk，包 scope: @nx-mk/*，业务集成契约: @mk/client）
 > 定位：通过 `npx mk` 一键启动的 OpenAPI 驱动前端 API/UI 覆盖率分析与 Agent 自动补齐工作台。
+
+> **修订记录**：
+> - **2026-09-03**：按 `nx-mk-plan-questions.md` 收口决策（A→K + C-X1/SDK-CG1-3）修订 5 处关键章节——§5.3 SDK Facade、§8 Monorepo 结构 + Phase 1.5 SDK Codegen 包、§10 配置（scenarios.concurrency / dashboard.defaultView / agent.provider、删 ci 段）、§19/§20（SDK 内部行为 + UI evidence 显式标记）、§41/§42/§42.5/§43（MVP 支持 + Roadmap 新增 Phase 1.5 + 风险表）。§40 CI 标记后置。
 
 ---
 
@@ -201,19 +204,53 @@ Agent Loop
 Coverage Policy 编辑
 ```
 
-### 5.3 Runtime
+### 5.3 SDK Facade（接入方式）
+
+> **决策依据**：C-X1 → **X1-A** 决议（详见 `nx-mk-plan-questions.md` 🚨 → ✅ 已解决冲突 段）。"零侵入"= **业务代码无 if/else 分支**，**不是"不改代码"**；用户接入方式是 SDK Facade，tracker 与生产完全解耦。
+
+用户接入：
+
+```
+npm install @mk/client --save  # or @nx-mk/client, 视包名
+```
+
+业务代码始终调用：
+
+```tsx
+import { api } from '@mk/client'
+const user = await api.user.getUser(id)
+```
+
+生产模式：
+
+```
+api.user.getUser -> fetch wrapper -> data          # SDK 薄壳 ~1-3KB，无 analysis 逻辑
+```
+
+分析模式（`npx mk` 启动的 analysis session）：
+
+```
+api.user.getUser -> fetch wrapper
+  -> bind manifest -> tracked proxy -> collector
+  -> data + field-hit / trace events
+```
+
+生产 bundle 目标：**tracker 类代码 0 字节**；仅保留 SDK 薄壳（纯 fetch 包装）。
+
+### 5.4 Runtime Instrumentation（SDK 内部行为）
+
+> SDK Facade 内部实现见 §18（策略与中间件）、§19（字段级 Proxy）、§20（UI Evidence）。此前的"5.3 Runtime"描述已迁至此处——它是 SDK 的 analysis 分支，不需用户额外配置。
 
 负责：
 
 ```
-analysis mode
-字段级 Proxy
-collector
-UI evidence 标记
-模式解耦
+analysis 模式下的 field-access 追踪（通过 SDK 内部 Proxy）
+collector / coverage 收集
+UI evidence 增强（需 <Field> / data-mk-field 显式标记，见 §20）
+策略与中间件流水线（见 §18）
 ```
 
-### 5.4 Agent
+### 5.5 Agent
 
 负责：
 
@@ -242,6 +279,7 @@ CLI：Commander
 终端进度：ora + log-update
 微内核 Hook：tapable / 自研轻量 Hook
 OpenAPI 解析：@apidevtools/swagger-parser + openapi-typescript
+SDK Codegen（Phase 1.5）：openapi-typescript-codegen / AST 转换（见 §42.5）
 场景执行：Playwright
 浏览器调试：Playwright CDP
 本地数据库：SQLite
@@ -256,8 +294,11 @@ Dashboard UI：Vite + React
 图表：ECharts / Recharts
 编辑器：Monaco Editor
 测试：Vitest + Playwright Test
-Agent Provider：Claude Code SDK Adapter + Custom Command Adapter + Custom HTTP Adapter
+Agent Provider：Claude Code SDK（MVP 仅此一，见 C-X1 / SDK-CG1）
+codemod（SDK-CG3）：jscodeshift / ts-morph 扫描 + 替换 `fetch('/api/..')`
 ```
+
+> 备注：Agent Provider 中的 Custom Command / Custom HTTP adapter 为后置能力（I 段），MVP 不实现。仅 `agent-provider-claude-code` 保留。
 
 ---
 
@@ -291,17 +332,23 @@ Vite + React 更适合：
 
 ---
 
-## 8. Monorepo 结构
+## 8. Monorepo 结构（SDK Facade 接入版）
+
+> **缩写**：报告名称、CLI 二进制、本地目录沿用 `mk` 简写；包发布作用域用 `@nx-mk/*`，业务集成 import 路径保持 `@mk/client` 契约（见 5.3）。
 
 ```
-mk/
+nx-mk/                                 # repo 名
+  package.json
+  pnpm-workspace.yaml
+  turbo.json
+  tsconfig.base.json
   package.json
   pnpm-workspace.yaml
   turbo.json
   tsconfig.base.json
 
   packages/
-    cli/
+    cli/                               # bin: mk (npx mk)
       src/
         index.ts
         commands/
@@ -311,7 +358,7 @@ mk/
           report.ts
           replay.ts
           loop.ts
-          ci.ts
+          migrate.ts                   # SDK-CG3：fetch('...') → api.xxx.xxx() codemod
           doctor.ts
         tui/
           render-progress.ts
@@ -319,6 +366,36 @@ mk/
           detect-project.ts
           auto-init.ts
           resolve-config.ts
+
+    client/                            # ← SDK Facade（Phase 1.5 + Phase 2）
+      src/
+        index.ts                       # host barrel；实际 api.user.getUser() 等由 @mk/client 生成
+        middleware/
+          auth.ts
+          transport.ts
+          normalize.ts
+        proxy/
+          create-tracked-proxy.ts      # §19：字段级 Proxy
+          path-normalizer.ts           # §17
+          proxy-cache.ts               # WeakMap 缓存
+        collector/
+          collector.ts                 # field-hit 收集
+          browser-collector.ts
+          noop-collector.ts
+        react/
+          Field.tsx                    # §20：UI Evidence
+          useField.ts
+        codegen/
+          generate-sdk.ts              # SDK-CG1/2：OpenAPI → typed sdk（见 §42.5）
+          ast/
+            emit-endpoint.ts
+        migrate/
+          fetch-to-sdk.ts              # SDK-CG3：codemod 核心
+          fetch-patch.ts               # SDK-CG3：fetch monkey-patch fallback
+        mode/
+          production.ts               # 薄壳，仅 fetch wrapper
+          analysis.ts                 # 包上 analysis 增强（proxy + collector）
+          index.ts
 
     kernel/
       src/
@@ -329,6 +406,8 @@ mk/
         event-bus.ts
         run-state.ts
         pipeline.ts
+        goal-loop.ts
+        initial-coverage.ts
 
     config/
       src/
@@ -337,6 +416,7 @@ mk/
         write-config.ts
         resolve-config.ts
         defaults.ts
+        __tests__/
 
     manifest/
       src/
@@ -348,27 +428,7 @@ mk/
         field-id.ts
         schema-diff.ts
         manifest-store.ts
-
-    runtime/
-      src/
-        client/
-          create-api-client.ts
-          middleware.ts
-          transport.ts
-        proxy/
-          create-tracked-proxy.ts
-          path-normalizer.ts
-          proxy-cache.ts
-        collector/
-          collector.ts
-          browser-collector.ts
-          noop-collector.ts
-        react/
-          Field.tsx
-        mode/
-          production.ts
-          analysis.ts
-          index.ts
+        __tests__/
 
     coverage/
       src/
@@ -400,6 +460,7 @@ mk/
         playwright-runner.ts
         request-replay.ts
         scenario-replay.ts
+        __tests__/
 
     dashboard-server/
       src/
@@ -451,32 +512,26 @@ mk/
         guard.ts
         project-api.ts
 
-    agent-provider-claude-code/
-      src/
-        index.ts
-
-    agent-provider-command/
-      src/
-        index.ts
-
-    agent-provider-http/
-      src/
-        index.ts
-
     plugin-swagger/
       src/
         index.ts
+        __tests__/
 
     plugin-coverage/
       src/
         index.ts
+        __tests__/
 
     plugin-agent/
       src/
         index.ts
+        __tests__/
 
   examples/
-    react-vite-demo/
+    react-vite-demo/                   # 详见 SDK-CG1/K-X1 决策
+      app/                             # React + Vite 前端
+      server/                          # Hono + zod-openapi 后端（自产 OpenAPI）
+      swagger/                         # 由 server 导出的 swagger.json（供 mk 输入）
     next-demo-later/
 
   docs/
@@ -488,6 +543,9 @@ mk/
     runtime-instrumentation.md
     agent-plugin-spec.md
     mvp-scope.md
+    plan/
+      nx-mk-plan.md                    # ← 本文件（已落 SDK-CG1/2/3 决策）
+      nx-mk-plan-questions.md          # ← 2026-09-03 已收口
 ```
 
 ---
@@ -515,9 +573,11 @@ npx mk run        # 只运行分析
 npx mk report     # 打开报告
 npx mk replay     # 复现请求或场景
 npx mk loop       # 运行 Agent Loop
-npx mk ci         # CI 模式
+npx mk migrate    # SDK-CG3：axios/fetch → @mk/client codemod（扫描 + 替换）
 npx mk doctor     # 环境检查
 ```
+
+> `npx mk ci` 已移出 MVP（见 42 Roadmap；E1/E2 CI 插件暂不实施）。
 
 ### 9.1 默认行为
 
@@ -614,6 +674,7 @@ privacy:
 scenarios:
   include:
     - mk/scenarios/**/*.yml
+  concurrency: 3  # F3: 每个 scenario 独立 browser context，并发 3（默认，可配最大 10）
 
 replay:
   allowMethods:
@@ -631,7 +692,7 @@ replay:
 agent:
   enabled: true
   provider:
-    type: claude-code
+    type: claude-code  # MVP 仅 claude-code（D2 已定）；custom-http/command 后置
     model: claude-sonnet-4
 
   permission:
@@ -666,12 +727,9 @@ agent:
 dashboard:
   port: 4317
   open: true
+  defaultView: latest  # G3: latest | history，默认 latest（按需切）
 
-ci:
-  failOn:
-    requiredCoverageBelow: 0.85
-    missingRequiredFieldsAbove: 0
-    suspiciousCoverageAbove: 0
+# CI 插件暂不实施（E1/E2），MVP 删除 ci 段；后置时再加
 ```
 
 每次运行生成 resolved config：
@@ -1101,7 +1159,9 @@ orders[].items[].skuName
 
 ## 18. Runtime Instrumentation
 
-### 18.1 模式解耦
+### 18.1 模式解耦（SDK Facade 接入层）
+
+> SDK Facade 是接入方式本身：用户装 `@mk/client`，业务代码改用 `api.user.getUser()`；由 SDK 根据模式自动切换内部行为（见 5.3）。**"零侵入"= 业务代码无 if/else 分支，并非"不改代码"**。
 
 业务代码始终调用：
 
@@ -1155,7 +1215,9 @@ analysis middlewares：
 
 ---
 
-## 19. 字段级 Proxy
+### 19. 字段级 Proxy（SDK Facade 内部行为）
+
+> 本段描述的是 SDK Facade 在 analysis 模式下的 **内部实现**，不是用户配置的 proxy。用户无须在 Vite/plugin 层额外配置 proxy——SDK Facade 自动完成 `fetch -> bind manifest -> tracked proxy -> collector`。
 
 ### 19.1 目标
 
@@ -1267,9 +1329,9 @@ React useEffect 无限触发
 
 ---
 
-## 20. UI Evidence
+## 20. UI Evidence（需显式标记）
 
-字段被读取不代表用户看到了。
+> 字段被读取不代表用户看到了：**UI Evidence 唯一可靠来源是显式标记**。业务代码须用 `<Field field="...">` 或 `data-mk-field` 标记字段归属（见 18.1/Agent 权限模型）。后续可提供 codemod / Babel/SWC 自动注入降低成本（后置）。
 
 因此需要单独采集 UI Evidence。
 
@@ -2370,13 +2432,13 @@ policy-agent 默认只建议，不自动修改 policy。
 
 ---
 
-## 36. Agent 权限模型
+## 36. Agent 权限模型（对齐 D1 决策）
 
 ```
 read-only
-suggest-diff
-workspace-write
-auto-apply
+suggest-diff       # MVP 默认
+workspace-write    # Phase 5+
+auto-apply         # Phase 5+ / opt-in
 ```
 
 | 模式            | 能力                  |
@@ -2386,17 +2448,9 @@ auto-apply
 | workspace-write | 可写允许目录          |
 | auto-apply      | loop 中自动应用并验证 |
 
-MVP 默认：
+**MVP 默认：suggest-diff**。D1 决策：MVP Agent 只产出 patch 文本 / diff，用户手动 apply；不实现 workspace-write / auto-apply（Phase 5+）。
 
-```
-suggest-diff
-```
-
-Loop 模式可开启：
-
-```
-workspace-write
-```
+Loop 模式下的 workspace-write / auto-apply 同样属于 Phase 5+ 能力，MVP 不启用。
 
 ---
 
@@ -2509,9 +2563,11 @@ Policy 变了 -> reanalyze only
 
 ---
 
-## 40. CI 模式
+## 40. CI 模式（后置，MVP 不实施）
 
-命令：
+> **决策依据**：E1/E2 — CI 插件暂不实施。MVP 主打本地开发自检（A2），CI 阻断门后置；roadmap 中不占 Phase。保留本节描述供未来重启参考。
+
+命令（保留设计，未实现）：
 
 ```bash
 npx mk ci
@@ -2527,7 +2583,7 @@ npx mk ci
 覆盖率不达标 exit 1
 ```
 
-配置：
+配置（保留设计，未实现）：
 
 ```yaml
 ci:
@@ -2546,19 +2602,20 @@ ci:
 ### 41.1 MVP 支持
 
 ```
-React + Vite
+React + Vite                          # C3: 后续 Next Client → Vue → 任意 SPA
 OpenAPI 3.x
+SDK Facade 接入（@mk/client，X1-A）   # C-X1/SDK-CG1-3 已收口：见 5.3
 GET 请求
 JSON response
-字段级 Proxy
-Playwright 场景
+字段级 Proxy（SDK Facade 内部行为，见 §19）
+Playwright 场景（并发 3，F3）
 Coverage Policy
 Request Trace
 SQLite 存储
 Dashboard 报告
 Returned but ignored
 GET Replay
-Agent suggest diff
+Agent suggest diff                    # D1：MVP 仅产 diff，不写文件
 ```
 
 ### 41.2 MVP 不支持
@@ -2601,6 +2658,19 @@ manifest.json
 Manifest Browser
 ```
 
+### Phase 1.5：SDK Facade Codegen，1-2 周  ← 新增（SDK-CG1/2/3 落地）
+
+```
+SDK-CG1：OpenAPI Manifest → typed SDK（@mk/client）
+         session 启动时基于 manifest 临时生成 SDK 文件（非提前打包）
+SDK-CG2：AST 转换优先的编译期 codegen → 带方法签名/参数/返回值类型的 .ts
+         可被 IDE 静态分析 + 自动补全
+SDK-CG3：codemod 自动迁移 + fetch monkey-patch fallback
+         现有 fetch('/api/...') 扫描 + 替换为 api.xxx.xxx()（`npx mk migrate`）
+         已装 @mk/client 但未全量迁移时：mk 也提供 fetch patch fallback，coverage 不丢失
+核心指标：demo Hono 后端产出的 OpenAPI → @mk/client typed endpoint 闭环打通
+```
+
 ### Phase 2：采集，2 周
 
 ```
@@ -2638,19 +2708,52 @@ plugin settings v0
 
 ```
 agent-sdk
-claude-code provider
-suggest diff
+claude-code provider                # MVP 仅 Claude Code SDK（D2 已定）
+suggest diff                        # D1：MVP 不写文件
 review guard
 loop v0
 ```
 
+> CI 模式（原 Phase 5.5）已移出 MVP（E1/E2：CI 插件暂不实施）。后置 Phase 视 Phase 0-5 完成后评估是否重启。
+
 ### 预计周期
 
 ```
-最小 demo：3-4 周
-可用 MVP：8-10 周
-较完整 alpha：12-16 周
+最小 demo：3-4 周       # Phase 0 + Phase 1 + Phase 1.5
+可用 MVP：8-10 周       # Phase 0-3 + Phase 4 部分
+较完整 alpha：12-16 周  # Phase 0-5
 ```
+
+### 42.5 SDK Codegen 技术要点（Phase 1.5 细化）
+
+> 本节落地 SDK-CG1/CG2/CG3 决策；实现包 `@nx-mk/client/src/codegen/`。
+
+**输入**：OpenAPI Manifest（`@nx-mk/manifest` 产出）
+
+**转换**：
+```
+manifest.endpoints[] → 按路径分段聚合 → 树形命名空间
+  /users/{id}/GET  → api.users.getUser(id)   # operationId 优先；缺失则 method+lastSegment
+  /orders/POST     → api.orders.createOrder(...)
+```
+
+**产物**（session 启动时写到 `node_modules/.mk/client/`，用户仅 import `@mk/client`）：
+```ts
+// 自动生成：types.d.ts + endpoints.ts + index.ts
+export const api = {
+  users: {
+    getUser: (id: string) => mkFetch<{ id: string; name: string; ... }>(...)
+  }
+}
+```
+
+**迁移**（SDK-CG3）：
+- codemod 扫描 `fetch\(\s*['"`]/api/` → 静态替换为 `api.xxx.yyy()`（可解析路径时）
+- 无法静态解析的（动态 URL、自定义 headers）→ 保留原代码 + mk 注入 fetch monkey-patch（fallback，coverage 不断）
+
+**验收**：
+- `examples/react-vite-demo` 的 Hono 后端产 OpenAPI → Phase 1 manifest → Phase 1.5 SDK → demo 前端用 `api.users.getUser(1)` 渲染
+- coverage.py/report 显示 field-access 命中数与 Playwright UI evidence 一致
 
 ---
 
@@ -2667,7 +2770,8 @@ loop v0
 | Loop 失控      | 反复修改无提升            | max iteration + rollback         |
 | 字段路径爆炸   | 数组 index 造成大量路径   | path normalizer                  |
 | SSR 漏采       | 服务端访问未记录          | 后续支持 server/client 双通道    |
-| 生产污染       | 分析代码进入生产包        | mode alias + conditional import  |
+| 生产污染       | 分析代码进入生产包        | X1-A：analysis session-only；SDK 薄壳 1-3KB；tracker 0 字节 |
+| SDK adoption 阻力 | 用户需手动装 @mk/client + 改 import | codemod（npx mk migrate）+ fetch monkey-patch fallback + IDE 自动补全降低成本 |
 
 ---
 
