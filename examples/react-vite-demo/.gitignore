@@ -1,0 +1,6 @@
+# demo 产物 —— 由 pnpm demo:openapi 落盘，gitignore 避免污染
+swagger/openapi.json
+
+# demo dist（vite build / tsx watch 输出）
+app/dist
+server/dist

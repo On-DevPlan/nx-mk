@@ -15,6 +15,10 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "dev": "pnpm -r --parallel dev",
+    "dev:server": "pnpm --filter @nx-mk-example/server dev",
+    "dev:app": "pnpm --filter @nx-mk-example/app dev",
+    "demo:openapi": "pnpm --filter @nx-mk-example/server openapi",
+    "demo:typecheck": "pnpm --filter @nx-mk-example/app typecheck && pnpm --filter @nx-mk-example/server typecheck",
     "clean": "pnpm -r clean && rm -rf node_modules"
   },
   "devDependencies": {
