@@ -1,0 +1,27 @@
+{
+  "name": "@nx-mk-example/app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "nx-mk Phase 1.5 demo frontend — React + Vite importing the SDK Facade generated from demo backend OpenAPI",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'demo lint skipped'",
+    "test": "echo 'demo tests skipped'",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "typescript": "^5.3.3",
+    "vite": "^5.4.10"
+  }
+}
