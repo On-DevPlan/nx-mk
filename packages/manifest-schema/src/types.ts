@@ -103,6 +103,8 @@ export interface ApiSchema {
   items?: ApiSchema
   required?: string[]
   nullable?: boolean
+  enum?: unknown[]                          // 枚举值（Phase 1.5 SDK codegen 用）
+  description?: string                      // 描述（Phase 1.5 SDK codegen 用）
 }
 
 // 解析选项（Plan §16 预留）

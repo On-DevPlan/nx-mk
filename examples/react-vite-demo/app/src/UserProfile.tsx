@@ -22,10 +22,9 @@ import { api } from './generated-sdk.js'
 type User = {
   id: string
   name: string
-  email: string | null
-  tags: string[]
-  address: { city: string; zip: string }
-  internalRiskScore?: number
+  email?: string
+  tags?: string[]
+  address?: { city?: string; zip?: string }
 }
 
 // Local Field placeholder —— 真实场景由 @nx-mk/client/react/Field 提供
@@ -43,7 +42,7 @@ export function UserProfile() {
 
   useEffect(() => {
     api.users
-      .getUser('u_001')
+      .getUser({ id: 'u_001' })
       .then((u) => setUser(u as User))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
   }, [])
@@ -64,14 +63,14 @@ export function UserProfile() {
         <dt>Tags</dt>
         <dd>
           <Field field="user.profile.tags">
-            {user.tags.join(', ')}
+            {(user.tags ?? []).join(', ')}
           </Field>
         </dd>
         <dt>Address</dt>
         <dd>
-          <Field field="user.profile.address.city">{user.address.city}</Field>
+          <Field field="user.profile.address.city">{user.address?.city ?? '—'}</Field>
           {' · '}
-          <Field field="user.profile.address.zip">{user.address.zip}</Field>
+          <Field field="user.profile.address.zip">{user.address?.zip ?? '—'}</Field>
         </dd>
         {/* internalRiskScore 故意不包裹 —— Coverage Policy 期望 ignored */}
       </dl>

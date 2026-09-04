@@ -18,6 +18,7 @@
     "dev:server": "pnpm --filter @nx-mk-example/server dev",
     "dev:app": "pnpm --filter @nx-mk-example/app dev",
     "demo:openapi": "pnpm --filter @nx-mk-example/server openapi",
+    "demo:codegen": "pnpm --filter @nx-mk-example/server openapi && pnpm --filter @nx-mk/client build && pnpm exec tsx examples/react-vite-demo/generate-sdk.ts",
     "demo:typecheck": "pnpm --filter @nx-mk-example/app typecheck && pnpm --filter @nx-mk-example/server typecheck",
     "clean": "pnpm -r clean && rm -rf node_modules"
   },
