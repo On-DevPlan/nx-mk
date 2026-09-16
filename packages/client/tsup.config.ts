@@ -8,6 +8,7 @@ export default defineConfig({
     runtime: 'src/runtime/index.ts',
     migrate: 'src/migrate/index.ts',
     proxy: 'src/proxy/index.ts',
+    collector: 'src/collector/index.ts',
   },
   format: ['esm'],
   dts: true,
