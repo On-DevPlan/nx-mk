@@ -16,9 +16,10 @@ import {
 import { runMain } from './commands/run.js'
 import { runInit } from './commands/init.js'
 import { runDoctor } from './commands/doctor.js'
+import { runMigrate } from './commands/migrate.js'
 
 // 子命令联合类型（run 为缺省值）
-type Subcommand = 'run' | 'init' | 'doctor'
+type Subcommand = 'run' | 'init' | 'doctor' | 'migrate'
 
 // argv 解析结果：子命令 + 各类全局选项（config/logLevel/outputDir/runId 可覆盖配置）
 interface ParsedArgs {
@@ -29,6 +30,14 @@ interface ParsedArgs {
   runId?: string
   help: boolean
   version: boolean
+  migrate: {
+    manifestPath?: string
+    dir?: string
+    apiPrefix?: string
+    importSpecifier?: string
+    dryRun: boolean
+    json: boolean
+  }
 }
 
 const HELP = `nx-mk — OpenAPI-driven API/UI coverage analyzer
@@ -40,12 +49,19 @@ Subcommands:
   run      (default) Run the full pipeline against the current project
   init     Scaffold nx-mk.config.yml and .nx-mk/ directory
   doctor   Verify the environment (Node, config, plugins)
+  migrate  Migrate static fetch('/api/...') calls to api.ns.method() (SDK-CG3)
 
 Options:
   --config <path>        Path to nx-mk.config.yml (overrides lookup)
   --log-level <level>    debug | info | warn | error | silent
   --output-dir <path>    Output directory for run artifacts (default ./.nx-mk/runs)
   --run-id <id>          Override the auto-generated run id
+  --manifest <path>      Path to .nx-mk/manifest.json (migrate only, default ./.nx-mk/manifest.json)
+  --dir <path>           Source dir to scan (migrate only, default ./src)
+  --api-prefix <prefix>  fetch URL prefix (migrate only, default /api)
+  --import <specifier>   Import specifier for api (migrate only, default ./generated-sdk)
+  --dry-run              Report without writing files (migrate only)
+  --json                 Machine-readable JSON report (migrate only)
   --version, -v          Print version and exit
   --help, -h             Print this help and exit
 
@@ -62,6 +78,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     subcommand: 'run',
     help: false,
     version: false,
+    migrate: { dryRun: false, json: false },
   }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
@@ -86,9 +103,28 @@ function parseArgs(argv: string[]): ParsedArgs {
       case '--run-id':
         out.runId = argv[++i]
         break
+      case '--manifest':
+        out.migrate.manifestPath = argv[++i]
+        break
+      case '--dir':
+        out.migrate.dir = argv[++i]
+        break
+      case '--api-prefix':
+        out.migrate.apiPrefix = argv[++i]
+        break
+      case '--import':
+        out.migrate.importSpecifier = argv[++i]
+        break
+      case '--dry-run':
+        out.migrate.dryRun = true
+        break
+      case '--json':
+        out.migrate.json = true
+        break
       case 'run':
       case 'init':
       case 'doctor':
+      case 'migrate':
         out.subcommand = a
         break
       default:
@@ -133,6 +169,9 @@ async function main(): Promise<void> {
       await runInit({
         configPath: args.configPath ? resolve(process.cwd(), args.configPath) : resolve(process.cwd(), 'nx-mk.config.yml'),
       })
+      return
+    case 'migrate':
+      await runMigrate(args.migrate)
       return
     case 'doctor': {
       // doctor 允许配置缺失：找不到配置时降级为 undefined 继续体检（该项检查会标记失败）
