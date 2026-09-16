@@ -14,9 +14,15 @@ importers:
       '@nx-mk/client':
         specifier: workspace:*
         version: link:packages/client
+      '@nx-mk/coverage':
+        specifier: workspace:*
+        version: link:packages/coverage
       '@nx-mk/manifest':
         specifier: workspace:*
         version: link:packages/manifest
+      '@nx-mk/plugin-playwright':
+        specifier: workspace:*
+        version: link:packages/plugin-playwright
       '@types/node':
         specifier: ^20.10.0
         version: 20.19.43

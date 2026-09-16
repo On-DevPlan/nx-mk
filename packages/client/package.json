@@ -19,6 +19,10 @@
       "types": "./dist/collector.d.ts",
       "import": "./dist/collector.js"
     },
+    "./proxy": {
+      "types": "./dist/proxy.d.ts",
+      "import": "./dist/proxy.js"
+    },
     "./migrate": {
       "types": "./dist/migrate.d.ts",
       "import": "./dist/migrate.js"
