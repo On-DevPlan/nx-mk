@@ -274,6 +274,9 @@ importers:
         specifier: ^1.49.0
         version: 1.63.0
     devDependencies:
+      '@nx-mk/config':
+        specifier: workspace:*
+        version: link:../config
       '@types/node':
         specifier: ^20.10.0
         version: 20.19.43

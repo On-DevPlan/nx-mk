@@ -6,5 +6,5 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   clean: true,
-  external: ['@nx-mk/kernel', '@nx-mk/client', '@nx-mk/coverage', 'playwright-core'],
+  external: ['@nx-mk/kernel', '@nx-mk/client', '@nx-mk/coverage', '@nx-mk/config', 'playwright-core'],
 })

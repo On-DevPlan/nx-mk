@@ -3,9 +3,10 @@
  *
  * v0 语义（重要，与任务简报的差异已在任务报告中记录）：
  * - 内核 Plugin 合约只有 before{Phase}/after{Phase} 钩子（无裸 run 钩子），
- *   且 runPhase('run') 在 beforeRun 之后、Goal Loop 之前会重置 loopState.reports ——
  *   故 v0 把【单次收集通路】放在 beforeRun 的 doctor 之后执行：
  *   goto → 扫描 → collector.evidence → snapshot → emitReport。
+ *   （内核 C1 修复后在 beforeRun 之前重置 loopState.reports —— beforeRun 期的
+ *   报告完整进入 Goal Loop，可驱动 spec §1.4.2 的 field-hit 提前 goal-met。）
  * - 不按 maxTurns 循环（单次收集，靠 Goal Loop idleTurns / maxTurns 终止）；
  *   maxTurns 字段在选项中保留，供后续版本启用逐 turn 驱动。
  * - 共享 collector（Ruling 2）：插件在工厂内创建（或接收注入的）collector，
@@ -14,12 +15,12 @@
  * - 报告双通道：扫描到的字段直接以 field-hit 报给 Goal Loop（emitReport）；
  *   endpoint-called 来自 collector.snapshot(turn)（浏览器侧 trace/hit 的增量）。
  *   不为 DOM 字段伪造 collector.hit —— 那会污染经 drain→SQLite 落盘的共享通道。
- * - 已知限制（goal 模式）：beforeRun 期间 emitReport 的报告会被内核在 Goal Loop
- *   启动前清空（kernel.ts runPhase('run') 内 loopState.reports = []）；
- *   非 goal 模式下报告正常累计。逐 turn 工作通道需内核后续任务补齐。
+ * - collect 段类型来自 @nx-mk/config 的 CollectConfigSchema（Task 6 审查 M3：
+ *   以 schema 为单一事实来源，替换本地宽松声明）。
  */
 import { KernelError, type Plugin, type PluginReport } from '@nx-mk/kernel'
 import { createCollector, type Collector, type CollectReport } from '@nx-mk/client/collector'
+import type { CollectConfig } from '@nx-mk/config'
 import { launchCollect, hasChromium } from './runner.js'
 
 export interface PlaywrightPluginOptions {
@@ -31,12 +32,6 @@ export interface PlaywrightPluginOptions {
   maxTurns?: number
   /** 注入的共享 collector；缺省时插件自建 */
   collector?: Collector
-}
-
-/** config.collect 区段（Config schema 尚未正式收录，宽松读取） */
-interface CollectSection {
-  url?: string
-  waitForSelector?: string
 }
 
 /** CollectReport → PluginReport 映射（补齐可选字段的缺省值） */
@@ -63,7 +58,9 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
         const cmd = ctx.kernel.getSubcommand()
         if (cmd !== 'run' && cmd !== 'doctor') return
 
-        const collect = (ctx.config as { collect?: CollectSection }).collect
+        // M3（Task 6 审查）：collect 段类型经 schema 收窄读取 —— kernel 的
+        // ResolvedConfig 尚未声明该字段，交集断言保证与 schema 类型一致
+        const collect = (ctx.config as typeof ctx.config & { collect?: CollectConfig }).collect
         if (!collect) {
           ctx.logger.info('plugin-playwright: collect not configured, skipping', { cmd })
           return
