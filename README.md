@@ -6,10 +6,13 @@
 
 ## 当前状态
 
-**Phase 0 进行中** — 项目骨架 + 微内核（插件机制 + 生命周期）
+**Phase 1.5 完成** — SDK Facade Codegen（SDK-CG1/CG2/CG3）+ demo 闭环打通。
+下一步：Phase 2 采集（runtime proxy / collector / Playwright / SQLite trace store / UI evidence v0）。
 
-完整方案见 [`docx/plan/mk-plan.md`](./docx/plan/mk-plan.md)。
-完整 spec 见 [`docs/superpowers/specs/2026-08-26-mk-foundation-and-sdk-design.md`](./docs/superpowers/specs/2026-08-26-mk-foundation-and-sdk-design.md)。
+demo 闭环：`pnpm demo:codegen` 一键跑 `demo:openapi` → `nx-mk run`（plugin-swagger → manifest.json）→ codegen → `app/src/generated-sdk.ts`。存量代码迁移：`npx nx-mk migrate`（静态 fetch 替换）+ `patchGlobalFetch()`（兜底）。
+
+完整方案见 [`docx/plan/nx-mk-plan.md`](./docx/plan/nx-mk-plan.md)。
+本阶段 spec 见 [`docs/superpowers/specs/2026-09-16-nx-mk-phase15-close-loop-sdk-cg3-design.md`](./docs/superpowers/specs/2026-09-16-nx-mk-phase15-close-loop-sdk-cg3-design.md)。
 
 ## 开发
 

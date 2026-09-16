@@ -1,0 +1,16 @@
+# nx-mk Phase 1.5 demo config —— 指向 demo 后端生成的 swagger.json
+# 用法：在 demo 目录（examples/react-vite-demo）直接 `nx-mk run`
+# （findConfigFile 只认 nx-mk.config.{yml,yaml}，故由 mk.config.yml 改名而来）
+version: 1
+
+project:
+  name: nx-mk-demo
+
+openapi: ./swagger/openapi.json
+
+plugins:
+  - '@nx-mk/plugin-swagger'
+
+# demo 后端必须先跑（Hono 默认 8787）
+runtime:
+  retainRuns: 5

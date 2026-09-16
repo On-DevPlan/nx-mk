@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import type { ApiManifest } from '@nx-mk/manifest-schema'
+import type { ApiManifest, ApiEndpoint, ApiField } from '@nx-mk/manifest-schema'
 import {
   emitType,
   emitNamedTypes,
@@ -213,3 +213,69 @@ describe('generateSdk (end-to-end)', () => {
     expect(code).toContain('abc')
   })
 })
+
+describe('emitEndpoint 返回类型（array-of-named，spec §3.3）', () => {
+  it('named → Promise<User>', () => {
+    const ep: ApiEndpoint = {
+      id: 'e1', method: 'GET', path: '/users/{id}', operationId: 'getUser', tags: ['users'],
+      request: { pathParams: [field('id', 'string', true)] },
+      responses: [{ status: '200', schema: { kind: 'named', name: 'User' }, fields: [] }],
+    }
+    expect(emitEndpoint(ep).signature).toBe('getUser: (params: { id: string }): Promise<User> => {')
+  })
+
+  it('array + named items → Promise<User[]>', () => {
+    const ep: ApiEndpoint = {
+      id: 'e2', method: 'GET', path: '/users', tags: ['users'],
+      responses: [{ status: '200', schema: { kind: 'array', items: { kind: 'named', name: 'User' } }, fields: [] }],
+    }
+    expect(emitEndpoint(ep).signature).toBe('listUsers: (params: {}): Promise<User[]> => {')
+  })
+
+  it('无 schema / object → unknown（现状不变）', () => {
+    const ep: ApiEndpoint = {
+      id: 'e3', method: 'GET', path: '/x',
+      responses: [{ status: '200', schema: { kind: 'object' }, fields: [] }],
+    }
+    expect(emitEndpoint(ep).signature).toContain('Promise<unknown>')
+  })
+})
+
+describe('emitEndpoint 参数类型从 field.type 推导（spec §3.3）', () => {
+  it('string/number/boolean → TS 原始类型；其余 unknown', () => {
+    const ep: ApiEndpoint = {
+      id: 'e4', method: 'GET', path: '/items/{a}/{b}/{c}/{d}',
+      request: {
+        pathParams: [field('a', 'string', true), field('b', 'integer', true), field('c', 'boolean', false), field('d', 'object', true)],
+      },
+      responses: [],
+    }
+    const sig = emitEndpoint(ep).signature
+    expect(sig).toContain('a: string')
+    expect(sig).toContain('b: number')
+    expect(sig).toContain('c?: boolean')
+    expect(sig).toContain('d: unknown')
+  })
+})
+
+describe('emitEndpoint query 参数 optional 标记', () => {
+  it('required query → q: string；optional query → q?: string（与 path 分支语义对齐）', () => {
+    const ep: ApiEndpoint = {
+      id: 'e5', method: 'GET', path: '/items',
+      request: { query: [field('q', 'string', true), field('tag', 'string', false)] },
+      responses: [],
+    }
+    const sig = emitEndpoint(ep).signature
+    expect(sig).toContain('q: string')
+    expect(sig).toContain('tag?: string')
+  })
+})
+
+// 测试辅助：构造 ApiField 最小形态
+function field(name: string, type: string, required: boolean): ApiField {
+  return {
+    id: `f_${name}`, endpointId: 'e', direction: 'request',
+    path: name, normalizedPath: name, name, type, required,
+    source: { openapiPointer: '' },
+  }
+}
