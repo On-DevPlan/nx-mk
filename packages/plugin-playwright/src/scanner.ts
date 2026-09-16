@@ -5,7 +5,11 @@
  * 可序列化、无闭包依赖的纯表达式），产出 DomFieldDescriptor 原始数组；
  * toDescriptors 在 Node 侧对 evaluate 输出做防御性解析：非数组 or 畸形条目
  * 静默过滤，保证 scanDom 的输入契约。
+ *
+ * Ruling 7（Task 7 审查）：另承载浏览器侧 collector shim 注入脚本与 Node 侧
+ * 回捞 —— 放本模块（playwright-free）以保持纯函数可测性。
  */
+import type { Collector, FieldHitCore, RequestTraceCore } from '@nx-mk/client/collector'
 
 // 注入脚本：逐项读 data-mk-field 属性、可见性与视口相交性。
 // 注意脚本内不能引用模块变量 —— 全部走 document/window。
@@ -84,5 +88,88 @@ export async function scanPage(
   } catch (err) {
     onScanError?.(err)
     return []
+  }
+}
+
+/**
+ * Ruling 7 —— 浏览器侧 collector shim（addInitScript 注入的字面脚本）：
+ * 页内 `window.__MK_COLLECTOR__` 单通道缓冲 —— demo 业务代码（Ruling 6 缺省解析）
+ * 从 analysis 分支 hit()/trace() 进这里；Node 侧 launchCollect 在页面工作完成后
+ * 经 drainBrowserCollector 回捞进共享 collector，再清空页内缓冲。
+ * 注意：shim 必须无 Node 依赖（buffer 只是普通数组），故可序列化注入。
+ */
+export const COLLECTOR_SHIM_SCRIPT = `(() => {
+  if (window.__MK_COLLECTOR__) return
+  window.__MK_COLLECTOR__ = {
+    hits: [],
+    traces: [],
+    hit(h) { this.hits.push(h) },
+    trace(t) { this.traces.push(t) },
+  }
+})()`
+
+/** 页内 shim 缓冲的原始条目形状（信任边界外 —— 全部可选，回捞侧防御性过滤） */
+interface BrowserShimWindow {
+  __MK_COLLECTOR__?: {
+    hits: unknown[]
+    traces: unknown[]
+  }
+}
+
+/**
+ * drainBrowserCollector —— Node 侧回捞（Ruling 7）：
+ * page.evaluate 读页内 shim 的 hits/traces（原始信任边界外数据）→ 防御性过滤
+ * → collector.hit/trace 投进共享 collector → page.evaluate 清空页内缓冲。
+ * 探针纪律：evaluate 或解析失败只静默空回捞（回捞缺失不阻断收集通路 —— DOM
+ * evidence 通道不受影响；spec §4 的 trace/flush 失败语义不受此影响）。
+ *
+ * flush 输入端契约：hits 需带 count（drained 契约）—— 回捞侧补 count=1
+ * （页内 shim 每次读取 push 1 条，聚合在共享 collector 侧按 normalizedPath 完成）。
+ */
+export async function drainBrowserCollector(
+  evaluate: (fn: unknown) => Promise<unknown>,
+  collector: Collector,
+): Promise<void> {
+  // 读回捞脚本：保留页数组引用（清空用原引用保序 —— 页面代码可能另持引用）
+  const READ_SHIM =
+    '(() => { const c = window.__MK_COLLECTOR__; if (!c) return null; return { hits: c.hits.slice(), traces: c.traces.slice() } })()'
+  const CLEAR_SHIM =
+    '(() => { const c = window.__MK_COLLECTOR__; if (!c) return; c.hits.length = 0; c.traces.length = 0 })()'
+  try {
+    const raw = (await evaluate(READ_SHIM)) as BrowserShimWindow['__MK_COLLECTOR__']
+    if (!raw || !Array.isArray(raw.hits) || !Array.isArray(raw.traces)) return
+    for (const h of raw.hits) {
+      if (!h || typeof h !== 'object') continue
+      const hit = h as Partial<FieldHitCore>
+      if (typeof hit.normalizedPath !== 'string' || hit.normalizedPath === '') continue
+      collector.hit({
+        requestId: typeof hit.requestId === 'string' ? hit.requestId : '(unknown)',
+        endpointId: typeof hit.endpointId === 'string' ? hit.endpointId : '(unknown)',
+        fieldPath: typeof hit.fieldPath === 'string' ? hit.fieldPath : hit.normalizedPath,
+        normalizedPath: hit.normalizedPath,
+        type: 'get',
+        timestamp: typeof hit.timestamp === 'number' ? hit.timestamp : Date.now(),
+      } satisfies FieldHitCore)
+    }
+    for (const t of raw.traces) {
+      if (!t || typeof t !== 'object') continue
+      const trace = t as Partial<RequestTraceCore>
+      if (typeof trace.url !== 'string' || typeof trace.method !== 'string') continue
+      collector.trace({
+        requestId: typeof trace.requestId === 'string' ? trace.requestId : `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        endpointId: typeof trace.endpointId === 'string' ? trace.endpointId : undefined,
+        method: trace.method,
+        url: trace.url,
+        path: typeof trace.path === 'string' ? trace.path : undefined,
+        status: typeof trace.status === 'number' ? trace.status : undefined,
+        durationMs: typeof trace.durationMs === 'number' ? trace.durationMs : undefined,
+        startedAt: typeof trace.startedAt === 'string' ? trace.startedAt : undefined,
+        endedAt: typeof trace.endedAt === 'string' ? trace.endedAt : undefined,
+      } satisfies RequestTraceCore)
+    }
+    // 清空页内缓冲 —— 必须在 snapshot（增量去重）消费这些数据之前完成
+    await evaluate(CLEAR_SHIM)
+  } catch {
+    // 回捞失败 → 空（不阻断；DOM evidence 通道独立）
   }
 }

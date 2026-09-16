@@ -17,6 +17,15 @@
  *   不为 DOM 字段伪造 collector.hit —— 那会污染经 drain→SQLite 落盘的共享通道。
  * - collect 段类型来自 @nx-mk/config 的 CollectConfigSchema（Task 6 审查 M3：
  *   以 schema 为单一事实来源，替换本地宽松声明）。
+ * - Ruling 7（Task 8）：浏览器通道已接线 —— runner.launchCollect addInitScript
+ *   注入 window.__MK_COLLECTOR__ shim（demo 业务代码经 Ruling 6 缺省解析 hit/trace），
+ *   页面工作完成后 drainBrowserCollector 回捞进共享 collector（先于 snapshot）。
+ * - Ruling 8 限制（本任务不注入 manifest）：插件无法低成本拿到 ApiManifest（kernel
+ *   ctx 不携带 manifest 文件内容，.nx-mk/manifest.json 读取需引入 manifest 包解析），
+ *   故不注入 __MK_MANIFEST__。后果：浏览器侧 fetch 的 endpointId 落 'unknown' fallback
+ *   （trace.sql endpoint_id 列为 NULL —— flushDrained 语义已覆盖）；goal-met 验收
+ *   不受影响 —— field-hit 报告来自 DOM descriptor 直报（不经 matchEndpoint），
+ *   request_traces 的 method/path 全落入表。manifest 注入留给 Phase 3。
  */
 import { KernelError, type Plugin, type PluginReport } from '@nx-mk/kernel'
 import { createCollector, type Collector, type CollectReport } from '@nx-mk/client/collector'

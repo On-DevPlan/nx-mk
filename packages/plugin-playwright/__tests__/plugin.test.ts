@@ -5,11 +5,11 @@
  * 插件侧编排（field-hit 直报 + snapshot 增量 → emitReport）走真实代码。
  * 另覆盖 beforeRun doctor 语义（collect 缺失静默 skip / chromium 不可用 fail-fast）。
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest'
 import { KernelError } from '@nx-mk/kernel'
 import { createCollector } from '@nx-mk/client/collector'
 import { createPlaywrightPlugin } from '../src/index.js'
-import { toDescriptors, scanPage } from '../src/scanner.js'
+import { toDescriptors, scanPage, COLLECTOR_SHIM_SCRIPT, drainBrowserCollector } from '../src/scanner.js'
 
 const EVAL_RESULT = [
   { dataMkField: 'data.id', visible: true, inViewport: true },
@@ -107,6 +107,57 @@ describe('default export（plugin-registry 零参工厂形状兼容）', () => {
     expect(plugin.name).toBe('@nx-mk/plugin-playwright')
     expect(plugin.version).toBe('0.1.0')
     expect(plugin.hooks).toBeTypeOf('object')
+  })
+})
+
+describe('Ruling 7 浏览器 shim + Node 侧回捞（scanner 纯函数，playwright-core 不参与）', () => {
+  // 回捞脚本面向浏览器（window.x）；Node 测试环境缺 window —— 显式别名到 globalThis
+  // 模拟「globalThis 上有页内 shim」，脚本文本本身保持 Ruling 7 逐字（window.__MK_COLLECTOR__）
+  beforeAll(() => {
+    ;(globalThis as Record<string, unknown>).window = globalThis
+  })
+  afterAll(() => {
+    delete (globalThis as Record<string, unknown>).window
+  })
+  it('COLLECTOR_SHIM_SCRIPT 注入 window.__MK_COLLECTOR__ 单通道缓冲（可序列化）', () => {
+    expect(COLLECTOR_SHIM_SCRIPT).toContain('window.__MK_COLLECTOR__')
+    expect(COLLECTOR_SHIM_SCRIPT).toContain('hits')
+    expect(COLLECTOR_SHIM_SCRIPT).toContain('traces')
+    // 纯字符串无模块依赖：可直接作为函数体编译（addInitScript 注入合法）
+    expect(() => new Function(COLLECTOR_SHIM_SCRIPT)).not.toThrow()
+  })
+
+  it('drainBrowserCollector：回捞 hits/traces → 共享 collector 投递 + 页内缓冲清空', async () => {
+    // 页内 shim 镜像（globalThis 在浏览器即 window）
+    const shim = {
+      hits: [
+        { requestId: 'r_b', endpointId: 'ep1', fieldPath: 'data.id', normalizedPath: 'data.id', type: 'get', timestamp: 1 },
+      ],
+      traces: [{ requestId: 'r_b', endpointId: 'ep1', method: 'GET', url: 'http://x/api/users/u1', path: '/users/u1', status: 200 }],
+      hit() {},
+      trace() {},
+    }
+    ;(globalThis as Record<string, unknown>).__MK_COLLECTOR__ = shim
+    try {
+      const collector = createCollector()
+      // evaluate 桩：字符串脚本用 eval 执行（镜像 page.evaluate(String) 行为，
+      // globalThis 上有页内 shim）
+      await drainBrowserCollector(async (fn) => (0, eval)(fn as string), collector)
+      const drained = collector.drain()
+      expect(drained.hits.some((h) => h.normalizedPath === 'data.id')).toBe(true)
+      expect(drained.traces.some((t) => t.requestId === 'r_b')).toBe(true)
+      // 回捞后页内缓冲已清空（重复回捞不重复计数）
+      expect(shim.hits).toHaveLength(0)
+      expect(shim.traces).toHaveLength(0)
+    } finally {
+      delete (globalThis as Record<string, unknown>).__MK_COLLECTOR__
+    }
+  })
+
+  it('drainBrowserCollector：页内无 shim（未注入/被页面覆盖）→ 静默空回捞', async () => {
+    const collector = createCollector()
+    await drainBrowserCollector(async (fn) => (0, eval)(fn as string), collector)
+    expect(collector.drain()).toEqual({ hits: [], traces: [], evidence: [] })
   })
 })
 
