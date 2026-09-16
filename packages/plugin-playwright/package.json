@@ -1,0 +1,34 @@
+{
+  "name": "@nx-mk/plugin-playwright",
+  "version": "0.1.0",
+  "private": true,
+  "description": "nx-mk Playwright collection plugin — headless DOM scan + Goal Loop reports (spec §3.4)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@nx-mk/kernel": "workspace:*",
+    "@nx-mk/client": "workspace:*",
+    "@nx-mk/coverage": "workspace:*",
+    "playwright-core": "^1.49.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsup": "^8.0.2",
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.4"
+  }
+}
