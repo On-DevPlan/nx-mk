@@ -64,6 +64,12 @@ export async function runMain(opts: RunMainOptions): Promise<void> {
       db.endRun(runId, new Date().toISOString(), 'completed')
       // spec §4：flush SQLite 写入失败 = fail-fast（数据完整性优先于静默失败）
       if (opts.collector) db.flushDrained({ runId, ...opts.collector.drain() })
+      // I1（Task 7 审查）：collect 配置存在而共享 collector 未注入 —— flush 通道未接线，
+      // 显式 warn 而非静默空库（db 存在但三表全空是验收调试的时间黑洞）
+      else if (collect)
+        console.warn(
+          'collect configured but no shared collector injected — evidence/trace data will not be persisted',
+        )
     }
   } catch (err) {
     if (db) {

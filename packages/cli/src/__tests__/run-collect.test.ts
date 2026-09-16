@@ -34,6 +34,12 @@ function silenceConsole(): ReturnType<typeof vi.spyOn> {
   return vi.spyOn(console, 'log').mockImplementation(() => {})
 }
 
+// I1（Task 7 审查）：collect 配置而 collector 未注入 → console.warn 一行
+// （静默空 flush —— db 存在但三表全空 —— 是验收调试的时间黑洞）
+function spyWarn(): ReturnType<typeof vi.spyOn> {
+  return vi.spyOn(console, 'warn').mockImplementation(() => {})
+}
+
 describe('runMain collect 装配（spec §3.6）', () => {
   it('collect 缺失 → 不建 coverage.db', async () => {
     const log = silenceConsole()
@@ -102,10 +108,15 @@ describe('runMain collect 装配（spec §3.6）', () => {
       inViewport: true,
     })
     const log = silenceConsole()
+    const warn = spyWarn()
+    let warnCount = -1
     try {
       await runMain({ configPath, runId: 'run_flush', cwd: workDir, collector })
+      // 注意：mockRestore 会清空 mock.calls，先取计数再恢复
+      warnCount = warn.mock.calls.length
     } finally {
       log.mockRestore()
+      warn.mockRestore()
     }
     const db = openCoverageDb(dbPath)
     try {
@@ -115,6 +126,25 @@ describe('runMain collect 装配（spec §3.6）', () => {
     } finally {
       db.close()
     }
+    // 注入了 collector → 不触发「通道未接线」warn
+    expect(warnCount).toBe(0)
+  })
+
+  it('collect 配置而 collector 未注入 → warn 提示 flush 通道未接线（I1）', async () => {
+    writeFileSync(configPath, "plugins: []\ncollect:\n  url: 'http://localhost:5173'\n")
+    const log = silenceConsole()
+    const warn = spyWarn()
+    let warnMessages: string[] = []
+    try {
+      await runMain({ configPath, runId: 'run_warn', cwd: workDir })
+      // mockRestore 会清空 mock.calls，先拷贝再恢复
+      warnMessages = warn.mock.calls.map((c) => String(c[0]))
+    } finally {
+      log.mockRestore()
+      warn.mockRestore()
+    }
+    expect(warnMessages).toHaveLength(1)
+    expect(warnMessages[0]).toContain('collect configured but no shared collector injected')
   })
 
   it('collect.url 非 http(s) → CONFIG_INVALID 且不建 db', async () => {
