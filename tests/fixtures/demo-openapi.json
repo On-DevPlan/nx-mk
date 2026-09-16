@@ -118,6 +118,7 @@
   "paths": {
     "/users/{id}": {
       "get": {
+        "operationId": "getUser",
         "tags": [
           "users"
         ],
@@ -166,6 +167,7 @@
     },
     "/users": {
       "get": {
+        "operationId": "listUsers",
         "tags": [
           "users"
         ],
@@ -189,6 +191,7 @@
     },
     "/orders": {
       "post": {
+        "operationId": "createOrder",
         "tags": [
           "orders"
         ],
