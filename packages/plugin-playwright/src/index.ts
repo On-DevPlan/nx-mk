@@ -27,8 +27,9 @@
  *   method/path 全落入表。manifest 注入留给 Phase 3。
  * - §1.4.2 goal-met 延期（计划级记账，Phase 3 修）：goal-loop 的 field-hit 断言的
  *   id 空间是 manifest stableFieldId（哈希），而 DOM 直报 fieldId 是 dataMkField
- *   字符串 —— 两者恒不相等，coverage 永不匹配 → goal-met 经 field-hit 实际不可达，
- *   demo 靠 maxTurns 终止（terminatedBy 也未持久化）。修法：normalizedPath 键域
+ *   字符串 —— 两者恒不相等，coverage 永不匹配 → goal-met 经 field-hit 实际不可达；
+ *   且 demo config 未配 goal: 段（Goal Loop 不启用，v0 demo = 单次收集 + maxTurns
+ *   上限语义，terminatedBy 未持久化）。修法：goal 段接入 + normalizedPath 键域
  *   的映射 + manifest 注入，一并排 Phase 3。
  * - Ruling 7 shim 语义补充（Task 8 审查 Important #3）：addInitScript 按文档重放
  *   —— 整页导航时 shim 重新初始化、缓冲清零；未及回捞的 hits/traces 即丢。v0

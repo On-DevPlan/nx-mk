@@ -1,6 +1,6 @@
 /**
  * 极简 policy v0（spec D7）：required response 字段未被 field-hit → missing；
- * optional 字段永不进入 missing（仅影响 covered 计数）。
+ * optional 字段永不进覆盖口径（state='optional-unhit'，不计入 covered 也不进 missing）。
  * 同时把逐字段状态写 coverage_fields 表（§25.8，13 列）。
  */
 import type { ApiManifest } from '@nx-mk/manifest-schema'
