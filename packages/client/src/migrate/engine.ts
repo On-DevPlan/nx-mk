@@ -9,7 +9,8 @@
  *   4. 第二参缺省 → GET；ObjectLiteral 仅含 method 字面量 → 采用；否则 request init not supported
  *   5. 剥前缀后按段与 endpoint path 模板匹配（段数相等、字面段相等、{param} 捕获）
  *   6. 替换为 api.ns.method() / api.ns.method({ id: "v" })；ns/method 走 codegen 同源 derive
- *   7. 有替换且缺 import → 插入 `import { api } from '<importSpecifier>'`（按 specifier 去重）
+ *   7. 有替换且缺 import → 插入 `import { api } from '<importSpecifier>'`
+ *      （去重口径：同 specifier 且其 named imports 实际绑定 `api`，仅 specifier 命中不算）
  */
 
 import ts from 'typescript'
@@ -53,10 +54,11 @@ export function migrateCodemod(input: MigrateCodemodInput): MigrateCodemodResult
   const report: MigrateReport = { replaced: [], skipped: [] }
 
   const files = input.files.map((file) => {
-    const edits = collectEdits(file, { apiPrefix, index, report })
+    // 每文件只建一次 SourceFile：扫描与 import 检查共用（位置信息一致）
+    const source = ts.createSourceFile(file.path, file.content, ts.ScriptTarget.Latest, true)
+    const edits = collectEdits(source, file.path, { apiPrefix, index, report })
     if (edits.length === 0) return { ...file, changed: false }
 
-    const source = ts.createSourceFile(file.path, file.content, ts.ScriptTarget.Latest, true)
     if (!hasApiImport(source, importSpecifier)) {
       edits.push(importInsertEdit(source, importSpecifier))
     }
@@ -94,15 +96,15 @@ interface ScanContext {
 }
 
 function collectEdits(
-  file: { path: string; content: string },
+  source: ts.SourceFile,
+  path: string,
   ctx: ScanContext,
 ): Edit[] {
-  const source = ts.createSourceFile(file.path, file.content, ts.ScriptTarget.Latest, true)
   const edits: Edit[] = []
 
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'fetch') {
-      handleFetchCall(node, file.path, source, ctx, edits)
+      handleFetchCall(node, path, source, ctx, edits)
     }
     ts.forEachChild(node, visit)
   }
@@ -213,9 +215,13 @@ function handleFetchCall(
 // ─── import 检测与插入 ──────────────────────────────────────────────────────
 
 function hasApiImport(source: ts.SourceFile, specifier: string): boolean {
-  return source.statements.some(
-    (st) => ts.isImportDeclaration(st) && ts.isStringLiteral(st.moduleSpecifier) && st.moduleSpecifier.text === specifier,
-  )
+  return source.statements.some((st) => {
+    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) return false
+    if (st.moduleSpecifier.text !== specifier) return false
+    const clause = st.importClause
+    if (!clause?.namedBindings || !ts.isNamedImports(clause.namedBindings)) return false
+    return clause.namedBindings.elements.some((el) => el.name.text === 'api')
+  })
 }
 
 function importInsertEdit(source: ts.SourceFile, specifier: string): Edit {

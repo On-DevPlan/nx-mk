@@ -258,6 +258,19 @@ describe('emitEndpoint 参数类型从 field.type 推导（spec §3.3）', () =>
   })
 })
 
+describe('emitEndpoint query 参数 optional 标记', () => {
+  it('required query → q: string；optional query → q?: string（与 path 分支语义对齐）', () => {
+    const ep: ApiEndpoint = {
+      id: 'e5', method: 'GET', path: '/items',
+      request: { query: [field('q', 'string', true), field('tag', 'string', false)] },
+      responses: [],
+    }
+    const sig = emitEndpoint(ep).signature
+    expect(sig).toContain('q: string')
+    expect(sig).toContain('tag?: string')
+  })
+})
+
 // 测试辅助：构造 ApiField 最小形态
 function field(name: string, type: string, required: boolean): ApiField {
   return {

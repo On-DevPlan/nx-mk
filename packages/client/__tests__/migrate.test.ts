@@ -113,6 +113,16 @@ describe('migrateCodemod import 处理', () => {
     expect(count).toBe(1)
   })
 
+  it('同 specifier 但未绑定 api（如只 import User）：仍插入 import { api }，原 import 保留', () => {
+    const { files } = migrate(
+      `import { User } from './generated-sdk'\nexport const p = fetch('/api/users/u_001')`,
+    )
+    const content = files[0]!.content
+    expect(content).toContain(`import { User } from './generated-sdk'`)
+    expect(content).toContain(`import { api } from './generated-sdk'`)
+    expect(content.match(/^import /gm)).toHaveLength(2) // 两条 import 语句共存
+  })
+
   it('未命中文件 changed=false 且内容原样', () => {
     const { files } = migrate(`export const x = 1`)
     expect(files[0]).toEqual({ path: 'src/a.ts', content: `export const x = 1`, changed: false })

@@ -37,7 +37,9 @@ export function patchGlobalFetch(options: PatchGlobalFetchOptions = {}): () => v
         typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
       const rawMethod = init?.method ?? (input instanceof Request ? input.method : 'GET')
       const method = rawMethod.toUpperCase()
-      const hit = new URL(url, 'http://localhost').pathname.startsWith(apiPrefix)
+      // 与 migrate 引擎同口径：前缀须整段命中（/api 或 /api/...），/apiv2 不算
+      const { pathname } = new URL(url, 'http://localhost')
+      const hit = pathname === apiPrefix || pathname.startsWith(`${apiPrefix}/`)
       if (hit) onCapture?.({ method, url })
     } catch {
       // 探针解析失败不影响业务请求

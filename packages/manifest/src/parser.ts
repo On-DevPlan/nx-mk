@@ -28,6 +28,9 @@ function escapePointerSegment(seg: string): string {
   return seg.replace(/~/g, '~0').replace(/\//g, '~1')
 }
 
+// OpenAPI 支持的 HTTP 动词（主循环与 raw 预扫描共用，防漂移）
+const OPENAPI_METHODS: readonly string[] = ['get', 'post', 'put', 'patch', 'delete', 'head']
+
 /**
  * 解析 OpenAPI 文档 → ApiManifest
  * @param specPath OpenAPI 源文件路径（JSON，YAML 暂不支持——见 final review 的已知限制）
@@ -54,7 +57,7 @@ export async function parseOpenApi(
   // 遍历 paths：每个 path 下可能有多个 method（get/post/put/patch/delete/head）
   for (const [path, pathItem] of Object.entries<any>(api.paths ?? {})) {
     for (const [method, operation] of Object.entries<any>(pathItem)) {
-      if (!['get', 'post', 'put', 'patch', 'delete', 'head'].includes(method)) continue
+      if (!OPENAPI_METHODS.includes(method)) continue
 
       const httpMethod = method.toUpperCase() as HttpMethod
       // endpointId = sha1(method:path) 前 12 位（与 stableFieldId 同源）
@@ -172,7 +175,7 @@ function extractRawSchemaRefs(api: any): Map<string, RawEndpointRefs> {
   const map = new Map<string, RawEndpointRefs>()
   for (const [path, pathItem] of Object.entries<any>(api.paths ?? {})) {
     for (const [method, operation] of Object.entries<any>(pathItem)) {
-      if (!['get', 'post', 'put', 'patch', 'delete', 'head'].includes(method)) continue
+      if (!OPENAPI_METHODS.includes(method)) continue
       const responses: Record<string, SchemaRef | undefined> = {}
       for (const [status, response] of Object.entries<any>(operation.responses ?? {})) {
         responses[status] = classifyRawSchema(response?.content?.['application/json']?.schema)
@@ -187,7 +190,11 @@ function extractRawSchemaRefs(api: any): Map<string, RawEndpointRefs> {
 /** 顶层分类：$ref → named；array → array(+items)；原始类型 → primitive；其余 object（异常形态降级不抛错） */
 function classifyRawSchema(schema: any): SchemaRef | undefined {
   if (!schema) return undefined
-  if (typeof schema.$ref === 'string') return { kind: 'named', name: refName(schema.$ref) }
+  if (typeof schema.$ref === 'string') {
+    // spec §4：非 #/components/schemas/ 指针降级为 object，避免产出 schemas 表里没有的孤儿 named ref
+    if (!schema.$ref.startsWith('#/components/schemas/')) return { kind: 'object' }
+    return { kind: 'named', name: refName(schema.$ref) }
+  }
   if (schema.type === 'array') {
     const items = classifyRawSchema(schema.items)
     return items ? { kind: 'array', items } : { kind: 'array' }

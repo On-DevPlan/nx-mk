@@ -11,6 +11,9 @@
 
 demo 闭环：`pnpm demo:codegen` 一键跑 `demo:openapi` → `nx-mk run`（plugin-swagger → manifest.json）→ codegen → `app/src/generated-sdk.ts`。存量代码迁移：`npx nx-mk migrate`（静态 fetch 替换）+ `patchGlobalFetch()`（兜底）。
 
+完整方案见 [`docx/plan/nx-mk-plan.md`](./docx/plan/nx-mk-plan.md)。
+本阶段 spec 见 [`docs/superpowers/specs/2026-09-16-nx-mk-phase15-close-loop-sdk-cg3-design.md`](./docs/superpowers/specs/2026-09-16-nx-mk-phase15-close-loop-sdk-cg3-design.md)。
+
 ## 开发
 
 ```bash

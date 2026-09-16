@@ -93,7 +93,8 @@ export function emitEndpoint(endpoint: ApiEndpoint): MethodSignature {
       parts.push(`${p.name}${p.required === false ? '?' : ''}: ${fieldTypeToTs(p.type)}`)
     }
     for (const q of qp) {
-      parts.push(`${q.name}${q.required === false ? '?' : ''}?: ${fieldTypeToTs(q.type)}`)
+      // required → q: T，optional → q?: T —— 与 path 分支语义对齐
+      parts.push(`${q.name}${q.required === false ? '?' : ''}: ${fieldTypeToTs(q.type)}`)
     }
     if (bodyName) parts.push(`body: ${bodyName}`)
     if (parts.length === 0) return '{}'

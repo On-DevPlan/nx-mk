@@ -115,4 +115,27 @@ describe('parseOpenApi named refs', () => {
     const manifest = await parseOpenApi(spec)
     expect(manifest.endpoints[0]!.responses[0]!.schema).toEqual({ kind: 'named', name: 'Weird/Name' })
   })
+
+  it('非 #/components/schemas/ 指针降级为 { kind: object }（spec §4）', async () => {
+    // $ref 指向 components.responses（dereference 能解析、但不在 schemas 表）→ 不得产出孤儿 named ref
+    const spec = {
+      openapi: '3.0.3',
+      info: { title: 't', version: '0' },
+      paths: {
+        '/x': {
+          get: {
+            responses: { 200: { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/responses/X' } } } } },
+          },
+        },
+      },
+      components: {
+        schemas: {},
+        responses: { X: { description: 'shared response' } },
+      },
+    }
+    const p = join(workDir, 'spec-nonschema-ref.json')
+    writeFileSync(p, JSON.stringify(spec))
+    const manifest = await parseOpenApi(p)
+    expect(manifest.endpoints[0]!.responses[0]!.schema).toEqual({ kind: 'object' })
+  })
 })

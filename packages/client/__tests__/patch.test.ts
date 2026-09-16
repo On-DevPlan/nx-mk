@@ -37,6 +37,18 @@ describe('patchGlobalFetch', () => {
     unpatch()
   })
 
+  it('前缀须整段命中：/apiv2 不命中 /api（防 startsWith 误判）', async () => {
+    const original = vi.fn(async () => fakeResponse())
+    vi.stubGlobal('fetch', original)
+    const onCapture = vi.fn()
+    const unpatch = patchGlobalFetch({ apiPrefix: '/api', onCapture })
+
+    await fetch('/apiv2/list')
+    expect(onCapture).not.toHaveBeenCalled()
+    expect(original).toHaveBeenCalledOnce()
+    unpatch()
+  })
+
   it('init.method / URL 对象 / Request 形态都能解析', async () => {
     const original = vi.fn(async () => fakeResponse())
     vi.stubGlobal('fetch', original)

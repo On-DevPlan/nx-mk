@@ -47,7 +47,7 @@ const OrderSchema = z.object({
 }).openapi('Order')
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
-// operationId 显式声明（spec §42.5 验收命名为 api.users.getUser 等）：
+// operationId 显式声明（plan §42.5 验收命名为 api.users.getUser 等）：
 // 缺失时 codegen 走 method+lastSegment 兜底（/users/{id} 会推出复数 getUsers），
 // 显式 operationId 优先级最高，保证 SDK 方法名与验收口径一致。
 const getUserRoute = createRoute({

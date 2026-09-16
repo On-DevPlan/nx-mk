@@ -46,7 +46,7 @@ cd examples/react-vite-demo && node ../../packages/cli/dist/index.js run
 
 - **K-X1 后端栈**：Hono（TypeScript-native + zod-openapi 自动导 OpenAPI）
 - **C-X1 / X1-A 接入**：demo app 业务代码用 `api.users.getUser()` 风格，**不感知模式**；
-  `generated-sdk.ts` 是手写 placeholder，待 Phase 1.5 codegen 落地后删除
+  `generated-sdk.ts` 是 codegen 产物（`pnpm demo:codegen` 重新生成，勿手改）
 - **§20 UI Evidence**：渲染层用 `<Field field="user.profile.name">` 显式标记；
   `internalRiskScore` 故意**不**包裹 → Coverage Policy 应 ignored
 - **M14 Goal Loop 验收**：`manifest.json.fields[].id` 应与 demo 真实 OpenAPI 一一对应
@@ -55,12 +55,10 @@ cd examples/react-vite-demo && node ../../packages/cli/dist/index.js run
   - optional: `user.email`, `user.tags`, `user.address.city`, `user.address.zip`
   - ignored: `user.internalRiskScore`（demo 不展示）
 
-## Phase 1.5 落地后
+## Phase 1.5 已落地
 
-1. 删除 `app/src/generated-sdk.ts`
-2. 业务代码 `import { api } from '@nx-mk/client'`
-3. 新增 `@nx-mk-example/app` 依赖 `"@nx-mk/client": "workspace:*"`（已预声明）
-4. 跑 `pnpm --filter @nx-mk/client build` + demo 验证
+- `app/src/generated-sdk.ts` 即 codegen 产物：`pnpm demo:codegen` 重新生成，勿手改
+- 业务代码 `import { api } from './generated-sdk'`；fetch client runtime 来自 `@nx-mk/client`
 
 ## 运行闭环（Phase 1.5 验收形态）
 
