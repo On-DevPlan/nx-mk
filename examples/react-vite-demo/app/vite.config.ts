@@ -20,5 +20,9 @@ export default defineConfig({
     __VITE_DEMO_API_BASE__: JSON.stringify(
       process.env.VITE_DEMO_API_BASE ?? 'http://localhost:8787',
     ),
+    // Phase 2（Ruling 6/审查纠错）：analysis 开关在 vite dev server 启动时从
+    // process.env.MK_ANALYSIS 烘焙 —— MK_ANALYSIS=true 必须给 vite 进程（重启生效），
+    // 不是给 CLI 进程；detectMode() 读编译期全局 __MK_ANALYSIS__
+    __MK_ANALYSIS__: JSON.stringify(process.env.MK_ANALYSIS === 'true'),
   },
 })

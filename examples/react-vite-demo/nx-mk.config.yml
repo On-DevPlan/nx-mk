@@ -1,4 +1,4 @@
-# nx-mk Phase 1.5 demo config —— 指向 demo 后端生成的 swagger.json
+# nx-mk Phase 2 demo config —— 指向 demo 后端生成的 swagger.json
 # 用法：在 demo 目录（examples/react-vite-demo）直接 `nx-mk run`
 # （findConfigFile 只认 nx-mk.config.{yml,yaml}，故由 mk.config.yml 改名而来）
 version: 1
@@ -10,6 +10,14 @@ openapi: ./swagger/openapi.json
 
 plugins:
   - '@nx-mk/plugin-swagger'
+
+# Phase 2 采集（spec §3.6 / Ruling 5 代码装配）：
+# run.ts 检测到 collect 段即程序化追加 plugin-playwright（共享 collector 喂插件
+# 与 flushDrained）—— plugins 数组无需也不应再列 plugin-playwright（代码装配
+# 侧会自动过滤该包名，防双实例双 browser launch）。
+collect:
+  url: http://localhost:5173
+  maxTurns: 3
 
 # demo 后端必须先跑（Hono 默认 8787）
 runtime:

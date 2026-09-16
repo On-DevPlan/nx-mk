@@ -27,6 +27,11 @@ export interface CreateKernelOptions {
   subcommand: 'run' | 'init' | 'doctor'
   cwd?: string
   plugins?: Plugin[]     // for tests; production uses loadPlugins from config
+  /** Ruling 5（Task 7 审查）：追加缝 —— 配置插件加载完成后附加的程序化插件实例
+   *  （run.ts 代码装配 plugin-playwright 用）；测试注入路径（plugins）同样支持追加。 */
+  extraPlugins?: Plugin[]
+  /** Ruling 5：从配置 plugins 数组过滤掉的插件包名（防同插件双实例，如代码装配后配置里仍声明）。 */
+  excludePluginNames?: string[]
 }
 
 /**
@@ -223,7 +228,14 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
       // 测试注入了 plugins 则跳过加载，否则走 plugin-registry 的动态 import 链路
       if (opts.plugins === undefined) {
-        plugins = await loadPlugins(config!.plugins, { cwd, config: config! })
+        // Ruling 5 追加缝（excludePluginNames）：先过滤配置数组（防双实例双 launch）
+        const excluded = new Set(opts.excludePluginNames ?? [])
+        const names = excluded.size === 0
+          ? config!.plugins
+          : config!.plugins.filter((n) => !excluded.has(n))
+        plugins = await loadPlugins(names, { cwd, config: config! })
+        // Ruling 5 追加缝（extraPlugins）：加载完成后追加程序化装配的插件
+        if (opts.extraPlugins?.length) plugins = [...plugins, ...opts.extraPlugins]
         // 每加载成功一个插件：发 plugin:loaded 事件并写入内核状态
         for (const p of plugins) {
           events.emit({ type: 'plugin:loaded', name: p.name, version: p.version })
@@ -232,7 +244,9 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
           transitionPlugin(p.name, { kind: 'active', activatedAt: new Date().toISOString() })
         }
       } else {
-        // 测试路径：注入的 plugins 也走 active 转移以保证 pluginStates 与 loadedPlugins 一致
+        // 测试路径：注入的 plugins 也走 active 转移以保证 pluginStates 与 loadedPlugins 一致；
+        // Ruling 5 追加缝（extraPlugins）：与生产路径语义一致，追加后同批转移
+        if (opts.extraPlugins?.length) plugins = [...plugins, ...opts.extraPlugins]
         for (const p of plugins) {
           if (!state.loadedPlugins.includes(p.name)) {
             state.loadedPlugins.push(p.name)
@@ -254,15 +268,19 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       // —— 阶段 4：run —— 主工作阶段，触发 beforeRun 钩子后运行 Goal Loop（M14），
       // 最后触发 afterRun 钩子。Goal Loop 仅在 config.goal 定义时启用，否则保持
       // 原 push-based 行为（向后兼容）。
+      // C1（Task 6 审查裁定）：reports/turn/idleTurns 重置必须在 beforeRun 钩子之前 ——
+      // 否则 beforeRun 期 emitReport 的报告（如 plugin-playwright 的 field-hit）会在
+      // Goal Loop 启动前被清空，spec §1.4.2「field-hit 提前 goal-met」静默失败。
+      // initial coverage 仍在 beforeRun 之后读取（plugin-swagger 在 beforeRun 写 manifest）。
+      loopState.reports = []
+      loopState.turn = 0
+      loopState.idleTurns = 0
       await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
       if (config?.goal) {
         // Goal Loop 路径：构建共享循环状态 + AbortController
         // initial coverage 从 .nx-mk/manifest.json 读（plugin-swagger 在 beforeRun 写入）；
         // 文件缺失则回退 placeholder，让 demo 模式仍能跑通。
-        loopState.reports = []
-        loopState.turn = 0
         loopState.coverage = readInitialCoverageFromManifest(cwd)
-        loopState.idleTurns = 0
         const goalAbort = new AbortController()
         // 触发手动 shutdown 时同步终止 goal loop
         if (shutdownPromise) goalAbort.abort()

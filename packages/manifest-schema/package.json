@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./normalizer": {
+      "types": "./dist/normalizer.d.ts",
+      "import": "./dist/normalizer.js"
     }
   },
   "files": ["dist"],

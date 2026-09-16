@@ -93,6 +93,52 @@ describe('M14 integration: kernel.run() with goal loop', () => {
     expect(state.collectionResult?.kind).toBe('unmet')
   })
 
+  it('C1（Task 6 审查）：beforeRun 期 emitReport 的报告进入 Goal Loop → 第一轮即 goal-met', async () => {
+    // 场景（spec §1.4.2）：manifest 1 个字段；plugin-playwright 式插件在 beforeRun
+    // 完成一次收集后直报 field-hit —— Goal Loop 必须消费到该报告并提前判定 met，
+    // 而非把 beforeRun 的报告清空后空转到 idle 终止。
+    const goal: GoalConfig = {
+      targetRatio: 1.0,
+      maxTurns: 5,
+      idleTurnsLimit: 2,
+      absoluteTimeoutMs: 60000,
+    }
+    writeConfigWithGoal(goal)
+    // 1-field manifest：Goal Loop 以 total=1 / missing=[f1] 启动
+    mkdirSync(join(workDir, '.nx-mk'), { recursive: true })
+    writeFileSync(
+      join(workDir, '.nx-mk', 'manifest.json'),
+      JSON.stringify({ fields: [{ id: 'f1' }] }),
+    )
+
+    const scanningPlugin: Plugin = {
+      name: '@nx-mk/before-run-scanner',
+      version: '1.0.0',
+      hooks: {
+        beforeRun(ctx) {
+          // 模拟 plugin-playwright 的 beforeRun 单次收集通路：扫到 f1 → 直报 field-hit
+          ctx.emitReport({ kind: 'field-hit', fieldId: 'f1', count: 1, turn: ctx.getTurn() })
+        },
+      },
+    }
+
+    const kernel = createKernel({
+      configPath,
+      runId: 'goal-c1' as never,
+      subcommand: 'run',
+      cwd: workDir,
+      plugins: [scanningPlugin],
+    })
+    await kernel.run()
+
+    const state = kernel.getState()
+    // 断言核心：报告未被清空 → 第 1 轮覆盖率即 100% → met（而非 unmet:idle）
+    expect(state.collectionResult?.kind).toBe('met')
+    expect(state.collectionResult?.terminatedBy).toBe('goal-met')
+    expect(state.collectionResult?.coverage.ratio).toBe(1)
+    expect(state.collectionResult?.turns).toBe(1)
+  })
+
   it('seeds initial coverage from .nx-mk/manifest.json when present', async () => {
     // M14 收尾：写一份模拟 manifest.json，验证 kernel 把它转成 missing items
     const goal: GoalConfig = {
