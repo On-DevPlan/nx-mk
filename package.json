@@ -23,6 +23,8 @@
     "clean": "pnpm -r clean && rm -rf node_modules"
   },
   "devDependencies": {
+    "@nx-mk/client": "workspace:*",
+    "@nx-mk/manifest": "workspace:*",
     "@types/node": "^20.10.0",
     "@vitest/coverage-v8": "^1.6.0",
     "typescript": "^5.3.3",

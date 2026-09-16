@@ -11,6 +11,12 @@ importers:
 
   .:
     devDependencies:
+      '@nx-mk/client':
+        specifier: workspace:*
+        version: link:packages/client
+      '@nx-mk/manifest':
+        specifier: workspace:*
+        version: link:packages/manifest
       '@types/node':
         specifier: ^20.10.0
         version: 20.19.43
