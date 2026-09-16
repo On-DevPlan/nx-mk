@@ -12,7 +12,7 @@ examples/react-vite-demo/
 │       └── generate-openapi.ts  # swagger.json 落盘（pnpm demo:openapi）
 ├── app/           # React + Vite 前端
 │   └── src/
-│       ├── generated-sdk.ts     # 手写 placeholder（Phase 1.5 codegen 落地后删）
+│       ├── generated-sdk.ts     # codegen 产物（pnpm demo:codegen 产出，勿手改）
 │       └── UserProfile.tsx      # 业务代码：api.users.getUser() + <Field>
 ├── swagger/       # 产物（gitignored；由 demo:openapi 落盘）
 │   └── openapi.json             # plugin-swagger 的输入
@@ -37,9 +37,9 @@ pnpm demo:openapi
 pnpm dev:app
 
 # 4. 验证 nx-mk 闭环
-#    在仓库根跑：
-nx-mk run --config examples/react-vite-demo/mk.config.yml
-#    期望：.nx-mk/manifest.json 含 1 endpoint + 7 fields（demo 真实 OpenAPI）
+#    在 demo 目录跑（配置已改名 nx-mk.config.yml，findConfigFile 自动向上查找）：
+cd examples/react-vite-demo && node ../../packages/cli/dist/index.js run
+#    期望：.nx-mk/manifest.json 含 3 endpoints（getUser / listUsers / createOrder）
 ```
 
 ## 设计要点
@@ -61,3 +61,28 @@ nx-mk run --config examples/react-vite-demo/mk.config.yml
 2. 业务代码 `import { api } from '@nx-mk/client'`
 3. 新增 `@nx-mk-example/app` 依赖 `"@nx-mk/client": "workspace:*"`（已预声明）
 4. 跑 `pnpm --filter @nx-mk/client build` + demo 验证
+
+## 运行闭环（Phase 1.5 验收形态）
+
+三步串联（demo 目录 = `examples/react-vite-demo`）：
+
+```bash
+# 1. demo/server 产出 swagger/openapi.json（仓库根执行）
+pnpm demo:openapi
+
+# 2. plugin-swagger 解析 swagger.json → .nx-mk/manifest.json（demo 目录执行）
+cd examples/react-vite-demo
+node ../../packages/cli/dist/index.js run
+
+# 3. manifest.json → typed SDK → app/src/generated-sdk.ts（demo 目录执行）
+pnpm exec tsx generate-sdk.ts
+```
+
+或仓库根一键等价三步：`pnpm demo:codegen`（先重建 `@nx-mk/cli` 再串完整链路）。
+
+存量代码迁移演示（SDK-CG3，demo 目录执行）：
+
+```bash
+node ../../packages/cli/dist/index.js migrate --dry-run
+# 静态 fetch('/api/...') → api.ns.method() 改写预览；去掉 --dry-run 落盘
+```

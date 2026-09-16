@@ -1,40 +1,16 @@
 /**
- * SDK Facade usage demo —— 业务代码视角
+ * SDK Facade usage demo —— 业务代码视角（Phase 1.5 闭环验收形态）
  *
- * 真实场景下 `api.users.getUser()` 等方法由 nx-mk Phase 1.5 codegen 从
- * swagger.json 自动生成（见 docx/plan/nx-mk-plan.md §42.5）。
+ * `api` 与 `User` 类型均来自 codegen 产物 generated-sdk.ts（真 swagger 链路）：
+ *   demo:openapi → nx-mk run（plugin-swagger → manifest.json）→ generate-sdk.ts
  *
- * 这里为了 demo 可独立跑通，先以**手写 placeholder 类型**展示调用形态：
  *   - 业务代码只 import `api`，不感知 production / analysis 模式
- *   - <Field> 包裹展示字段（见 docx/plan/nx-mk-plan.md §20）
- *   - Internal risk score 不包裹 → 故意不展示（Coverage Policy 应 ignore）
- *
- * 验收路径：
- *   1. demo/server 启动（Hono + zod-openapi）
- *   2. npx mk demo:openapi → swagger/openapi.json 落盘
- *   3. nx-mk plugin-swagger 读 swagger.json → .nx-mk/manifest.json
- *   4. nx-mk Phase 1.5 codegen → @nx-mk/client typed endpoints
- *   5. demo/app 启动 → 调 api.users.getUser() → 渲染 UI Evidence
+ *   - <Field>（@nx-mk/client/react）包裹展示字段（Plan §20），渲染 data-mk-field
+ *   - internalRiskScore 故意不包裹 → Coverage Policy 期望 ignored
  */
 import { useEffect, useState } from 'react'
-import { api } from './generated-sdk.js'
-
-type User = {
-  id: string
-  name: string
-  email?: string
-  tags?: string[]
-  address?: { city?: string; zip?: string }
-}
-
-// Local Field placeholder —— 真实场景由 @nx-mk/client/react/Field 提供
-function Field({ field, children }: { field: string; children: React.ReactNode }) {
-  return (
-    <span data-mk-field={field}>
-      {children}
-    </span>
-  )
-}
+import { Field } from '@nx-mk/client/react'
+import { api, type User } from './generated-sdk.js'
 
 export function UserProfile() {
   const [user, setUser] = useState<User | null>(null)
@@ -43,7 +19,7 @@ export function UserProfile() {
   useEffect(() => {
     api.users
       .getUser({ id: 'u_001' })
-      .then((u) => setUser(u as User))
+      .then((u) => setUser(u))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
   }, [])
 
