@@ -14,13 +14,20 @@
  *   - 真实项目 `import { api } from './generated-sdk'`（codegen 产物）
  */
 
+import type { ApiManifest } from '@nx-mk/manifest-schema'
+import { createNoopCollector, type Collector } from '../collector/index.js'
+import { createTrackedProxy } from '../proxy/index.js'
+import { matchEndpoint } from '../mode/analysis.js'
+
 export interface FetchClientOptions {
   baseUrl: string
   headers?: Record<string, string>
   // Phase 2 占位：analysis 模式时 tracker 注入点
   mode?: 'production' | 'analysis'
-  // tracker 注入：用户在 mk 分析 session 中由 mk-runtime 注入
-  // Phase 1.5 仅声明签名；实际 tracker 实现待 Phase 2 wire
+  /** Phase 2：analysis 模式的 collector 注入；缺省 noop（production 恒 noop） */
+  collector?: Collector
+  /** Phase 2：analysis 模式的 manifest，用于 endpoint 匹配；缺省时 endpointId fallback 'unknown' */
+  manifest?: ApiManifest
   onRequest?: (ctx: { method: string; url: string; headers: Record<string, string> }) => void
   onResponse?: (ctx: { method: string; url: string; status: number; durationMs: number }) => void
 }
@@ -36,7 +43,7 @@ export interface FetchClient {
 }
 
 export function createFetchClient(options: FetchClientOptions): FetchClient {
-  const { baseUrl, headers: baseHeaders = {}, mode = 'production', onRequest, onResponse } = options
+  const { baseUrl, headers: baseHeaders = {}, mode = 'production', collector = createNoopCollector(), manifest, onRequest, onResponse } = options
   const isAnalysis = mode === 'analysis'
 
   return {
@@ -59,7 +66,31 @@ export function createFetchClient(options: FetchClientOptions): FetchClient {
       const durationMs = Date.now() - start
       if (isAnalysis && onResponse) onResponse({ method, url, status: res.status, durationMs })
       if (!res.ok) throw new Error(`HTTP ${res.status} ${method} ${url}`)
-      return (await res.json()) as T
+      const data = (await res.json()) as T
+      if (!isAnalysis) return data
+      // —— Phase 2 analysis：trace 记录 + 响应 JSON 经 tracked proxy 包裹返回（spec §3.5）
+      const requestId = `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+      const pathname = new URL(url, 'http://localhost').pathname
+      collector.trace({
+        requestId,
+        method,
+        url,
+        endpointId: matchEndpoint(manifest, pathname, method),
+        path: pathname,
+        status: res.status,
+        durationMs,
+        startedAt: new Date(start).toISOString(),
+        endedAt: new Date().toISOString(),
+      })
+      if (data !== null && typeof data === 'object') {
+        return createTrackedProxy(data as object, {
+          requestId,
+          endpointId: matchEndpoint(manifest, pathname, method) ?? 'unknown',
+          basePath: 'data',
+          collector,
+        }) as T
+      }
+      return data
     },
     async raw(input: string, init?: RequestInit): Promise<Response> {
       return fetch(input, init)
