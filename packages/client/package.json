@@ -15,6 +15,10 @@
       "types": "./dist/codegen.d.ts",
       "import": "./dist/codegen.js"
     },
+    "./collector": {
+      "types": "./dist/collector.d.ts",
+      "import": "./dist/collector.js"
+    },
     "./migrate": {
       "types": "./dist/migrate.d.ts",
       "import": "./dist/migrate.js"

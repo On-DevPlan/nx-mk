@@ -33,6 +33,8 @@ Thumbs.db
 # Coverage
 coverage/
 .nyc_output/
+# @nx-mk/coverage 是工作区源码包，重包含（名称与 test coverage 目录撞了）
+!packages/coverage/
 
 # Test
 playwright-report/

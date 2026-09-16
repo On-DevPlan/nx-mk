@@ -1,0 +1,33 @@
+{
+  "name": "@nx-mk/coverage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "nx-mk coverage store — SQLite §25 DDL + trace/evidence flush",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "@nx-mk/manifest-schema": "workspace:*",
+    "@nx-mk/client": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.10.0",
+    "tsup": "^8.0.2",
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.4"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  }
+}
