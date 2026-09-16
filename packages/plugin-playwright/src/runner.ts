@@ -12,7 +12,7 @@
 import { chromium } from 'playwright-core'
 import { scanDom } from '@nx-mk/coverage'
 import type { Collector } from '@nx-mk/client/collector'
-import { PAGE_SCAN_SCRIPT, toDescriptors, type ParsedDescriptor } from './scanner.js'
+import { scanPage, type ParsedDescriptor } from './scanner.js'
 
 /** 收集配置（来自 config.collect 或插件选项） */
 export interface CollectConfig {
@@ -25,10 +25,15 @@ export interface CollectConfig {
  * 打开 headless chromium → 等待页面就绪 → 注入扫描脚本 → 描述符逐条
  * 转 UiEvidenceCore 投给共享 collector（Ruling 2 的内核侧单通道），
  * 返回原始描述符数组供插件层生成 Goal Loop 报告。
+ *
+ * 错误分级（spec §4）：goto / waitForSelector 失败 → 向上抛（row 2 fail-fast）；
+ * DOM 扫描（evaluate）失败 → scanPage 包容为 [] 并经 onScanError 告警
+ * （row 3：该 turn evidence 为空，Goal Loop 不被阻断）。
  */
 export async function launchCollect(
   config: CollectConfig,
   collector: Collector,
+  onScanError?: (err: unknown) => void,
 ): Promise<ParsedDescriptor[]> {
   const browser = await chromium.launch({ headless: true })
   try {
@@ -42,8 +47,7 @@ export async function launchCollect(
     const page = await context.newPage()
     await page.goto(config.url, { waitUntil: 'networkidle' })
     await page.waitForSelector(config.waitForSelector ?? '[data-mk-field]')
-    const raw = await page.evaluate(PAGE_SCAN_SCRIPT)
-    const descs = toDescriptors(raw)
+    const descs = await scanPage((script) => page.evaluate(script), onScanError)
     for (const ev of scanDom(descs)) collector.evidence(ev)
     return descs
   } finally {

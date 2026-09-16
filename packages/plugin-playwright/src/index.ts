@@ -86,7 +86,17 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
 
         let descs
         try {
-          descs = await launchCollect({ url, waitForSelector }, collector)
+          descs = await launchCollect(
+            { url, waitForSelector },
+            collector,
+            // spec §4 row 3：DOM 扫描失败包容为空 evidence + warn，不阻断 Goal Loop
+            (err) => {
+              ctx.logger.warn('plugin-playwright: DOM scan failed — evidence for this turn is empty', {
+                url,
+                error: (err as Error).message,
+              })
+            },
+          )
         } catch (err) {
           throw new KernelError(
             'PLUGIN_HOOK_FAILED',
@@ -96,8 +106,11 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
         }
 
         const turn = ctx.getTurn()
-        // 扫描到的 DOM 字段 → Goal Loop field-hit（UI 出现即视为字段触达信号）
+        // 扫描到的 DOM 字段 → Goal Loop field-hit（UI 出现即视为字段触达信号）。
+        // 空 dataMkField 与 scanDom 的过滤语义一致（evidence 侧已剔除）——报告侧
+        // 同样跳过，避免产出 fieldId 为空串的垃圾报告。
         for (const d of descs) {
+          if (d.dataMkField === '') continue
           ctx.emitReport({ kind: 'field-hit', fieldId: d.dataMkField, count: 1, turn })
         }
         // 共享 collector 的增量（浏览器侧 trace/hit；本任务由测试预置）→ 报告
@@ -105,7 +118,8 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
         for (const r of snapshotReports) {
           ctx.emitReport(toReport(r, turn))
         }
-        lastPass = { url, fields: descs.length, reports: descs.length + snapshotReports.length }
+        const fieldCount = descs.filter((d) => d.dataMkField !== '').length
+        lastPass = { url, fields: fieldCount, reports: fieldCount + snapshotReports.length }
         ctx.logger.info('plugin-playwright: collection pass done', lastPass)
       },
 

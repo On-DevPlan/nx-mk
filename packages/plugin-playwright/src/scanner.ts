@@ -65,3 +65,24 @@ export function toDescriptors(raw: unknown): ParsedDescriptor[] {
   }
   return out
 }
+
+/**
+ * scanPage —— DOM 扫描步骤的包容边界（spec §4 row 3）：
+ * evaluate 注入脚本失败时【不向 Goal Loop 传播】—— 回调 onScanError 供上层
+ * warn，本 turn 的 evidence 为 []。goto / waitForSelector 的失败不经过此处
+ * （保持 spec §4 row 2 的 fail-fast）。
+ *
+ * 放在 scanner.ts（而非 runner.ts）以保持纯函数可测性 —— 单测可用拒绝的
+ * evaluate 桩直接驱动，playwright-core 不参与。
+ */
+export async function scanPage(
+  evaluate: (script: string) => Promise<unknown>,
+  onScanError?: (err: unknown) => void,
+): Promise<ParsedDescriptor[]> {
+  try {
+    return toDescriptors(await evaluate(PAGE_SCAN_SCRIPT))
+  } catch (err) {
+    onScanError?.(err)
+    return []
+  }
+}

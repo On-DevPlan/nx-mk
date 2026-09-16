@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { KernelError } from '@nx-mk/kernel'
 import { createCollector } from '@nx-mk/client/collector'
 import { createPlaywrightPlugin } from '../src/index.js'
-import { toDescriptors } from '../src/scanner.js'
+import { toDescriptors, scanPage } from '../src/scanner.js'
 
 const EVAL_RESULT = [
   { dataMkField: 'data.id', visible: true, inViewport: true },
@@ -33,7 +33,7 @@ vi.mock('../src/runner.js', () => ({
   }),
 }))
 
-import { hasChromium } from '../src/runner.js'
+import { hasChromium, launchCollect } from '../src/runner.js'
 const hasChromiumMock = vi.mocked(hasChromium)
 
 interface Ctx {
@@ -79,6 +79,23 @@ describe('scanner（page.evaluate 注入脚本 + 结构组装）', () => {
     // 非数组输入 → 空数组（防御性）
     expect(toDescriptors(undefined)).toEqual([])
   })
+
+  it('scanPage：evaluate 正常 → 注入 PAGE_SCAN_SCRIPT 并返回描述符', async () => {
+    const evaluate = vi.fn(async () => [...EVAL_RESULT])
+    const out = await scanPage(evaluate)
+    expect(evaluate).toHaveBeenCalledOnce()
+    // 注入的就是 PAGE_SCAN_SCRIPT（含 data-mk-field 标记）
+    expect(String(evaluate.mock.calls[0]?.[0])).toContain('data-mk-field')
+    expect(out).toEqual([...EVAL_RESULT])
+  })
+
+  it('scanPage：evaluate 拒绝 → 返回 [] 不抛（spec §4 row 3 包容）+ onScanError 回调', async () => {
+    const onScanError = vi.fn()
+    const out = await scanPage(() => Promise.reject(new Error('inject boom')), onScanError)
+    expect(out).toEqual([])
+    expect(onScanError).toHaveBeenCalledOnce()
+    expect((onScanError.mock.calls[0]?.[0] as Error).message).toBe('inject boom')
+  })
 })
 
 describe('plugin hooks（mock browser）', () => {
@@ -118,6 +135,39 @@ describe('plugin hooks（mock browser）', () => {
       { kind: 'endpoint-called', method: 'GET', path: '/users', turn: 1 },
     ])
     expect(kinds.size).toBeGreaterThanOrEqual(2)
+  })
+
+  it('空 dataMkField 描述符 → 不产 field-hit 报告（与 scanDom 过滤语义一致）', async () => {
+    const collector = createCollector()
+    vi.mocked(launchCollect).mockImplementationOnce(async (_config, col) => {
+      // 镜像真实 runner：evidence 投递经 scanDom（空 fieldPath 已被过滤）
+      const descs = [
+        ...EVAL_RESULT,
+        { dataMkField: '', visible: true, inViewport: true }, // 畸形：空属性值
+      ]
+      for (const d of descs) {
+        if (d.dataMkField === '') continue
+        col.evidence({
+          fieldPath: d.dataMkField,
+          evidenceType: 'text',
+          selector: `[data-mk-field="${d.dataMkField}"]`,
+          visible: d.visible,
+          inViewport: d.inViewport,
+        })
+      }
+      return descs
+    })
+    const plugin = createPlaywrightPlugin({ url: 'http://localhost:5173', collector })
+    const ctx = makeCtx()
+
+    await plugin.hooks.beforeRun?.(ctx)
+
+    const { reports } = ctx as Ctx
+    const fieldHits = reports.filter((r) => r.kind === 'field-hit')
+    expect(fieldHits).toHaveLength(2)
+    expect(fieldHits.every((r) => r.fieldId !== '')).toBe(true)
+    // evidence 通道同样不含空 fieldPath（scanDom 侧过滤 + mock 镜像）
+    expect(collector.drain().evidence.every((ev) => ev.fieldPath !== '')).toBe(true)
   })
 
   it('beforeRun：collect 配置缺失 → info 日志跳过（不抛）', async () => {
