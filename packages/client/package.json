@@ -15,6 +15,10 @@
       "types": "./dist/codegen.d.ts",
       "import": "./dist/codegen.js"
     },
+    "./migrate": {
+      "types": "./dist/migrate.d.ts",
+      "import": "./dist/migrate.js"
+    },
     "./react": {
       "types": "./dist/react.d.ts",
       "import": "./dist/react.js"
@@ -32,7 +36,8 @@
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
-    "@nx-mk/manifest-schema": "workspace:*"
+    "@nx-mk/manifest-schema": "workspace:*",
+    "typescript": "^5.3.3"
   },
   "peerDependencies": {
     "react": "^18.3.1"
@@ -45,7 +50,6 @@
     "@types/react": "^18.3.12",
     "react": "^18.3.1",
     "tsup": "^8.0.2",
-    "typescript": "^5.3.3",
     "vitest": "^1.0.4"
   }
 }

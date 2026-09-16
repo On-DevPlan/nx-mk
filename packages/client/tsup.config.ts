@@ -6,10 +6,11 @@ export default defineConfig({
     codegen: 'src/codegen/index.ts',
     react: 'src/react/index.ts',
     runtime: 'src/runtime/index.ts',
+    migrate: 'src/migrate/index.ts',
   },
   format: ['esm'],
   dts: true,
   sourcemap: true,
   clean: true,
-  external: ['react', 'react-dom', '@nx-mk/manifest-schema'],
+  external: ['react', 'react-dom', '@nx-mk/manifest-schema', 'typescript'],
 })
