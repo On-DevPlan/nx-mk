@@ -27,6 +27,11 @@ export interface CreateKernelOptions {
   subcommand: 'run' | 'init' | 'doctor'
   cwd?: string
   plugins?: Plugin[]     // for tests; production uses loadPlugins from config
+  /** Ruling 5（Task 7 审查）：追加缝 —— 配置插件加载完成后附加的程序化插件实例
+   *  （run.ts 代码装配 plugin-playwright 用）；测试注入路径（plugins）同样支持追加。 */
+  extraPlugins?: Plugin[]
+  /** Ruling 5：从配置 plugins 数组过滤掉的插件包名（防同插件双实例，如代码装配后配置里仍声明）。 */
+  excludePluginNames?: string[]
 }
 
 /**
@@ -223,7 +228,14 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
       // 测试注入了 plugins 则跳过加载，否则走 plugin-registry 的动态 import 链路
       if (opts.plugins === undefined) {
-        plugins = await loadPlugins(config!.plugins, { cwd, config: config! })
+        // Ruling 5 追加缝（excludePluginNames）：先过滤配置数组（防双实例双 launch）
+        const excluded = new Set(opts.excludePluginNames ?? [])
+        const names = excluded.size === 0
+          ? config!.plugins
+          : config!.plugins.filter((n) => !excluded.has(n))
+        plugins = await loadPlugins(names, { cwd, config: config! })
+        // Ruling 5 追加缝（extraPlugins）：加载完成后追加程序化装配的插件
+        if (opts.extraPlugins?.length) plugins = [...plugins, ...opts.extraPlugins]
         // 每加载成功一个插件：发 plugin:loaded 事件并写入内核状态
         for (const p of plugins) {
           events.emit({ type: 'plugin:loaded', name: p.name, version: p.version })
@@ -232,7 +244,9 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
           transitionPlugin(p.name, { kind: 'active', activatedAt: new Date().toISOString() })
         }
       } else {
-        // 测试路径：注入的 plugins 也走 active 转移以保证 pluginStates 与 loadedPlugins 一致
+        // 测试路径：注入的 plugins 也走 active 转移以保证 pluginStates 与 loadedPlugins 一致；
+        // Ruling 5 追加缝（extraPlugins）：与生产路径语义一致，追加后同批转移
+        if (opts.extraPlugins?.length) plugins = [...plugins, ...opts.extraPlugins]
         for (const p of plugins) {
           if (!state.loadedPlugins.includes(p.name)) {
             state.loadedPlugins.push(p.name)

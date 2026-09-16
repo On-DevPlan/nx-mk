@@ -98,6 +98,18 @@ describe('scanner（page.evaluate 注入脚本 + 结构组装）', () => {
   })
 })
 
+describe('default export（plugin-registry 零参工厂形状兼容）', () => {
+  it('无参 default 工厂返回合法 Plugin（collect 配置由插件自读）', async () => {
+    const mod = await import('../src/index.js')
+    expect(typeof mod.default).toBe('function')
+    // plugin-registry 以零参调用工厂 —— 不得抛错且形状合法
+    const plugin = (mod.default as () => ReturnType<typeof createPlaywrightPlugin>)()
+    expect(plugin.name).toBe('@nx-mk/plugin-playwright')
+    expect(plugin.version).toBe('0.1.0')
+    expect(plugin.hooks).toBeTypeOf('object')
+  })
+})
+
 describe('plugin hooks（mock browser）', () => {
   beforeEach(() => {
     vi.clearAllMocks()

@@ -129,3 +129,14 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
     },
   }
 }
+
+/**
+ * default export —— 无参工厂（Ruling 5 / Task 7 审查 Adjudication B 第 1 项）：
+ * plugin-registry 按 `mod.default` 解析工厂并【零参调用】，本插件原仅具名
+ * `createPlaywrightPlugin(opts)`（opts 必填）→ 配置驱动加载今日即 PLUGIN_SHAPE_INVALID。
+ * 插件运行期配置自读 `ctx.config.collect`，故无参工厂只需回退空 url；
+ * demo 主路径走 run.ts 代码装配（传入共享 collector），此导出保证注册表形状兼容与独立使用。
+ */
+export default function createPlaywrightPluginDefault(): Plugin {
+  return createPlaywrightPlugin({ url: '' })
+}

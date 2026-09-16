@@ -103,6 +103,9 @@ importers:
       '@nx-mk/kernel':
         specifier: workspace:*
         version: link:../kernel
+      '@nx-mk/plugin-playwright':
+        specifier: workspace:*
+        version: link:../plugin-playwright
     devDependencies:
       '@types/node':
         specifier: ^20.10.0

@@ -4,6 +4,7 @@
  * - collect 配置 → run 结束后 coverage.db 存在（db path 指 tmp：经 cwd 注入）
  * - runs 表登记本次 run（insertRun → endRun completed）
  * - 注入的共享 collector 在 run 结束 flushDrained 落三表
+ * - Ruling 5：collect 配置（无注入）→ 代码装配 plugin-playwright（共享 collector 喂插件 → flush 落库）
  * - collect.url 非 http(s) → CONFIG_INVALID fail-fast（spec §4）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
@@ -12,7 +13,21 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runMain } from '../commands/run'
 import { openCoverageDb } from '@nx-mk/coverage'
-import { createCollector } from '@nx-mk/client/collector'
+import { createCollector, type Collector } from '@nx-mk/client/collector'
+import { createPlaywrightPlugin } from '@nx-mk/plugin-playwright'
+import type { Plugin } from '@nx-mk/kernel'
+
+// —— mock plugin-playwright：装配链路走真实 run.ts 代码，浏览器永不加载 ——
+// 基线实现返回惰性插件（不喂 collector）；装配用例用 mockImplementationOnce
+// 镜像真实插件行为：向 run.ts 传入的共享 collector 投递浏览器通道回捞的数据。
+vi.mock('@nx-mk/plugin-playwright', () => ({
+  createPlaywrightPlugin: vi.fn((_opts: { url: string; collector: Collector }): Plugin => ({
+    name: '@nx-mk/plugin-playwright',
+    version: '0.1.0',
+    hooks: {},
+  })),
+}))
+const createPlaywrightPluginMock = vi.mocked(createPlaywrightPlugin)
 
 let workDir: string
 let configPath: string
@@ -23,6 +38,7 @@ beforeEach(() => {
   configPath = join(workDir, 'nx-mk.config.yml')
   dbPath = join(workDir, '.nx-mk', 'coverage.db')
   writeFileSync(configPath, 'plugins: []\nlogLevel: info\n')
+  createPlaywrightPluginMock.mockClear()
 })
 
 afterEach(() => {
@@ -130,21 +146,69 @@ describe('runMain collect 装配（spec §3.6）', () => {
     expect(warnCount).toBe(0)
   })
 
-  it('collect 配置而 collector 未注入 → warn 提示 flush 通道未接线（I1）', async () => {
+  it('Ruling 5 装配：collect 配置（无注入）→ 自建共享 collector 喂插件 → 产出经 flush 落库（不 warn）', async () => {
     writeFileSync(configPath, "plugins: []\ncollect:\n  url: 'http://localhost:5173'\n")
+    // 本次装配的插件镜像真实行为：beforeRun 向【run.ts 传入的共享 collector】投递
+    // 浏览器通道回捞的 trace/evidence —— 断言同一实例最终被 flush 落库
+    createPlaywrightPluginMock.mockImplementationOnce(
+      (opts: { url: string; collector: Collector }): Plugin => ({
+        name: '@nx-mk/plugin-playwright',
+        version: '0.1.0',
+        hooks: {
+          beforeRun() {
+            opts.collector.trace({
+              requestId: 'r_asm',
+              method: 'GET',
+              url: 'http://x/api/users',
+              path: '/api/users',
+              status: 200,
+              durationMs: 3,
+            })
+            opts.collector.evidence({
+              fieldPath: 'data.id',
+              evidenceType: 'text',
+              visible: true,
+              inViewport: true,
+            })
+          },
+        },
+      }),
+    )
     const log = silenceConsole()
     const warn = spyWarn()
-    let warnMessages: string[] = []
+    let warnCount = -1
     try {
-      await runMain({ configPath, runId: 'run_warn', cwd: workDir })
-      // mockRestore 会清空 mock.calls，先拷贝再恢复
-      warnMessages = warn.mock.calls.map((c) => String(c[0]))
+      await runMain({ configPath, runId: 'run_asm', cwd: workDir })
+      warnCount = warn.mock.calls.length
     } finally {
       log.mockRestore()
       warn.mockRestore()
     }
-    expect(warnMessages).toHaveLength(1)
-    expect(warnMessages[0]).toContain('collect configured but no shared collector injected')
+    // 工厂被调用且 url 来自 collect.url（插件选项回退）
+    expect(createPlaywrightPluginMock).toHaveBeenCalledTimes(1)
+    expect(createPlaywrightPluginMock.mock.calls[0]?.[0]).toMatchObject({
+      url: 'http://localhost:5173',
+    })
+    // I1 语义演进：Ruling 5 装配后 flush 通道已接线 → 不触发 warn
+    expect(warnCount).toBe(0)
+    // 同一 collector 实例：插件喂的数据经 runMain flush 落库
+    const db = openCoverageDb(dbPath)
+    try {
+      expect(db.prepare('SELECT count(*) AS n FROM request_traces').get()).toEqual({ n: 1 })
+      expect(db.prepare('SELECT count(*) AS n FROM ui_evidence').get()).toEqual({ n: 1 })
+    } finally {
+      db.close()
+    }
+  })
+
+  it('collect 缺失 → 不装配 plugin-playwright（动态 import 不触发）', async () => {
+    const log = silenceConsole()
+    try {
+      await runMain({ configPath, runId: 'run_noasm', cwd: workDir })
+    } finally {
+      log.mockRestore()
+    }
+    expect(createPlaywrightPluginMock).not.toHaveBeenCalled()
   })
 
   it('collect.url 非 http(s) → CONFIG_INVALID 且不建 db', async () => {

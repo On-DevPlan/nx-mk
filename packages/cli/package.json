@@ -20,7 +20,8 @@
     "@nx-mk/kernel": "workspace:*",
     "@nx-mk/config": "workspace:*",
     "@nx-mk/client": "workspace:*",
-    "@nx-mk/coverage": "workspace:*"
+    "@nx-mk/coverage": "workspace:*",
+    "@nx-mk/plugin-playwright": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
