@@ -61,7 +61,7 @@ export function createCollector(): Collector {
   const reported = new Map<string, number>()       // key: 已 snapshot 时的 count（幂等）
   const traces: RequestTraceCore[] = []
   const reportedTraces = new Set<string>()
-  const reportedEndpoints = new Set<string>()   // endpointId 已报（由 hit 侧先报，无 method/path）
+  const reportedEndpoints = new Set<string>()   // 出现过 hit 的 endpointId（兜底信号，去重靠 reported 的 ep: 键）
   const evidence: UiEvidenceCore[] = []
 
   return {
@@ -69,8 +69,8 @@ export function createCollector(): Collector {
       const e = hitMap.get(h.normalizedPath)
       if (e) e.count += 1
       else hitMap.set(h.normalizedPath, { ...h, count: 1 })
-      // hit 侧也构成 endpoint-called 增量（trace 缺失时的兜底信号）
-      if (!reportedTraces.has(h.requestId)) reportedEndpoints.add(h.endpointId)
+      // hit 侧也构成 endpoint-called 增量（trace 缺失时的兜底信号；去重以 reported 的 ep: 键为准）
+      reportedEndpoints.add(h.endpointId)
     },
     trace(t) { traces.push(t) },
     evidence(ev) { evidence.push(ev) },
@@ -82,27 +82,39 @@ export function createCollector(): Collector {
           reported.set(key, e.count)
         }
       }
+      // trace 侧带 method/path，先于 hit 侧兜底，并把 ep: 键标记为已报，
+      // 保证同一 endpointId 在同一 snapshot 内不会产出两份 endpoint-called
+      const reqId2ep = new Map<string, string>()   // requestId → endpointId（由 hit 记录，去除重复 requestId 关联）
+      for (const e of hitMap.values()) {
+        if (e.endpointId && !reqId2ep.has(e.requestId)) reqId2ep.set(e.requestId, e.endpointId)
+      }
       for (const t of traces) {
         if (!reportedTraces.has(t.requestId)) {
           out.push({ kind: 'endpoint-called', method: t.method, path: t.path ?? t.url, count: 1, turn })
           reportedTraces.add(t.requestId)
         }
+        // trace 覆盖同一 requestId 的 hit 侧兜底（显式 endpointId 或按 requestId 关联）
+        const suppressed = (t.endpointId ?? reqId2ep.get(t.requestId)) ?? null
+        if (suppressed && !reported.has(`ep:${suppressed}`)) {
+          reported.set(`ep:${suppressed}`, 1)
+        }
       }
       for (const ep of reportedEndpoints) {
-        if (!reported.has(`ep:${ep}`)) {
+        const k = `ep:${ep}`
+        if (!reported.has(k)) {
           out.push({ kind: 'endpoint-called', count: 1, turn })
-          reported.set(`ep:${ep}`, 1)
+          reported.set(k, 1)
         }
       }
       return out
     },
     drain() {
       const out = { hits: [...hitMap.values()], traces: [...traces], evidence: [...evidence] }
-      hitMap.clear(); reported.clear(); traces.length = 0; reportedTraces.clear(); evidence.length = 0
+      hitMap.clear(); reported.clear(); traces.length = 0; reportedTraces.clear(); reportedEndpoints.clear(); evidence.length = 0
       return out
     },
     reset() {
-      hitMap.clear(); reported.clear(); traces.length = 0; reportedTraces.clear(); evidence.length = 0
+      hitMap.clear(); reported.clear(); traces.length = 0; reportedTraces.clear(); reportedEndpoints.clear(); evidence.length = 0
     },
   }
 }
