@@ -13,6 +13,8 @@ export type {
   Config,
   ResolvedConfig,
   KernelState,
+  PluginReport,
+  PluginSignal,
 } from './types'
 export { PHASES, makeRunId } from './types'
 
