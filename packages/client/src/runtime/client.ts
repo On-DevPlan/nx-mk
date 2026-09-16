@@ -212,7 +212,12 @@ function buildUrl(base: string, path: string, params: Record<string, unknown>): 
   })
 
   // Step 2: 把所有"非 path 字段"当作 query
-  const u = new URL(interpolated.replace(/^\//, ''), base.endsWith('/') ? base : `${base}/`)
+  // 浏览器场景：baseUrl 常是相对路径（如 '/api'，codegen 产物），而 new URL 的 base
+  // 参数必须是绝对 URL —— 相对 base 直接抛 'Invalid base URL'（Phase 2 手动验收发现，
+  // demo app 启动即崩）。浏览器相对 base 拼上 location.origin；Node/绝对 URL 行为不变。
+  const origin = typeof location !== 'undefined' ? location.origin : 'http://localhost'
+  const absBase = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(base) ? base : `${origin}${base}`
+  const u = new URL(interpolated.replace(/^\//, ''), absBase.endsWith('/') ? absBase : `${absBase}/`)
   for (const [k, v] of Object.entries(params)) {
     if (v === undefined || v === null) continue
     // 已经用作 path param 的不重复加 query
