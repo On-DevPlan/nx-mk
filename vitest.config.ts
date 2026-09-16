@@ -7,6 +7,8 @@ export default defineConfig({
       'src/__tests__/*.test.ts',
       // When run from root: match all packages' tests
       'packages/*/src/__tests__/*.test.ts',
+      // @nx-mk/client 用包根 __tests__/ 布局（其余包是 src/__tests__/）
+      'packages/*/__tests__/**/*.test.ts',
     ],
     environment: 'node',
     coverage: {
