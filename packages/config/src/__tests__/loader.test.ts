@@ -106,6 +106,44 @@ describe('loadConfig', () => {
     })
     expect(cfg.logLevel).toBe('debug')
   })
+
+  it('Phase 2（spec §3.6）：collect 段 passthrough 正确；未配置时为 undefined', async () => {
+    // 默认：不写 collect 段 → cfg.collect 为 undefined
+    const noCollectPath = join(workDir, 'nx-mk.config.yml')
+    writeFileSync(noCollectPath, 'plugins: []\n')
+    const noCollect = await loadConfig({
+      path: noCollectPath,
+      cwd: workDir,
+      runId: makeRunId('r'),
+      subcommand: 'run',
+    })
+    expect((noCollect as { collect?: unknown }).collect).toBeUndefined()
+
+    // 解析：collect 三字段原样透出（url 必填；waitForSelector/maxTurns 可选）
+    writeFileSync(
+      noCollectPath,
+      "plugins: []\ncollect:\n  url: 'http://localhost:5173'\n  waitForSelector: '[data-mk-field]'\n  maxTurns: 3\n",
+    )
+    const cfg = await loadConfig({
+      path: noCollectPath,
+      cwd: workDir,
+      runId: makeRunId('r'),
+      subcommand: 'run',
+    })
+    expect((cfg as { collect?: unknown }).collect).toEqual({
+      url: 'http://localhost:5173',
+      waitForSelector: '[data-mk-field]',
+      maxTurns: 3,
+    })
+  })
+
+  it('Phase 2：非法 collect（url 不是字符串）→ CONFIG_INVALID', async () => {
+    const cfgPath = join(workDir, 'nx-mk.config.yml')
+    writeFileSync(cfgPath, 'plugins: []\ncollect:\n  url: 42\n')
+    await expect(
+      loadConfig({ path: cfgPath, cwd: workDir, runId: makeRunId('r'), subcommand: 'run' }),
+    ).rejects.toMatchObject({ code: 'CONFIG_INVALID' })
+  })
 })
 
 // Suppress unused-import warning for KernelError (re-exported for callers)

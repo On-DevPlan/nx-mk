@@ -23,6 +23,16 @@ export const GoalConfigSchema = z.object({
   absoluteTimeoutMs: z.number().int().positive().default(600_000),
 }).optional()
 
+// Phase 2（spec §3.6）：采集段配置 —— url 必填（http/https 语义由 run 装配层校验），
+// waitForSelector / maxTurns 可选。类型经 z.infer 导出，供 plugin/cli 以 schema 为
+// 单一事实来源消费（Task 6 审查 M3：替换 plugin-playwright 的本地宽松声明）。
+export const CollectConfigSchema = z.object({
+  url: z.string(),
+  waitForSelector: z.string().optional(),
+  maxTurns: z.number().int().positive().optional(),
+})
+export type CollectConfig = z.infer<typeof CollectConfigSchema>
+
 // 顶层配置 schema：插件列表上限 20，输出目录必须是相对路径
 export const ConfigSchema = z
   .object({
@@ -36,5 +46,7 @@ export const ConfigSchema = z
     openapi: z.string().optional(),
     // M14：可选 Goal Loop 配置（不设置则使用 push-based beforeRun/afterRun）
     goal: GoalConfigSchema,
+    // Phase 2：可选采集段（spec §3.6 —— run 装配层据此建 coverage.db 并接采集插件）
+    collect: CollectConfigSchema.optional(),
   })
   .passthrough()

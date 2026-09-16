@@ -97,6 +97,9 @@ importers:
       '@nx-mk/config':
         specifier: workspace:*
         version: link:../config
+      '@nx-mk/coverage':
+        specifier: workspace:*
+        version: link:../coverage
       '@nx-mk/kernel':
         specifier: workspace:*
         version: link:../kernel
