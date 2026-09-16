@@ -69,26 +69,32 @@ export function createFetchClient(options: FetchClientOptions): FetchClient {
       const data = (await res.json()) as T
       if (!isAnalysis) return data
       // —— Phase 2 analysis：trace 记录 + 响应 JSON 经 tracked proxy 包裹返回（spec §3.5）
-      const requestId = `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
-      const pathname = new URL(url, 'http://localhost').pathname
-      collector.trace({
-        requestId,
-        method,
-        url,
-        endpointId: matchEndpoint(manifest, pathname, method),
-        path: pathname,
-        status: res.status,
-        durationMs,
-        startedAt: new Date(start).toISOString(),
-        endedAt: new Date().toISOString(),
-      })
-      if (data !== null && typeof data === 'object') {
-        return createTrackedProxy(data as object, {
+      // 探针失败隔离：analysis 侧任何异常都不得影响用户响应，兜底返回原始 data
+      try {
+        const requestId = `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+        const pathname = new URL(url, 'http://localhost').pathname
+        const endpointId = matchEndpoint(manifest, pathname, method)
+        collector.trace({
           requestId,
-          endpointId: matchEndpoint(manifest, pathname, method) ?? 'unknown',
-          basePath: 'data',
-          collector,
-        }) as T
+          method,
+          url,
+          endpointId,
+          path: pathname,
+          status: res.status,
+          durationMs,
+          startedAt: new Date(start).toISOString(),
+          endedAt: new Date().toISOString(),
+        })
+        if (data !== null && typeof data === 'object') {
+          return createTrackedProxy(data as object, {
+            requestId,
+            endpointId: endpointId ?? 'unknown',
+            basePath: 'data',
+            collector,
+          }) as T
+        }
+      } catch {
+        // containment：trace/proxy 包装失败不影响调用方拿数据
       }
       return data
     },

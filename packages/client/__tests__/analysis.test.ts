@@ -33,6 +33,19 @@ describe('analysis mode', () => {
     const data = await client.fetch('GET', '/ping')
     expect(data).toEqual({ ok: 1 })
   })
+
+  it('探针故障隔离：collector.trace 抛错仍返回解析后的数据', async () => {
+    stubFetch({ id: 'u9' })
+    const brokenCollector: Collector = {
+      hit() { throw new Error('boom') },
+      trace() { throw new Error('trace boom') },
+      evidence() { throw new Error('boom') },
+      drain() { return { hits: [], traces: [], evidence: [] } },
+    }
+    const client = createFetchClient({ baseUrl: 'http://x/api', mode: 'analysis', collector: brokenCollector })
+    const data = await client.fetch<{ id: string }>('GET', '/users/u9')
+    expect(data).toEqual({ id: 'u9' })  // ← containment：响应不被探针异常击穿
+  })
 })
 
 describe('production mode 零改动回归', () => {
