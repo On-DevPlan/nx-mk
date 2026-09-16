@@ -65,7 +65,7 @@ export interface ApiEndpoint {
     pathParams?: ApiField[]
     query?: ApiField[]
     headers?: ApiField[]
-    body?: SchemaRef                         // Phase 1 未解析 requestBody，保持 undefined
+    body?: SchemaRef                         // Phase 1.5：raw 预扫描回填的 requestBody 引用
   }
   responses: Array<{
     status: string
@@ -74,11 +74,12 @@ export interface ApiEndpoint {
   }>
 }
 
-// 响应/请求 body 的 schema 引用（Phase 1 粗粒度：dereference 后只能标 'object'；kind 细分留给 Phase 2）
+// 响应/请求 body 的 schema 引用（Phase 1.5 起：parser 在 dereference 前预扫描 raw spec，
+// 保留顶层 named ref 与 array items；纯类型扩展，向后兼容）
 export type SchemaRef =
   | { kind: 'named'; name: string }
   | { kind: 'inline' }
-  | { kind: 'array' }
+  | { kind: 'array'; items?: SchemaRef }
   | { kind: 'object' }
   | { kind: 'primitive'; type: string }
 
