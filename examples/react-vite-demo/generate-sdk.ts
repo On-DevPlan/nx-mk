@@ -1,95 +1,18 @@
 /**
- * 把 demo 后端 swagger.json → ApiManifest → 用 @nx-mk/client/codegen 产出 typed SDK
- * 然后写到 app/src/generated-sdk.ts。
+ * demo 闭环第三段（Plan §42.5）：.nx-mk/manifest.json → typed SDK → app/src/generated-sdk.ts
  *
- * Phase 1.5 SDK-CG1/2 验收夹具：手工构造 ApiManifest（demo 不接 plugin-swagger 全套链路）
+ * 前置两段：
+ *   1. `pnpm demo:openapi`   —— demo/server 产出 swagger/openapi.json
+ *   2. `nx-mk run`（demo 目录）—— plugin-swagger 解析 swagger.json 产出 .nx-mk/manifest.json
+ *
+ * manifest.json 由 plugin-swagger 从真实 OpenAPI 生成（含 named refs，Phase 1.5 起），
+ * 不再手工构造。
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { generateSdk } from '../../packages/client/dist/codegen.js'
 
-const manifest = {
-  version: '1',
-  source: { type: 'openapi', input: './swagger/openapi.json', hash: 'demo' },
-  generatedAt: new Date().toISOString(),
-  fields: [],
-  schemas: {
-    User: {
-      type: 'object',
-      required: ['id', 'name'],
-      properties: {
-        id: { type: 'string' },
-        name: { type: 'string' },
-        email: { type: 'string', nullable: true },
-        tags: { type: 'array', items: { type: 'string' } },
-        address: {
-          type: 'object',
-          properties: {
-            city: { type: 'string' },
-            zip: { type: 'string' },
-          },
-        },
-      },
-    },
-    Order: {
-      type: 'object',
-      properties: {
-        id: { type: 'string' },
-        sku: { type: 'string' },
-        quantity: { type: 'number' },
-        total: { type: 'number' },
-        createdAt: { type: 'string' },
-      },
-    },
-    NewOrder: {
-      type: 'object',
-      required: ['sku', 'quantity'],
-      properties: {
-        sku: { type: 'string' },
-        quantity: { type: 'number' },
-      },
-    },
-  },
-  endpoints: [
-    {
-      id: 'ep1',
-      method: 'GET',
-      path: '/users/{id}',
-      operationId: 'getUser',
-      tags: ['users'],
-      request: {
-        pathParams: [
-          {
-            id: 'f',
-            endpointId: 'ep1',
-            direction: 'request',
-            path: 'id',
-            normalizedPath: 'id',
-            name: 'id',
-            type: 'string',
-            required: true,
-            source: { openapiPointer: '' },
-          },
-        ],
-      },
-      responses: [{ status: '200', schema: { kind: 'named', name: 'User' }, fields: [] }],
-    },
-    {
-      id: 'ep2',
-      method: 'GET',
-      path: '/users',
-      tags: ['users'],
-      responses: [{ status: '200', schema: { kind: 'array' }, fields: [] }],
-    },
-    {
-      id: 'ep3',
-      method: 'POST',
-      path: '/orders',
-      tags: ['orders'],
-      request: { body: { kind: 'named', name: 'NewOrder' } },
-      responses: [{ status: '201', schema: { kind: 'named', name: 'Order' }, fields: [] }],
-    },
-  ],
-}
+const manifestPath = new URL('./.nx-mk/manifest.json', import.meta.url)
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
 
 const code = generateSdk(manifest, { baseUrl: '/api' })
 writeFileSync(new URL('./app/src/generated-sdk.ts', import.meta.url), code)

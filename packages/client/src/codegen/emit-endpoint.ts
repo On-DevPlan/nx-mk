@@ -4,7 +4,7 @@
  * 把 ApiEndpoint 编译为单个方法的调用形态：
  *   - 方法名：operationId 优先；fallback = method.toLowerCase() + camelCased last path segment
  *   - params：从 pathParams + query + body 推导
- *   - 返回：从 responses[0].schema.name（named 引用）
+ *   - 返回：named / array-of-named（§3.3）；参数类型从 field.type 推导
  *
  * 输出示例：
  *   getUser: (params: { id: string }) => Promise<User>
@@ -15,7 +15,7 @@
  * - response 仅取第一个 2xx
  */
 
-import type { ApiEndpoint, ApiField, HttpMethod } from '@nx-mk/manifest-schema'
+import type { ApiEndpoint, ApiField, HttpMethod, SchemaRef } from '@nx-mk/manifest-schema'
 
 export interface EmitContext {
   namespace: string                       // e.g. "api.users"
@@ -79,7 +79,7 @@ export function emitEndpoint(endpoint: ApiEndpoint): MethodSignature {
   const queryParams = endpoint.request?.query ?? []
   const bodySchema = endpoint.request?.body
   const respSchema = endpoint.responses.find((r) => r.status.startsWith('2'))?.schema
-  const respType = respSchema?.kind === 'named' ? respSchema.name : 'unknown'
+  const respType = formatResponseType(respSchema)
 
   // params 类型：path + query + body 合并
   // 简化 params 类型：path 单字段时直接 { id: unknown } 单行
@@ -90,10 +90,11 @@ export function emitEndpoint(endpoint: ApiEndpoint): MethodSignature {
   ): string => {
     const parts: string[] = []
     for (const p of pp) {
-      parts.push(`${p.name}${p.required === false ? '?' : ''}: unknown`)
+      parts.push(`${p.name}${p.required === false ? '?' : ''}: ${fieldTypeToTs(p.type)}`)
     }
     for (const q of qp) {
-      parts.push(`${q.name}${q.required === false ? '?' : ''}?: unknown`)
+      // required → q: T，optional → q?: T —— 与 path 分支语义对齐
+      parts.push(`${q.name}${q.required === false ? '?' : ''}: ${fieldTypeToTs(q.type)}`)
     }
     if (bodyName) parts.push(`body: ${bodyName}`)
     if (parts.length === 0) return '{}'
@@ -115,5 +116,24 @@ export function emitEndpoint(endpoint: ApiEndpoint): MethodSignature {
     httpMethod: endpoint.method,
     rawPath: endpoint.path,
     fetchTemplate: fetchPath,
+  }
+}
+
+/** SchemaRef → TS 类型：named → name；array+named items → Name[]；其余 unknown（spec §3.3） */
+function formatResponseType(schema: SchemaRef | undefined): string {
+  if (!schema) return 'unknown'
+  if (schema.kind === 'named') return schema.name
+  if (schema.kind === 'array' && schema.items?.kind === 'named') return `${schema.items.name}[]`
+  return 'unknown'
+}
+
+/** ApiField.type → TS 原始类型；未知类型保持 unknown（spec §3.3） */
+function fieldTypeToTs(type: string): string {
+  switch (type) {
+    case 'string': return 'string'
+    case 'number':
+    case 'integer': return 'number'
+    case 'boolean': return 'boolean'
+    default: return 'unknown'
   }
 }
