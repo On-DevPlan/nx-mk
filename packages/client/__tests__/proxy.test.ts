@@ -59,6 +59,11 @@ describe('§19.3 不代理名单（值原样引用返回，无二次 hit）', ()
     ['RegExp', () => /x/],
     ['URL', () => new URL('http://localhost/x')],
     ['FormData', () => new FormData()],
+    ['File', () => new File(['x'], 'a.txt')],
+    ['Blob', () => new Blob(['x'])],
+    ['WeakMap', () => new WeakMap()],
+    ['WeakSet', () => new WeakSet()],
+    ['ArrayBuffer', () => new ArrayBuffer(8)],
   ])('%s 不被代理', (_name, factory) => {
     const c = makeCollector()
     const v = factory()

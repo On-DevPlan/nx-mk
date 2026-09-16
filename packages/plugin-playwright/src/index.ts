@@ -23,9 +23,16 @@
  * - Ruling 8 限制（本任务不注入 manifest）：插件无法低成本拿到 ApiManifest（kernel
  *   ctx 不携带 manifest 文件内容，.nx-mk/manifest.json 读取需引入 manifest 包解析），
  *   故不注入 __MK_MANIFEST__。后果：浏览器侧 fetch 的 endpointId 落 'unknown' fallback
- *   （trace.sql endpoint_id 列为 NULL —— flushDrained 语义已覆盖）；goal-met 验收
- *   不受影响 —— field-hit 报告来自 DOM descriptor 直报（不经 matchEndpoint），
- *   request_traces 的 method/path 全落入表。manifest 注入留给 Phase 3。
+ *   （trace.sql endpoint_id 列为 NULL —— flushDrained 语义已覆盖）；request_traces 的
+ *   method/path 全落入表。manifest 注入留给 Phase 3。
+ * - §1.4.2 goal-met 延期（计划级记账，Phase 3 修）：goal-loop 的 field-hit 断言的
+ *   id 空间是 manifest stableFieldId（哈希），而 DOM 直报 fieldId 是 dataMkField
+ *   字符串 —— 两者恒不相等，coverage 永不匹配 → goal-met 经 field-hit 实际不可达，
+ *   demo 靠 maxTurns 终止（terminatedBy 也未持久化）。修法：normalizedPath 键域
+ *   的映射 + manifest 注入，一并排 Phase 3。
+ * - Ruling 7 shim 语义补充（Task 8 审查 Important #3）：addInitScript 按文档重放
+ *   —— 整页导航时 shim 重新初始化、缓冲清零；未及回捞的 hits/traces 即丢。v0
+ *   可接受（demo 无整页导航），Phase 3 若需跨导航可改为 sessionStorage 或常态回捞。
  */
 import { KernelError, type Plugin, type PluginReport } from '@nx-mk/kernel'
 import { createCollector, type Collector, type CollectReport } from '@nx-mk/client/collector'

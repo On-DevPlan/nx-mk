@@ -45,8 +45,15 @@ sqlite3 .nx-mk/coverage.db "select count(*) from request_traces"
 
 期望：goal loop 提前 `goal:met`（field-hit 报告来自 DOM descriptor 直报）；
 未先起 vite/后端 → fail-fast（spec §4）。
-已知限制：endpointId 落 'unknown' fallback（manifest 未注浏览器，Ruling 8 见
-`packages/plugin-playwright/src/index.ts` 头注释）；goal-met 验收不受影响。
+已知限制（v0 接受，Phase 3 修）：
+- endpointId 落 'unknown' fallback（manifest 未注浏览器，Ruling 8 见
+  `packages/plugin-playwright/src/index.ts` 头注释）。
+- **goal-met 经 field-hit 实际不可达**（§1.4.2 延期，计划级记账）：goal-loop 断言
+  的是 manifest stableFieldId（哈希）id 空间，而 DOM 直报 fieldId 是 dataMkField
+  字符串，两者恒不相等 → coverage 永不匹配；demo 靠 maxTurns 终止，terminatedBy
+  未持久化。修法（normalizedPath 键域映射 + manifest 注入）排 Phase 3。
+- shim 按文档重放：整页导航会重置 `window.__MK_COLLECTOR__` 缓冲，未回捞的
+  hits/traces 即丢（addInitScript per-document 语义）；demo 无整页导航，v0 接受。
 
 ## 开发
 
