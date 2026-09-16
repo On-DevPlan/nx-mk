@@ -29,6 +29,21 @@ vi.mock('@nx-mk/plugin-playwright', () => ({
 }))
 const createPlaywrightPluginMock = vi.mocked(createPlaywrightPlugin)
 
+// —— 终审 Important #1：createKernel 抛错路径 ——
+// 部分内核 mock：createKernel 可开关抛错（标志位于 hoisted 块，模块工厂读取），
+// 其余导出透传原模块（makeRunId / KernelError 保持真实语义）。
+const kernelMockState = vi.hoisted(() => ({ throwOnCreate: false }))
+vi.mock('@nx-mk/kernel', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@nx-mk/kernel')>()
+  return {
+    ...actual,
+    createKernel: vi.fn((...args: Parameters<typeof actual.createKernel>) => {
+      if (kernelMockState.throwOnCreate) throw new Error('kernel-boot-boom')
+      return actual.createKernel(...(args as [never]))
+    }) as unknown as typeof actual.createKernel,
+  }
+})
+
 let workDir: string
 let configPath: string
 let dbPath: string
@@ -217,5 +232,30 @@ describe('runMain collect 装配（spec §3.6）', () => {
       runMain({ configPath, runId: 'run_badurl', cwd: workDir }),
     ).rejects.toMatchObject({ code: 'CONFIG_INVALID' })
     expect(existsSync(dbPath)).toBe(false)
+  })
+
+  // —— 终审 Important #1：createKernel 位于 try 内（内核构造抛错也走失败收尾）——
+  it('createKernel 抛错 → runs 行标 failed + db 关闭（finally）+ 原始错误上抛', async () => {
+    writeFileSync(configPath, "plugins: []\ncollect:\n  url: 'http://localhost:5173'\n")
+    kernelMockState.throwOnCreate = true
+    let thrown: unknown
+    try {
+      await runMain({ configPath, runId: 'run_kernelboom', cwd: workDir })
+    } catch (err) {
+      thrown = err
+    } finally {
+      kernelMockState.throwOnCreate = false
+    }
+    expect((thrown as Error)?.message).toBe('kernel-boot-boom')
+    // 实现里 finally { db?.close() }：若句柄未关，Windows 上重新 open 同一文件
+    // 会因独占锁报 SQLITE_BUSY —— 成功 open 即证明已关闭
+    const db = openCoverageDb(dbPath)
+    try {
+      expect(db.prepare('SELECT id, status FROM runs').all()).toEqual([
+        { id: 'run_kernelboom', status: 'failed' },
+      ])
+    } finally {
+      db.close()
+    }
   })
 })

@@ -72,16 +72,18 @@ export async function runMain(opts: RunMainOptions): Promise<void> {
     }
     extraPlugins = [createPlaywrightPlugin({ url: collect.url, collector })]
   }
-  const kernel = createKernel({
-    configPath: opts.configPath,
-    runId,
-    subcommand: 'run',
-    cwd,
-    ...(extraPlugins
-      ? { extraPlugins, excludePluginNames: ['@nx-mk/plugin-playwright'] }
-      : {}),
-  })
+  // 终审 Important #1：createKernel 也要在 try 内 —— 否则内核构造抛错时 runs 行
+  // 永远停在 'running' 且 db 句柄泄漏。失败收尾/关闭语义与 kernel.run() 一致。
   try {
+    const kernel = createKernel({
+      configPath: opts.configPath,
+      runId,
+      subcommand: 'run',
+      cwd,
+      ...(extraPlugins
+        ? { extraPlugins, excludePluginNames: ['@nx-mk/plugin-playwright'] }
+        : {}),
+    })
     const result = await kernel.run()
     console.log(`✔ Run ${result.runId} completed in ${result.durationMs}ms`)
     console.log(`  Logs: .nx-mk/runs/${result.runId}/`)
