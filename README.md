@@ -42,8 +42,8 @@ node ../../packages/cli/dist/index.js run
 
 # 5. 验收断言（spec §1.4.1 / §3.6，三点互证）：
 # ① stdout：Coverage 三行 + goal:met
-#   期望输出：Coverage: required 100% | effective 100% | raw backend 100%
-#             missing required: 0 | ignored returned: 1 | suspicious: 0
+#   期望输出：Coverage: required 100% | effective 100% | raw backend 视页面读取比例（demo 约 36%）
+#             missing required: 0 | ignored returned: 0 | suspicious: 0
 # ② events.jsonl 尾部 goal:met 事件
 grep '"type":"goal:met"' .nx-mk/runs/*/events.jsonl
 # ③ runs.terminated_by = 'goal-met'
@@ -54,7 +54,11 @@ cat .nx-mk/coverage-report.json | jq '.metrics.requiredCoverage'
 
 期望：单次收集通路后 Goal Loop goal-met 终止（field_hits / ui_evidence / request_traces
 三表落库，`runs.terminated_by='goal-met'`，`coverage-report.json` 三指标中
-`requiredCoverage=1`、`ignoredReturnedFields=1`（internalRiskScore），`missingRequiredFields=0`）。
+`requiredCoverage=1`、`ignoredReturnedFields=0`（internalRiskScore 未被页面读取，
+无 accessHit 故不进 ignored-returned 集合），`missingRequiredFields=0`）。
+实际 demo manifest 有 22 个 response 字段、页面只读 /users/{id} 相关字段（约 8/22），
+故 rawBackendFieldCoverage≈36%；`coverage.ignored` 因此实配 7 条（校准产物），
+spec §3.6 字面示例 `['**.metadata.**','data.internalRiskScore']` 仅为示意。
 未先起 vite/后端 → fail-fast（spec §4）。
 若 goal 未达成：用 events.jsonl turn 事件与 coverage-report.json missing 列表定位
 未命中字段，回 `nx-mk.config.yml` 修正 `coverage.ignored` 或修正 `UserProfile.tsx` Field

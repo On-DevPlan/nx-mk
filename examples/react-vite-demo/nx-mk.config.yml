@@ -30,7 +30,8 @@ goal:
 # 使 goal-loop missing 索引一致排除。
 # 校准回路 Round 1：demo 页面只读 /users/{id} 的 data.* 字段，其余 endpoint 字段全进 ignored：
 #   - data.error            → 404 响应字段
-#   - data[].*             → /users 列表接口（listUsers）字段
+#   - data[].**           → /users 列表接口（listUsers）字段（** 匹配任意段数，
+#                            即数组元素的嵌套字段）
 #   - data.sku/quantity/total/createdAt → /orders 接口（createOrder）字段
 #   - data.internalRiskScore → 内部风控字段
 coverage:
