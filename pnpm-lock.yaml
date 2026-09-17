@@ -17,6 +17,9 @@ importers:
       '@nx-mk/coverage':
         specifier: workspace:*
         version: link:packages/coverage
+      '@nx-mk/kernel':
+        specifier: workspace:*
+        version: link:packages/kernel
       '@nx-mk/manifest':
         specifier: workspace:*
         version: link:packages/manifest

@@ -1,12 +1,15 @@
 /**
- * SDK Facade usage demo —— 业务代码视角（Phase 1.5 闭环验收形态）
+ * SDK Facade usage demo —— 业务代码视角（Phase 3 goal 闭环验收形态）
  *
  * `api` 与 `User` 类型均来自 codegen 产物 generated-sdk.ts（真 swagger 链路）：
  *   demo:openapi → nx-mk run（plugin-swagger → manifest.json）→ generate-sdk.ts
  *
  *   - 业务代码只 import `api`，不感知 production / analysis 模式
- *   - <Field>（@nx-mk/client/react）包裹展示字段（Plan §20），渲染 data-mk-field
- *   - internalRiskScore 故意不包裹 → Coverage Policy 期望 ignored
+ *   - <Field>（@nx-mk/client/react）包裹展示字段，渲染 data-mk-field
+ *     ★ Phase 3 约定：Field 值 = manifest 字段 normalizedPath（demo GET /users/{id}）：
+ *       data.id / data.name / data.email / data.tags[] / data.address.city / data.address.zip
+ *       （user.id 补一个副标题行使 required 全可命中）
+ *   - internalRiskScore 故意不包裹 → Coverage Policy 期望 ignored（coverage.ignored 裁定）
  */
 import { useEffect, useState } from 'react'
 import { Field } from '@nx-mk/client/react'
@@ -29,24 +32,29 @@ export function UserProfile() {
   return (
     <div data-page="user-profile">
       <h1>
-        <Field field="user.profile.name">{user.name}</Field>
+        <Field field="data.name">{user.name}</Field>
       </h1>
+      {/* user.id 副标题 —— manifest required 字段补全覆盖 */}
+      <p data-testid="user-id">
+        <Field field="data.id">{user.id}</Field>
+      </p>
       <dl>
         <dt>Email</dt>
         <dd>
-          <Field field="user.profile.email">{user.email ?? '—'}</Field>
+          <Field field="data.email">{user.email ?? '—'}</Field>
         </dd>
         <dt>Tags</dt>
         <dd>
-          <Field field="user.profile.tags">
+          {/* 数组字段 normalizedPath = data.tags[]（manifest 归一化形态） */}
+          <Field field="data.tags[]">
             {(user.tags ?? []).join(', ')}
           </Field>
         </dd>
         <dt>Address</dt>
         <dd>
-          <Field field="user.profile.address.city">{user.address?.city ?? '—'}</Field>
+          <Field field="data.address.city">{user.address?.city ?? '—'}</Field>
           {' · '}
-          <Field field="user.profile.address.zip">{user.address?.zip ?? '—'}</Field>
+          <Field field="data.address.zip">{user.address?.zip ?? '—'}</Field>
         </dd>
         {/* internalRiskScore 故意不包裹 —— Coverage Policy 期望 ignored */}
       </dl>

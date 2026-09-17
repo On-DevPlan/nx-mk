@@ -26,6 +26,7 @@
   "devDependencies": {
     "@nx-mk/client": "workspace:*",
     "@nx-mk/coverage": "workspace:*",
+    "@nx-mk/kernel": "workspace:*",
     "@nx-mk/manifest": "workspace:*",
     "@nx-mk/plugin-playwright": "workspace:*",
     "@types/node": "^20.10.0",

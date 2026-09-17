@@ -280,7 +280,9 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
         // Goal Loop 路径：构建共享循环状态 + AbortController
         // initial coverage 从 .nx-mk/manifest.json 读（plugin-swagger 在 beforeRun 写入）；
         // 文件缺失则回退 placeholder，让 demo 模式仍能跑通。
-        loopState.coverage = readInitialCoverageFromManifest(cwd)
+        loopState.coverage = readInitialCoverageFromManifest(cwd, {
+          ignoredGlobs: (config as { coverage?: { ignored?: string[] } }).coverage?.ignored,
+        })
         const goalAbort = new AbortController()
         // 触发手动 shutdown 时同步终止 goal loop
         if (shutdownPromise) goalAbort.abort()

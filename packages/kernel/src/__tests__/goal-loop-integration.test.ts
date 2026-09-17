@@ -35,14 +35,17 @@ afterEach(() => {
   rmSync(workDir, { recursive: true, force: true })
 })
 
-function writeConfigWithGoal(goal: GoalConfig | null, openapiPath?: string): void {
+function writeConfigWithGoal(goal: GoalConfig | null, openapiPath?: string, coverageIgnored?: string[]): void {
   const openapiLine = openapiPath ? `openapi: '${openapiPath}'\n` : ''
   const goalYaml = goal
     ? `goal:\n  targetRatio: ${goal.targetRatio}\n  maxTurns: ${goal.maxTurns}\n  idleTurnsLimit: ${goal.idleTurnsLimit}\n  absoluteTimeoutMs: ${goal.absoluteTimeoutMs}\n`
     : ''
+  const coverageYaml = coverageIgnored && coverageIgnored.length > 0
+    ? `coverage:\n  ignored:\n${coverageIgnored.map((g) => `    - ${g}\n`).join('')}`
+    : ''
   writeFileSync(
     configPath,
-    `plugins: []\nlogLevel: info\noutputDir: ./.nx-mk/runs\n${openapiLine}${goalYaml}`,
+    `plugins: []\nlogLevel: info\noutputDir: ./.nx-mk/runs\n${openapiLine}${goalYaml}${coverageYaml}`,
   )
 }
 
@@ -297,6 +300,54 @@ describe('M14 integration: kernel.run() with goal loop', () => {
     expect(result.coverage?.ratio).toBe(1)
     expect(result.coverage?.total).toBe(1)
     expect(result.coverage?.missing).toEqual([])
+  })
+
+  it('config.coverage.ignored → ignored 字段不进 goal-loop missing 索引', async () => {
+    // 控制方裁定并入（Task 9）：kernel.ts readInitialCoverageFromManifest 接线 config.coverage.ignored ——
+    // 命中 glob 的字段不进 loopState.coverage.missing（goal 侧 policy 联动）。
+    const goal: GoalConfig = {
+      targetRatio: 1.0,
+      maxTurns: 5,
+      idleTurnsLimit: 2,
+      absoluteTimeoutMs: 60000,
+    }
+    writeConfigWithGoal(goal, undefined, ['data.internalRiskScore'])
+    // 2-field manifest：data.name（required）+ data.internalRiskScore（required，但 ignored）
+    mkdirSync(join(workDir, '.nx-mk'), { recursive: true })
+    writeFileSync(
+      join(workDir, '.nx-mk', 'manifest.json'),
+      JSON.stringify({
+        fields: [
+          { id: 'f1', normalizedPath: 'data.name' },
+          { id: 'f2', normalizedPath: 'data.internalRiskScore' },
+        ],
+      }),
+    )
+
+    const scanningPlugin: Plugin = {
+      name: '@nx-mk/scanner',
+      version: '1.0.0',
+      hooks: {
+        beforeRun(ctx) {
+          ctx.emitReport({ kind: 'field-hit', fieldId: 'data.name', count: 1, turn: ctx.getTurn() })
+        },
+      },
+    }
+
+    const kernel = createKernel({
+      configPath,
+      runId: 'goal-coverage-ignored' as never,
+      subcommand: 'run',
+      cwd: workDir,
+      plugins: [scanningPlugin],
+    })
+    const result = await kernel.run()
+    const state = kernel.getState()
+
+    // ignored 字段排除后 total = 1（仅 data.name）；data.name 命中 → goal-met
+    expect(state.collectionResult?.coverage.total).toBe(1)
+    expect(state.collectionResult?.coverage.missing).toEqual([])
+    expect(result.terminatedBy).toBe('goal-met')
   })
 
   it('preserves backward compat: no goal → uses beforeRun/afterRun', async () => {

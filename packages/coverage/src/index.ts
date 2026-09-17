@@ -16,6 +16,7 @@ export {
   type EndpointCoverage,
   type RequestTraceSummary,
 } from './analyzer/index.js'
+export { matchGlob } from './policy/glob.js'
 export {
   evaluatePolicy,
   type PolicyConfig,
