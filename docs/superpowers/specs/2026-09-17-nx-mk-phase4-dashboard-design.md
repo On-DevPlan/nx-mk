@@ -282,3 +282,44 @@ nx-mk start
 - [x] Phase 3 遗留承接：DDL 校对带入（Task 0）；其余 12 项 parked 有出处（PR #9）
 - [x] 范围单一可承载单实施计划；非目标明确（4.5 清单可直接作为下期范围起点）
 - [x] 错误路径有归属（§4 表 12 行全覆盖，只读降级 + 少量 fail-fast 分明）
+
+---
+
+## 附注 A：DDL 校对结论（Phase 4 Task 0）
+
+> 校对对象：`packages/coverage/src/db/schema.ts` 的 `SCHEMA_SQL` 九表 vs plan 原文 §25.1-25.9
+> （`docx/plan/nx-mk-plan.md` 1695-1857 行；`grep -n "^### 25\."` 实测定位与预期一致）。
+> 列清单记法：`PK` = PRIMARY KEY、`NN` = NOT NULL，未标注即该类型可空；列序即原文列序。
+
+| 表 | §25 原文 | SCHEMA_SQL | 结论 |
+|---|---|---|---|
+| runs (§25.1) | id TEXT PK; started_at TEXT NN; ended_at TEXT; status TEXT NN; project_name TEXT; dashboard_url TEXT; manifest_hash TEXT; config_path TEXT; resolved_config_path TEXT | 一致（9 列同名同型同约束同序） | 一致（+ terminated_by 为 ensureColumn 增量） |
+| endpoints (§25.2) | id TEXT PK; run_id TEXT NN; method TEXT NN; path TEXT NN; operation_id TEXT; summary TEXT | 前 5 列逐字一致；末列 `tags TEXT` 替原文 `summary TEXT` | 有意偏离：Task 3 pre-flight ruling 最小列集（ruling 列集 `endpoints(id, run_id, method, path, operation_id, tags)`，出处见注 1；schema.ts 头注释已引用） |
+| manifest_fields (§25.3) | id TEXT PK; run_id TEXT NN; endpoint_id TEXT NN; direction TEXT NN; status TEXT; path TEXT NN; normalized_path TEXT NN; type TEXT; required INTEGER; schema_name TEXT; description TEXT | 8 列 ruling 集：id TEXT PK; run_id TEXT NN; endpoint_id TEXT（放宽为可空）; field_path TEXT NN; normalized_path TEXT NN; type TEXT; required INTEGER; nullable INTEGER | 有意偏离：同 ruling 最小列集——收窄掉 direction/status/schema_name/description，`path`→`field_path` 改名，`endpoint_id` 放宽可空，增 `nullable INTEGER`；逐项均落在 ruling 列集内，无 ruling 外差异 |
+| request_traces (§25.4) | id TEXT PK; run_id TEXT NN; trace_id TEXT NN; scenario_id TEXT; dsl_step_id TEXT; endpoint_id TEXT; method TEXT NN; url TEXT NN; path TEXT; status INTEGER; duration_ms INTEGER; started_at TEXT; ended_at TEXT; replayable INTEGER; replay_safety TEXT; replay_reason TEXT | 一致（16 列逐列） | 一致 |
+| request_fields (§25.5) | id TEXT PK; run_id TEXT NN; request_id TEXT NN; field_id TEXT; field_path TEXT NN; normalized_path TEXT NN; value_state TEXT NN; value_type TEXT; value_preview TEXT; value_hash TEXT; policy_status TEXT; matched_rule_pattern TEXT; matched_rule_reason TEXT | 一致（13 列逐列） | 一致 |
+| field_hits (§25.6) | id TEXT PK; run_id TEXT NN; request_id TEXT; endpoint_id TEXT; field_id TEXT; field_path TEXT NN; normalized_path TEXT NN; count INTEGER NN; first_hit_at TEXT; last_hit_at TEXT; route TEXT; source TEXT | 一致（12 列逐列） | 一致 |
+| ui_evidence (§25.7) | id TEXT PK; run_id TEXT NN; request_id TEXT; field_id TEXT; field_path TEXT NN; evidence_type TEXT; selector TEXT; visible INTEGER; in_viewport INTEGER; route TEXT; screenshot_path TEXT | 一致（11 列逐列） | 一致（+ text_sample 为 ensureColumn 增量） |
+| coverage_fields (§25.8) | id TEXT PK; run_id TEXT NN; field_id TEXT NN; endpoint_id TEXT; field_path TEXT NN; policy_status TEXT NN; coverage_state TEXT NN; access_hit INTEGER; ui_hit INTEGER; assertion_hit INTEGER; suspicious INTEGER; counted_required INTEGER; counted_effective INTEGER | 一致（13 列逐列） | 一致 |
+| agent_iterations (§25.9) | id TEXT PK; run_id TEXT NN; iteration INTEGER NN; status TEXT NN; summary TEXT; before_coverage REAL; after_coverage REAL; diff_path TEXT; started_at TEXT; ended_at TEXT | 一致（10 列逐列，含 2 列 REAL） | 一致 |
+
+ALTER 一致性：runs.terminated_by TEXT / ui_evidence.text_sample TEXT 均为冻结 DDL 之外的纯增量列，
+与 §25 不冲突；老库经 ALTER、新库 CREATE 后 ensureColumn 幂等跳过。
+（实现位于 `client.ts` 构造器：先跑 `SCHEMA_SQL` 建表循环，再 `ensureColumn('runs','terminated_by','TEXT')`
+与 `ensureColumn('ui_evidence','text_sample','TEXT')`；ensureColumn 先查 `PRAGMA table_info` 再 ALTER，
+重复调用安全。§25.1 runs 九列、§25.7 ui_evidence 十一列均不含 terminated_by / text_sample，
+两列系 Phase 3 按 spec §3.1 schema 演进规则（DDL 冻结、新列 ALTER 落地）新增，纯增量。）
+
+注 1（ruling 出处）：Task 3 pre-flight ruling 见 Phase 2 计划
+`docs/superpowers/plans/2026-09-16-phase2-collection.md` Task 3 Step 3a——
+「endpoints / manifest_fields 补充列（plan 未定义，按 runtime 需要最小化）：
+endpoints(id, run_id, method, path, operation_id, tags)、
+manifest_fields(id, run_id, endpoint_id, field_path, normalized_path, type, required, nullable)」。
+schema.ts 头注释（「plan 原文与 ruling 冲突时，ruling 优先」）及两表上方行内注释均已引用该裁定，
+SCHEMA_SQL 两表列集与 ruling 逐字一致。校对注记：ruling 原文称「plan 未定义」，
+与现行 plan §25.2/§25.3 已载 DDL 的表述有出入，但不影响裁定效力——ruling 列集即两表的实施权威定义；
+另 manifest_fields 的偏离严格说并非纯「列集收窄」（含改名/放宽可空/增列），
+但每一项均由上述 ruling 列集显式覆盖。
+
+结论：除两处已裁定偏离外，九表无任何漂移（列名/类型/约束/列序全部一致），SCHEMA_SQL 未改动，本次仅落档。
+验证：`npx vitest run packages/coverage` 全绿（输出见任务报告）。
