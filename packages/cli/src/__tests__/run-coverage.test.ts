@@ -6,7 +6,8 @@
  * - stdout 三指标摘要行 + Report 路径
  * - kernel.run 返回 terminatedBy → endRun 落 runs.terminated_by（spec §3.1 审计链）
  * - report JSON 写失败仅 warn 不阻断（spec §4）
- * - manifest 缺失 → 跳过分析 warn，run 仍 completed（spec §4 容忍）
+ * - manifest 缺失/形状非法 → 空报告产出（全零 metrics）+ warn，run 仍 completed
+ *   （spec §4 错误处理表：审计链三产物不缺角；形状非法含审查 M1 的 `{}` 用例）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, writeFileSync, rmSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
@@ -220,7 +221,7 @@ describe('runMain coverage 产物（spec §3.5）', () => {
     expect(warnOut).toContain('coverage-report.json write failed')
   })
 
-  it('manifest 缺失 → 跳过分析 warn，不产 report，run 仍 completed（spec §4 容忍）', async () => {
+  it('manifest 缺失 → 空报告产出（全零 metrics）+ warn，run 仍 completed（spec §4 错误处理表）', async () => {
     writeFileSync(configPath, "plugins: []\ncollect:\n  url: 'http://localhost:5173'\n")
     const collector = createCollector()
     collector.hit({
@@ -241,8 +242,52 @@ describe('runMain coverage 产物（spec §3.5）', () => {
       log.mockRestore()
       warn.mockRestore()
     }
-    expect(warnOut).toContain('coverage analysis skipped')
-    expect(existsSync(reportPath)).toBe(false)
+    // warn 保留（不静默），但分析不跳过 —— 空报告照常落盘
+    expect(warnOut).toContain('using empty manifest')
+    const report = JSON.parse(readFileSync(reportPath, 'utf8'))
+    expect(report.metrics).toEqual({
+      requiredCoverage: 0,
+      effectiveCoverage: 0,
+      rawBackendFieldCoverage: 0,
+      endpointsTotal: 0,
+      endpointsCalled: 0,
+      fieldsTotal: 0,
+      fieldsReturned: 0,
+      requiredFields: 0,
+      missingRequiredFields: 0,
+      ignoredReturnedFields: 0,
+      suspiciousFields: 0,
+    })
+    expect(report.requests).toEqual([]) // 只喂了 hit 无 trace
+    const db = openCoverageDb(dbPath)
+    try {
+      expect(db.prepare('SELECT status FROM runs').all()).toEqual([{ status: 'completed' }])
+    } finally {
+      db.close()
+    }
+  })
+
+  it('manifest 形状非法（JSON 合法但无 fields/endpoints）→ 同样空报告 + warn + completed（审查 M1）', async () => {
+    writeFileSync(configPath, "plugins: []\ncollect:\n  url: 'http://localhost:5173'\n")
+    mkdirSync(join(workDir, '.nx-mk'), { recursive: true })
+    writeFileSync(join(workDir, '.nx-mk', 'manifest.json'), '{}')
+    const collector = createCollector()
+    collector.trace({ requestId: 'r9', method: 'GET', url: 'http://x/api/users', status: 200 })
+    const log = silenceConsole()
+    const warn = spyWarn()
+    let warnOut = ''
+    try {
+      await runMain({ configPath, runId: 'run_badshape', cwd: workDir, collector })
+      warnOut = warn.mock.calls.map((c) => String(c[0])).join('\n')
+    } finally {
+      log.mockRestore()
+      warn.mockRestore()
+    }
+    expect(warnOut).toContain('using empty manifest')
+    const report = JSON.parse(readFileSync(reportPath, 'utf8'))
+    expect(report.metrics.fieldsTotal).toBe(0)
+    // traces 与 manifest 无关 → requests 摘要仍如实投影（§28.2）
+    expect(report.requests).toEqual([{ requestId: 'r9', method: 'GET', url: 'http://x/api/users', status: 200 }])
     const db = openCoverageDb(dbPath)
     try {
       expect(db.prepare('SELECT status FROM runs').all()).toEqual([{ status: 'completed' }])
