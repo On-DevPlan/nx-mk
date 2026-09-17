@@ -30,3 +30,5 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
   registerIgnoredRoutes(app, ctx)
   return app
 }
+
+export { resolveUiDistDir } from './ui-dir.js'
