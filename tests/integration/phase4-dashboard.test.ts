@@ -3,7 +3,7 @@
  * buildServer 后 7 条路由端到端 inject 契约抽查。
  * 真实链路（nx-mk start + 浏览器）= demo 手动验收（README 步骤）。
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { it, expect, beforeEach, afterEach } from 'vitest'
 import { rmSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { buildServer } from '../../packages/dashboard/src/server/index.js'

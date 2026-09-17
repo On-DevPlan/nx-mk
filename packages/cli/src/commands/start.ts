@@ -101,13 +101,13 @@ export async function startMain(opts: StartMainOptions): Promise<void> {
     await deps.runOnce()
   } catch (err) {
     // run 失败保活（spec §4）：错误摘要后 server 继续服务，failed run 行在页面可见
-    const message = err instanceof KernelError ? `${err.code}: ${err.message}` : (err as Error).message
+    const message = err instanceof KernelError ? `${err.code}: ${err.message}` : String(err)
     console.error(`✖ run failed — dashboard still serving at ${url}`)
     console.error(`  ${message}`)
   }
 }
 
-/** best-effort 开浏览器（spec §4）：spawn 平台命令，失败仅 warn */
+/** best-effort 开浏览器（spec §4）：spawn 平台命令，同步失败与异步 'error' 事件均仅 warn */
 function openBrowserBestEffort(url: string): void {
   try {
     const cmd = process.platform === 'win32'
@@ -115,7 +115,11 @@ function openBrowserBestEffort(url: string): void {
       : process.platform === 'darwin'
         ? ['open', url]
         : ['xdg-open', url]
-    spawn(cmd[0]!, cmd.slice(1), { stdio: 'ignore', detached: true }).unref()
+    const child = spawn(cmd[0]!, cmd.slice(1), { stdio: 'ignore', detached: true })
+    child.on('error', (err) => {
+      console.warn(`failed to open browser: ${err.message}`)
+    })
+    child.unref()
   } catch (err) {
     console.warn(`failed to open browser: ${(err as Error).message}`)
   }
