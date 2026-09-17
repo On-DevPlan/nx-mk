@@ -137,3 +137,18 @@ export const SCHEMA_SQL: string[] = [
     ended_at TEXT
   )`,
 ]
+
+/**
+ * 幂等加列（spec §3.1 schema 演进规则）：§25 plan DDL 冻结，新列以 ALTER 落地。
+ * 重复调用安全 —— 先查 PRAGMA table_info。
+ */
+export function ensureColumn(
+  db: { pragma(sql: string): unknown; exec(sql: string): void },
+  table: string,
+  column: string,
+  decl: string,
+): void {
+  const cols = db.pragma(`table_info(${table})`) as { name: string }[]
+  if (Array.isArray(cols) && cols.some((c) => c.name === column)) return
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`)
+}

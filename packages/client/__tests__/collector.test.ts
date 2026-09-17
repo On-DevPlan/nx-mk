@@ -87,6 +87,12 @@ describe('createCollector', () => {
     const s3 = c.snapshot(3)
     expect(s3).toEqual([expect.objectContaining({ kind: 'field-hit', count: 2, turn: 3 })])
   })
+
+  it('evidence 带 textSample 时 drain 原样透传', () => {
+    const c = createCollector()
+    c.evidence({ fieldPath: 'data.address.city', evidenceType: 'text', visible: true, inViewport: true, textSample: 'HZ' })
+    expect(c.drain().evidence[0]!.textSample).toBe('HZ')
+  })
 })
 
 describe('createNoopCollector', () => {

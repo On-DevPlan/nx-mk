@@ -4,7 +4,7 @@
  */
 import Database from 'better-sqlite3'
 import type { Statement as SqliteStatement } from 'better-sqlite3'
-import { SCHEMA_SQL } from './schema.js'
+import { SCHEMA_SQL, ensureColumn } from './schema.js'
 import type { FieldHitCore, RequestTraceCore, UiEvidenceCore } from '@nx-mk/client/collector'
 
 export type DrainedHit = FieldHitCore & { count: number }
@@ -23,6 +23,9 @@ export class CoverageDb {
     this.db = new Database(dbPath)
     this.db.pragma('journal_mode = WAL')
     for (const stmt of SCHEMA_SQL) this.db.exec(stmt)
+    // schema 演进（spec §3.1/§3.4）：§25 DDL 冻结，新列幂等 ALTER 落地
+    ensureColumn(this.db, 'runs', 'terminated_by', 'TEXT')
+    ensureColumn(this.db, 'ui_evidence', 'text_sample', 'TEXT')
   }
 
   get journalMode(): string {
@@ -42,8 +45,10 @@ export class CoverageDb {
       .run(runId, startedAt, status, manifestHash ?? null)
   }
 
-  endRun(runId: string, endedAt: string, status: string): void {
-    this.db.prepare('UPDATE runs SET ended_at = ?, status = ? WHERE id = ?').run(endedAt, status, runId)
+  endRun(runId: string, endedAt: string, status: string, terminatedBy?: string): void {
+    this.db.prepare(
+      `UPDATE runs SET ended_at = ?, status = ?, terminated_by = COALESCE(?, terminated_by) WHERE id = ?`,
+    ).run(endedAt, status, terminatedBy ?? null, runId)
   }
 
   /** 事务批量 flush（spec §3.3）：hits 按 normalizedPath 幂等 upsert；traces/evidence 逐条插入 */
@@ -75,16 +80,17 @@ export class CoverageDb {
           t.startedAt ?? null, t.endedAt ?? null,
         )
       }
-      // ui_evidence：§25.7 列（evidence_type v0=text；screenshot_path 不采 → NULL）
+      // ui_evidence：§25.7 列 + text_sample（§3.4 evidence 文本通道；evidence_type v0=text；screenshot_path 不采 → NULL）
       const insEv = this.db.prepare(
         `INSERT OR REPLACE INTO ui_evidence
-           (id, run_id, request_id, field_id, field_path, evidence_type, selector, visible, in_viewport, route, screenshot_path)
-         VALUES (?, ?, ?, ?, ?, 'text', ?, ?, ?, ?, NULL)`,
+           (id, run_id, request_id, field_id, field_path, evidence_type, selector, visible, in_viewport, route, screenshot_path, text_sample)
+         VALUES (?, ?, ?, ?, ?, 'text', ?, ?, ?, ?, NULL, ?)`,
       )
       for (const e of d.evidence) {
         insEv.run(
           `ue_${d.runId}_${e.fieldPath}`, d.runId, e.requestId ?? null, e.fieldId ?? null,
           e.fieldPath, e.selector ?? null, e.visible ? 1 : 0, e.inViewport ? 1 : 0, e.route ?? null,
+          e.textSample ?? null,
         )
       }
     })

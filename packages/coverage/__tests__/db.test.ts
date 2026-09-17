@@ -77,3 +77,53 @@ describe('insertRun / endRun / flush 读回', () => {
     } finally { db.close() }
   })
 })
+
+describe('schema 演进（spec §3.1：ensureColumn 幂等加列，§25 DDL 冻结不改 CREATE）', () => {
+  it('runs 表幂等加列 terminated_by（spec §3.1 schema 演进）', () => {
+    const db = openCoverageDb(dbPath)
+    try {
+      const cols = (db.pragma('table_info(runs)') as { name: string }[]).map((c) => c.name)
+      expect(cols).toContain('terminated_by')
+    } finally { db.close() }
+    // 对同一 db 文件二次 openCoverageDb 不抛（CREATE IF NOT EXISTS + ensureColumn 幂等）
+    openCoverageDb(dbPath).close()
+  })
+
+  it('endRun 写 terminated_by', () => {
+    const db = openCoverageDb(dbPath)
+    try {
+      db.insertRun('r', '2026-09-16T00:00:00Z', 'running')
+      db.endRun('r', '2026-09-16T00:01:00Z', 'completed', 'goal-met')
+      const row = db.prepare('SELECT terminated_by FROM runs WHERE id=?').get('r') as { terminated_by: string }
+      expect(row.terminated_by).toBe('goal-met')
+    } finally { db.close() }
+  })
+
+  it('endRun 不传 terminatedBy 时保留原值', () => {
+    const db = openCoverageDb(dbPath)
+    try {
+      db.insertRun('r', '2026-09-16T00:00:00Z', 'running')
+      db.endRun('r', '2026-09-16T00:01:00Z', 'completed', 'goal-met')
+      db.endRun('r', '2026-09-16T00:02:00Z', 'failed')
+      const row = db.prepare('SELECT terminated_by FROM runs WHERE id=?').get('r') as { terminated_by: string }
+      expect(row.terminated_by).toBe('goal-met')
+    } finally { db.close() }
+  })
+
+  it('ui_evidence 幂等加列 text_sample 且 flushDrained 写入', () => {
+    const db = openCoverageDb(dbPath)
+    try {
+      const cols = (db.pragma('table_info(ui_evidence)') as { name: string }[]).map((c) => c.name)
+      expect(cols).toContain('text_sample')
+      db.insertRun('run_x', '2026-09-16T00:00:00Z', 'running')
+      db.flushDrained({
+        runId: 'run_x',
+        hits: [],
+        traces: [],
+        evidence: [{ fieldPath: 'data.address.city', evidenceType: 'text', visible: true, inViewport: true, textSample: 'HZ' }],
+      })
+      const row = db.prepare('SELECT text_sample FROM ui_evidence WHERE run_id=?').get('run_x') as { text_sample: string }
+      expect(row.text_sample).toBe('HZ')
+    } finally { db.close() }
+  })
+})

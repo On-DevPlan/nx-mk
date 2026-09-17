@@ -34,6 +34,8 @@ export interface UiEvidenceCore {
   visible: boolean
   inViewport: boolean
   route?: string
+  /** anti-cheat 空标记判定用文本样本（spec §3.4；截断 80 字符，缺省按 valid 处理） */
+  textSample?: string
 }
 
 export interface CollectReport {
