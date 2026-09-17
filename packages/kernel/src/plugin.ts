@@ -11,6 +11,7 @@ import type { Logger } from './logger'
 import type { EventBus } from './event-bus'
 import type {
   Coverage,
+  GoalResult,
   MissingItem,
   Phase,
   PluginReport,
@@ -58,10 +59,14 @@ export interface Plugin {
 export const CORE_SERVICES = ['logger', 'events', 'kernel', 'config', 'cwd'] as const
 export type CoreService = typeof CORE_SERVICES[number]
 
-// run() 的返回值：运行 ID 与总耗时
+// run() 的返回值：运行 ID、总耗时，以及 goal run 的终止信息（审计链 spec §3.1）
 export interface RunResult {
   runId: RunId
   durationMs: number
+  /** Goal Loop 终止原因（非 goal run 为 undefined）—— 审计链 spec §3.1 */
+  terminatedBy?: GoalResult['terminatedBy']
+  /** 终止时覆盖率快照（非 goal run 为 undefined） */
+  coverage?: Coverage
 }
 
 // 内核对外的控制接口：run 驱动生命周期，shutdown 手动关停，其余为只读查询

@@ -19,6 +19,7 @@ import { mkdtempSync, writeFileSync, rmSync, readFileSync, mkdirSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createKernel } from '../kernel'
+import { computeCoverage } from '../goal-loop'
 import type { Plugin } from '../plugin'
 import type { GoalConfig } from '../types'
 
@@ -105,10 +106,11 @@ describe('M14 integration: kernel.run() with goal loop', () => {
     }
     writeConfigWithGoal(goal)
     // 1-field manifest：Goal Loop 以 total=1 / missing=[f1] 启动
+    // （Task 3 / spec §3.1：missing 索引取 normalizedPath，id 不再进 missing）
     mkdirSync(join(workDir, '.nx-mk'), { recursive: true })
     writeFileSync(
       join(workDir, '.nx-mk', 'manifest.json'),
-      JSON.stringify({ fields: [{ id: 'f1' }] }),
+      JSON.stringify({ fields: [{ id: 'f1', normalizedPath: 'f1' }] }),
     )
 
     const scanningPlugin: Plugin = {
@@ -149,10 +151,17 @@ describe('M14 integration: kernel.run() with goal loop', () => {
     }
     writeConfigWithGoal(goal)
     // 写一份 3-field 的 manifest；Goal Loop 应以 total=3 启动
+    // （Task 3 / spec §3.1：missing 索引取 normalizedPath）
     mkdirSync(join(workDir, '.nx-mk'), { recursive: true })
     writeFileSync(
       join(workDir, '.nx-mk', 'manifest.json'),
-      JSON.stringify({ fields: [{ id: 'f1' }, { id: 'f2' }, { id: 'f3' }] }),
+      JSON.stringify({
+        fields: [
+          { id: 'f1', normalizedPath: 'f1' },
+          { id: 'f2', normalizedPath: 'f2' },
+          { id: 'f3', normalizedPath: 'f3' },
+        ],
+      }),
     )
 
     const idlePlugin: Plugin = {
@@ -242,6 +251,52 @@ describe('M14 integration: kernel.run() with goal loop', () => {
     expect(turnStarts.length).toBeGreaterThan(0)
     expect(turnEnds.length).toBeGreaterThan(0)
     expect(goalEvents.length).toBe(1)  // 恰好一个终止事件
+  })
+
+  it('goal-met 后 RunResult 携带 terminatedBy 与 coverage（spec §3.1 审计链）', async () => {
+    // 沿既有 C1 用例 arrange：beforeRun 期 emitReport field-hit + 1-field manifest
+    const goal: GoalConfig = {
+      targetRatio: 1.0,
+      maxTurns: 5,
+      idleTurnsLimit: 2,
+      absoluteTimeoutMs: 60000,
+    }
+    writeConfigWithGoal(goal)
+    mkdirSync(join(workDir, '.nx-mk'), { recursive: true })
+    writeFileSync(
+      join(workDir, '.nx-mk', 'manifest.json'),
+      JSON.stringify({ fields: [{ id: 'f1', normalizedPath: 'data.name' }] }),
+    )
+
+    const scanningPlugin: Plugin = {
+      name: '@nx-mk/runresult-scanner',
+      version: '1.0.0',
+      hooks: {
+        beforeRun(ctx) {
+          ctx.emitReport({ kind: 'field-hit', fieldId: 'data.name', count: 1, turn: ctx.getTurn() })
+        },
+      },
+    }
+
+    const kernel = createKernel({
+      configPath,
+      runId: 'goal-runresult' as never,
+      subcommand: 'run',
+      cwd: workDir,
+      plugins: [scanningPlugin],
+    })
+    const result = await kernel.run()
+
+    // spec §3.1 审计链：终止原因与覆盖率快照随 RunResult 返回（Task 8 的 run.ts 消费）
+    expect(result.runId).toBe('goal-runresult')
+    expect(result.terminatedBy).toBe('goal-met')
+    // coverage 快照以 computeCoverage 口径复核：无新增 reports 时 ratio 仍为 1
+    expect(result.coverage).toBeDefined()
+    const recheck = computeCoverage([], result.coverage!)
+    expect(recheck.ratio).toBe(1)
+    expect(result.coverage?.ratio).toBe(1)
+    expect(result.coverage?.total).toBe(1)
+    expect(result.coverage?.missing).toEqual([])
   })
 
   it('preserves backward compat: no goal → uses beforeRun/afterRun', async () => {
