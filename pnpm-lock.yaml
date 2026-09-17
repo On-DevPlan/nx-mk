@@ -109,6 +109,9 @@ importers:
       '@nx-mk/coverage':
         specifier: workspace:*
         version: link:../coverage
+      '@nx-mk/dashboard':
+        specifier: workspace:*
+        version: link:../dashboard
       '@nx-mk/kernel':
         specifier: workspace:*
         version: link:../kernel

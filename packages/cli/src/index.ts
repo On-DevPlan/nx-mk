@@ -17,9 +17,10 @@ import { runMain } from './commands/run.js'
 import { runInit } from './commands/init.js'
 import { runDoctor } from './commands/doctor.js'
 import { runMigrate } from './commands/migrate.js'
+import { startMain } from './commands/start.js'
 
 // 子命令联合类型（run 为缺省值）
-type Subcommand = 'run' | 'init' | 'doctor' | 'migrate'
+type Subcommand = 'run' | 'init' | 'doctor' | 'migrate' | 'start'
 
 // argv 解析结果：子命令 + 各类全局选项（config/logLevel/outputDir/runId 可覆盖配置）
 interface ParsedArgs {
@@ -38,6 +39,10 @@ interface ParsedArgs {
     dryRun: boolean
     json: boolean
   }
+  start: {
+    port?: number
+    noRun: boolean
+  }
 }
 
 const HELP = `nx-mk — OpenAPI-driven API/UI coverage analyzer
@@ -50,12 +55,15 @@ Subcommands:
   init     Scaffold nx-mk.config.yml and .nx-mk/ directory
   doctor   Verify the environment (Node, config, plugins)
   migrate  Migrate static fetch('/api/...') calls to api.ns.method() (SDK-CG3)
+  start    Start the local Dashboard at 127.0.0.1:4317 (auto-runs analysis unless --no-run)
 
 Options:
   --config <path>        Path to nx-mk.config.yml (overrides lookup)
   --log-level <level>    debug | info | warn | error | silent
   --output-dir <path>    Output directory for run artifacts (default ./.nx-mk/runs)
   --run-id <id>          Override the auto-generated run id
+  --port <n>             Dashboard port (start only; overrides config dashboard.port)
+  --no-run               (start) serve existing artifacts without running analysis
   --manifest <path>      Path to .nx-mk/manifest.json (migrate only, default ./.nx-mk/manifest.json)
   --dir <path>           Source dir to scan (migrate only, default ./src)
   --api-prefix <prefix>  fetch URL prefix (migrate only, default /api)
@@ -79,6 +87,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     help: false,
     version: false,
     migrate: { dryRun: false, json: false },
+    start: { noRun: false },
   }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
@@ -103,6 +112,18 @@ function parseArgs(argv: string[]): ParsedArgs {
       case '--run-id':
         out.runId = argv[++i]
         break
+      case '--port': {
+        const raw = argv[++i]
+        const n = Number(raw)
+        if (!Number.isInteger(n) || n < 1 || n > 65535) {
+          throw new KernelError('KERNEL_INTERNAL', `Invalid --port: ${raw}`)
+        }
+        out.start.port = n
+        break
+      }
+      case '--no-run':
+        out.start.noRun = true
+        break
       case '--manifest':
         out.migrate.manifestPath = argv[++i]
         break
@@ -125,6 +146,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       case 'init':
       case 'doctor':
       case 'migrate':
+      case 'start':
         out.subcommand = a
         break
       default:
@@ -186,6 +208,18 @@ async function main(): Promise<void> {
         }
       }
       await runDoctor({ configPath, runId: args.runId ?? 'doctor', cliOverrides: { logLevel: args.logLevel, outputDir: args.outputDir } })
+      return
+    }
+    case 'start': {
+      // start 必须有配置文件（dashboard 段 + run 装配都从 config 读）
+      const configPath = await resolveConfigPath(args.configPath)
+      await startMain({
+        configPath,
+        runId: args.runId ?? generateRunId(),
+        ...(args.start.port !== undefined ? { port: args.start.port } : {}),
+        ...(args.start.noRun ? { noRun: true } : {}),
+        cliOverrides: { logLevel: args.logLevel, outputDir: args.outputDir },
+      })
       return
     }
     case 'run': {
