@@ -49,3 +49,8 @@ coverage:
 # demo 后端必须先跑（Hono 默认 8787）
 runtime:
   retainRuns: 5
+
+# Phase 4 Dashboard（spec §3.6）：`nx-mk start` 消费 —— 端口与自动开浏览器
+dashboard:
+  port: 4317
+  open: true

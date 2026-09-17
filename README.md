@@ -71,6 +71,18 @@ spec §3.6 字面示例 `['**.metadata.**','data.internalRiskScore']` 仅为示�
   hits/traces 即丢（addInitScript per-document 语义）；demo 无整页导航，v0 接受。
 - cross-document shim 跨导航持久化：sessionStorage / 常态回捞方案（Phase 4+）。
 
+## Dashboard（Phase 4）
+
+```bash
+cd examples/react-vite-demo
+node ../../packages/cli/dist/index.js start
+```
+
+- 默认 `http://127.0.0.1:4317`（`--port` 覆盖；config `dashboard.port` / `dashboard.open` 可配）
+- 先起 server 再自动跑一次分析（`--no-run` 只看已有产物）；run 失败 server 不关，failed run 可见
+- 页面：Overview（最新 run 三指标）/ Runs / run 总览 / Requests 列表+详情（含 field hits 与 UI evidence 文本样本）/ Fields 四态列表 / Returned-but-ignored
+- 数据全部只读自 `.nx-mk/`（coverage.db readonly + coverage-report.json + runs 目录）；UI 每 5 秒轮询，运行中的 run 完成后数据自动出现
+
 ## 开发
 
 ```bash
