@@ -41,6 +41,13 @@ export const CoverageConfigSchema = z.object({
 })
 export type CoverageConfig = z.infer<typeof CoverageConfigSchema>
 
+// Phase 4（spec §2.2/§3.6）：dashboard 段 —— start 命令消费的最小集（spec D10：defaultView 不收）
+export const DashboardConfigSchema = z.object({
+  port: z.number().int().min(1).max(65535).optional(),
+  open: z.boolean().optional(),
+})
+export type DashboardConfig = z.infer<typeof DashboardConfigSchema>
+
 // 顶层配置 schema：插件列表上限 20，输出目录必须是相对路径
 export const ConfigSchema = z
   .object({
@@ -58,5 +65,7 @@ export const ConfigSchema = z
     collect: CollectConfigSchema.optional(),
     // Phase 3：可选覆盖策略段（spec §3.2 —— analyzer 消费为 PolicyDecision）
     coverage: CoverageConfigSchema.optional(),
+    // Phase 4：可选 dashboard 段（spec §3.6 —— start 命令消费 port/open）
+    dashboard: DashboardConfigSchema.optional(),
   })
   .passthrough()
