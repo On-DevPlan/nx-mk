@@ -10,12 +10,22 @@
  * 失败 fail-fast，数据完整性优先）；失败路径把 runs 行收尾为 failed 后原样抛出。
  * Ruling 5（Task 7 审查）：collect 存在时代码装配 plugin-playwright —— 共享
  * collector 单实例同时喂插件（浏览器采集）与 flush 通道（SQLite 落盘）。
+ *
+ * Phase 3（spec §3.5）：成功路径 flushDrained 后跑 analyzer —— 读 .nx-mk/manifest.json
+ * + config coverage 段 → CoverageReport → stdout 三指标摘要 + coverage-report.json
+ * 落盘 → endRun 带 RunResult.terminatedBy（§3.1 审计链）。
  */
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createKernel, makeRunId, KernelError, type LogLevel, type Plugin } from '@nx-mk/kernel'
-import { loadConfig, type CollectConfig } from '@nx-mk/config'
-import { openCoverageDb, type CoverageDb } from '@nx-mk/coverage'
+import { loadConfig, type CollectConfig, type CoverageConfig } from '@nx-mk/config'
+import {
+  openCoverageDb,
+  analyzeCoverage,
+  evaluatePolicy,
+  type AnalyzeInput,
+  type CoverageDb,
+} from '@nx-mk/coverage'
 import { createCollector, type Collector } from '@nx-mk/client/collector'
 
 // run 子命令入参：配置路径 + 运行 ID + CLI 级配置覆盖
@@ -27,6 +37,28 @@ export interface RunMainOptions {
   cwd?: string
   collector?: Collector
   cliOverrides?: { logLevel?: LogLevel; outputDir?: string }
+}
+
+// spec §4 错误处理表：analyzer 阶段 manifest 缺失/解析失败/形状非法 → 以空 fields
+// 产出全零 CoverageReport（spec §5 审计链三产物不缺角），run 不 fail
+const EMPTY_MANIFEST: AnalyzeInput['manifest'] = {
+  version: '1',
+  source: { type: 'openapi', input: '', hash: '' },
+  generatedAt: '',
+  schemas: {},
+  fields: [],
+  endpoints: [],
+}
+
+// 形状门控（审查 M1）：JSON 合法但缺 fields/endpoints 数组（如 {}）按缺失处理，
+// 防 evaluatePolicy/analyzer 对 undefined 迭代抛 TypeError 把 run 难读地打 failed
+function isManifestShaped(parsed: unknown): parsed is AnalyzeInput['manifest'] {
+  return (
+    typeof parsed === 'object' &&
+    parsed !== null &&
+    Array.isArray((parsed as { fields?: unknown }).fields) &&
+    Array.isArray((parsed as { endpoints?: unknown }).endpoints)
+  )
 }
 
 // 创建内核（cwd 取当前进程目录）并驱动完整生命周期；错误向上抛给 CLI 顶层处理
@@ -88,16 +120,55 @@ export async function runMain(opts: RunMainOptions): Promise<void> {
     console.log(`✔ Run ${result.runId} completed in ${result.durationMs}ms`)
     console.log(`  Logs: .nx-mk/runs/${result.runId}/`)
     if (db) {
-      db.endRun(runId, new Date().toISOString(), 'completed')
-      // spec §4：flush SQLite 写入失败 = fail-fast（数据完整性优先于静默失败）
-      if (collector) db.flushDrained({ runId, ...collector.drain() })
-      // I1（Task 7 审查）：collect 配置而 flush 通道无 collector —— 防御性 warn。
-      // Ruling 5 装配后 collect 存在即有共享实例，此行守护未来装配被破坏的场景
-      // （静默空 flush —— db 存在但三表全空 —— 是验收调试的时间黑洞）。
-      else if (collect)
+      // —— Phase 3（spec §3.5）：drain-once —— flush 与 analyzer 共用同一次 drain ——
+      const drained = collector?.drain()
+      if (drained) {
+        // spec §4：flush SQLite 写入失败 = fail-fast（数据完整性优先于静默失败）
+        db.flushDrained({ runId, ...drained })
+        // 1. manifest 读取 + 形状门控（spec §4 错误处理表：analyzer 阶段缺失/解析失败/
+        //    形状非法 → 空报告 + warn，run 不 fail——审计链三产物不缺角）
+        let manifest: AnalyzeInput['manifest'] | undefined
+        try {
+          const parsed: unknown = JSON.parse(readFileSync(join(cwd, '.nx-mk', 'manifest.json'), 'utf8'))
+          if (isManifestShaped(parsed)) manifest = parsed
+        } catch {
+          /* 缺失/解析失败 → 下移 warn + 空报告 */
+        }
+        if (!manifest) {
+          manifest = EMPTY_MANIFEST
+          console.warn(
+            'coverage analysis: .nx-mk/manifest.json unavailable or invalid — using empty manifest (spec §4)',
+          )
+        }
+        // 2. policy 决策 + analyzer（coverage 段经 passthrough 透出，收窄读取同 collect 段）
+        const coverageCfg = (config as typeof config & { coverage?: CoverageConfig }).coverage ?? {}
+        const decisions = evaluatePolicy(manifest.fields, coverageCfg)
+        const report = analyzeCoverage({ runId, manifest, policyDecisions: decisions, drained, db })
+        // 3. stdout 三指标摘要
+        const pct = (n: number) => `${Math.round(n * 100)}%`
+        console.log(
+          `  Coverage: required ${pct(report.metrics.requiredCoverage)} | effective ${pct(report.metrics.effectiveCoverage)} | raw backend ${pct(report.metrics.rawBackendFieldCoverage)}`,
+        )
+        console.log(
+          `  missing required: ${report.metrics.missingRequiredFields} | ignored returned: ${report.metrics.ignoredReturnedFields} | suspicious: ${report.metrics.suspiciousFields}`,
+        )
+        // 4. JSON 落盘（写失败 warn 不阻断 —— 报告是产物不是账本，coverage_fields 已落库）
+        try {
+          writeFileSync(join(cwd, '.nx-mk', 'coverage-report.json'), JSON.stringify(report, null, 2))
+          console.log('  Report: .nx-mk/coverage-report.json')
+        } catch (err) {
+          console.warn(`coverage-report.json write failed: ${(err as Error).message}`)
+        }
+      } else if (collect) {
+        // I1（Task 7 审查）：collect 配置而 flush 通道无 collector —— 防御性 warn。
+        // Ruling 5 装配后 collect 存在即有共享实例，此行守护未来装配被破坏的场景
+        // （静默空 flush —— db 存在但三表全空 —— 是验收调试的时间黑洞）。
         console.warn(
           'collect configured but no shared collector injected — evidence/trace data will not be persisted',
         )
+      }
+      // endRun 收尾（spec §3.5 顺序：analyzer 之后）；terminatedBy 来自 RunResult（§3.1 审计链）
+      db.endRun(runId, new Date().toISOString(), 'completed', result.terminatedBy)
     }
   } catch (err) {
     if (db) {

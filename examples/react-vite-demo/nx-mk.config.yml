@@ -1,6 +1,5 @@
-# nx-mk Phase 2 demo config —— 指向 demo 后端生成的 swagger.json
+# nx-mk Phase 3 demo config —— goal 闭环 + coverage policy（spec §3.6 / §1.4）
 # 用法：在 demo 目录（examples/react-vite-demo）直接 `nx-mk run`
-# （findConfigFile 只认 nx-mk.config.{yml,yaml}，故由 mk.config.yml 改名而来）
 version: 1
 
 project:
@@ -11,13 +10,41 @@ openapi: ./swagger/openapi.json
 plugins:
   - '@nx-mk/plugin-swagger'
 
-# Phase 2 采集（spec §3.6 / Ruling 5 代码装配）：
-# run.ts 检测到 collect 段即程序化追加 plugin-playwright（共享 collector 喂插件
-# 与 flushDrained）—— plugins 数组无需也不应再列 plugin-playwright（代码装配
-# 侧会自动过滤该包名，防双实例双 browser launch）。
+# 采集段（spec §3.6 / Ruling 5 代码装配）：
 collect:
   url: http://localhost:5173
   maxTurns: 3
+
+# Phase 3 goal 闭环（spec §1.4 / §3.6）：
+# targetRatio 1.0 —— 要求 manifest 中所有非 ignored 字段均命中即终止；
+# plugin-playwright 在 beforeRun 单次收集 + field-hit 直报驱动 goal-met。
+goal:
+  targetRatio: 1.0
+  maxTurns: 5
+  idleTurnsLimit: 2
+  absoluteTimeoutMs: 60000
+
+# Phase 3 coverage policy（spec §3.2 / §3.3）：
+# ignored 列表命中的字段不进 analyzer 分母，但仍进 ignored-returned 集合；
+# kernel 侧 readInitialCoverageFromManifest 同步接收 ignoredGlobs（Task 9 裁定），
+# 使 goal-loop missing 索引一致排除。
+# 校准回路 Round 1：demo 页面只读 /users/{id} 的 data.* 字段，其余 endpoint 字段全进 ignored：
+#   - data.error            → 404 响应字段
+#   - data[].**           → /users 列表接口（listUsers）字段（** 匹配任意段数，
+#                            即数组元素的嵌套字段）
+#   - data.sku/quantity/total/createdAt → /orders 接口（createOrder）字段
+#   - data.internalRiskScore → 内部风控字段
+coverage:
+  required: []
+  optional: []
+  ignored:
+    - data.internalRiskScore
+    - data.error
+    - data[].**
+    - data.sku
+    - data.quantity
+    - data.total
+    - data.createdAt
 
 # demo 后端必须先跑（Hono 默认 8787）
 runtime:

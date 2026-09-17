@@ -16,7 +16,7 @@ import { runGoalLoop } from './goal-loop'
 import { readInitialCoverageFromManifest } from './initial-coverage'
 import { KernelError, mapErrorCodeToExit } from './errors'
 import type { KernelAPI, Plugin, PluginContext, RunResult } from './plugin'
-import type { KernelState, Phase, PluginWorkerState, ResolvedConfig, RunId } from './types'
+import type { GoalResult, KernelState, Phase, PluginWorkerState, ResolvedConfig, RunId } from './types'
 import type { Coverage, MissingItem, PluginReport, PluginSignal } from './types'
 import { assertNever, makePluginName, makeRunId, PHASES } from './types'
 
@@ -280,7 +280,9 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
         // Goal Loop 路径：构建共享循环状态 + AbortController
         // initial coverage 从 .nx-mk/manifest.json 读（plugin-swagger 在 beforeRun 写入）；
         // 文件缺失则回退 placeholder，让 demo 模式仍能跑通。
-        loopState.coverage = readInitialCoverageFromManifest(cwd)
+        loopState.coverage = readInitialCoverageFromManifest(cwd, {
+          ignoredGlobs: (config as { coverage?: { ignored?: string[] } }).coverage?.ignored,
+        })
         const goalAbort = new AbortController()
         // 触发手动 shutdown 时同步终止 goal loop
         if (shutdownPromise) goalAbort.abort()
@@ -412,7 +414,15 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
           await runPhase(phase)
         }
         runFinished = true
-        return { runId: opts.runId, durationMs: Date.now() - start }
+        // spec §3.1 审计链：goal run 的终止原因与覆盖率快照随 RunResult 返回（Task 8 的 run.ts 消费）；
+        // 非 goal run 时 state.collectionResult 未填充 → 两字段均为 undefined
+        const goalRes: GoalResult | undefined = state.collectionResult ?? undefined
+        return {
+          runId: opts.runId,
+          durationMs: Date.now() - start,
+          terminatedBy: goalRes?.terminatedBy,
+          coverage: goalRes?.coverage,
+        }
       } catch (err) {
         // 记录错误到内核状态；非 KernelError 一律归为 KERNEL_INTERNAL（退出码 5）
         state.error = {

@@ -33,6 +33,14 @@ export const CollectConfigSchema = z.object({
 })
 export type CollectConfig = z.infer<typeof CollectConfigSchema>
 
+// Phase 3：coverage policy 段（spec §2.2/§3.2）—— 三个 glob 列表，缺省空
+export const CoverageConfigSchema = z.object({
+  required: z.array(z.string().min(1)).optional(),
+  optional: z.array(z.string().min(1)).optional(),
+  ignored: z.array(z.string().min(1)).optional(),
+})
+export type CoverageConfig = z.infer<typeof CoverageConfigSchema>
+
 // 顶层配置 schema：插件列表上限 20，输出目录必须是相对路径
 export const ConfigSchema = z
   .object({
@@ -48,5 +56,7 @@ export const ConfigSchema = z
     goal: GoalConfigSchema,
     // Phase 2：可选采集段（spec §3.6 —— run 装配层据此建 coverage.db 并接采集插件）
     collect: CollectConfigSchema.optional(),
+    // Phase 3：可选覆盖策略段（spec §3.2 —— analyzer 消费为 PolicyDecision）
+    coverage: CoverageConfigSchema.optional(),
   })
   .passthrough()

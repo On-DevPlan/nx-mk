@@ -24,4 +24,16 @@ describe('scanDom', () => {
   it('空数组 → 空输出', () => {
     expect(scanDom([])).toEqual([])
   })
+
+  it('scanDom 透传 text → textSample（spec §3.4 空标记判定数据源）', () => {
+    const out = scanDom([{ dataMkField: 'data.name', visible: true, inViewport: true, text: 'Alice' }])
+    expect(out).toHaveLength(1)
+    expect(out[0].textSample).toBe('Alice')
+  })
+
+  it('text 缺省 → textSample undefined（向后兼容旧描述符）', () => {
+    const out = scanDom([{ dataMkField: 'data.name', visible: true, inViewport: true }])
+    expect(out).toHaveLength(1)
+    expect(out[0].textSample).toBeUndefined()
+  })
 })

@@ -51,3 +51,7 @@ export { loadPlugins } from './plugin-registry'
 
 // —— 钩子执行器：fail-fast 串行执行插件钩子
 export { runHook, runHooksForPhase } from './hooks'
+
+// —— 初始覆盖率：从 .nx-mk/manifest.json 读取字段作为 Goal Loop 起点（M14 收尾）
+export { readInitialCoverageFromManifest } from './initial-coverage'
+export type { InitialCoverageOptions } from './initial-coverage'

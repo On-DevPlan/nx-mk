@@ -9,6 +9,8 @@ export interface DomFieldDescriptor {
   dataMkField: string          // data-mk-field 属性值（空 = 过滤）
   visible: boolean
   inViewport: boolean
+  /** anti-cheat 空标记判定样本（spec §3.4；可选 —— 旧调用方兼容） */
+  text?: string
 }
 
 export function scanDom(descs: DomFieldDescriptor[]): UiEvidenceCore[] {
@@ -23,5 +25,6 @@ export function scanDom(descs: DomFieldDescriptor[]): UiEvidenceCore[] {
       visible: d.visible,
       inViewport: d.inViewport,
       route: undefined,
+      textSample: d.text,
     }))
 }

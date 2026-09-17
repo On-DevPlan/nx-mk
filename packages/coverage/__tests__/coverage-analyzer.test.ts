@@ -1,85 +1,212 @@
 /**
- * coverage analyzer v0（spec D7）：required 未访问 = missing；
- * optional 字段只要已命中也计入 total/covered，但永不进 missing；
- * field-hit 命中 → coverage 状态 counted；产出 coverage_fields 行 + missing 数组。
+ * analyzer 全量（spec §3.3）：四态 + 三指标 + ignored-returned + suspicious + 列值锁。
+ * fixture：manifest 5 response 字段（2 required 命中/未命中 / 1 optional 命中 / 1 ignored 命中）+
+ * evidence（1 valid / 1 weak / 1 suspicious）—— 沿既有 tmp SQLite + insertRun arrange。
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openCoverageDb } from '../src/db/client.js'
-import { analyzeCoverage } from '../src/analyzer/coverage-analyzer.js'
+import { openCoverageDb } from '../src/index.js'
+import { evaluatePolicy, type PolicyDecision } from '../src/policy/index.js'
+import { analyzeCoverage, type AnalyzeDrained, type CoverageReport } from '../src/analyzer/index.js'
 import type { ApiManifest } from '@nx-mk/manifest-schema'
 
-let dir: string
+// fixture 字段（normalizedPath 即 §17 形态）：
+//   data.name (required) 命中 | data.email (required) 未命中 | data.tags[] (optional) 命中
+//   data.internalRiskScore (ignored) 命中 | data.address.city (optional) 未命中
+const FIELDS = [
+  { id: 'h1', normalizedPath: 'data.name', required: true, endpointId: 'getUser', direction: 'response' as const },
+  { id: 'h2', normalizedPath: 'data.email', required: true, endpointId: 'getUser', direction: 'response' as const },
+  { id: 'h3', normalizedPath: 'data.tags[]', required: false, endpointId: 'getUser', direction: 'response' as const },
+  { id: 'h4', normalizedPath: 'data.internalRiskScore', required: false, endpointId: 'getUser', direction: 'response' as const },
+  { id: 'h5', normalizedPath: 'data.address.city', required: false, endpointId: 'getUser', direction: 'response' as const },
+]
+const POLICY = { required: [], optional: [], ignored: ['data.internalRiskScore'] }
+const DECISIONS = evaluatePolicy(FIELDS, POLICY)
+const HITS = (paths: string[]): AnalyzeDrained['hits'] =>
+  paths.map((normalizedPath) => ({ normalizedPath, count: 1, requestId: 'r1', endpointId: 'getUser' }))
+const TRACE_GET_USER = { endpointId: 'getUser', method: 'GET', path: '/users/{id}' }
+
 const MANIFEST: ApiManifest = {
   version: '1',
   source: { type: 'openapi', input: 'x.json', hash: 'h' },
   generatedAt: '',
   schemas: {},
-  fields: [
-    { id: 'f_id', endpointId: 'ep1', direction: 'response', status: '200', path: 'data.id', normalizedPath: 'data.id', name: 'id', type: 'string', required: true, source: { openapiPointer: '' } },
-    { id: 'f_addr', endpointId: 'ep1', direction: 'response', status: '200', path: 'data.address.zip', normalizedPath: 'data.address.zip', name: 'zip', type: 'string', required: false, source: { openapiPointer: '' } },
-  ],
-  endpoints: [{ id: 'ep1', method: 'GET', path: '/users/{id}', responses: [{ status: '200', fields: [] }] }],
+  fields: FIELDS.map((f) => ({
+    id: f.id,
+    endpointId: f.endpointId,
+    direction: 'response' as const,
+    status: '200',
+    path: f.normalizedPath.replace('[]', '[0]'),
+    normalizedPath: f.normalizedPath,
+    name: f.normalizedPath.split('.').pop() ?? '',
+    type: 'string',
+    ...(f.required ? { required: true } : {}),
+    source: { openapiPointer: '' },
+  })),
+  endpoints: [{ id: 'getUser', method: 'GET', path: '/users/{id}', responses: [{ status: '200', fields: [] }] }],
 }
 
+let dir: string
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'nx-mk-an-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-describe('analyzeCoverage', () => {
-  it('required 且命中 → coverage_state=covered counted_required=1', () => {
-    const db = openCoverageDb(join(dir, 'c.db'))
-    try {
-      const r = analyzeCoverage(db, 'run1', MANIFEST, { hits: [{ normalizedPath: 'data.id', count: 3 }] })
-      expect(r.total).toBe(2)               // manifest 2 个 response field
-      expect(r.covered).toBe(1)             // required 命中 → covered 计数
-      expect(r.missing).toEqual([])         // f_id required 且已命中 → missing 空（D7：optional 恒不进 missing）
-      void r
-    } finally { db.close() }
+/** arrange + act：tmp db + insertRun + 新签名调用（traces/evidence 缺省为空） */
+function analyzeWith(
+  drained: Partial<AnalyzeDrained> & { hits: AnalyzeDrained['hits'] },
+  manifest: ApiManifest = MANIFEST,
+  policyDecisions: PolicyDecision[] = DECISIONS,
+): CoverageReport {
+  const db = openCoverageDb(join(dir, 'c.db'))
+  try {
+    db.insertRun('run1', new Date().toISOString(), 'running')
+    return analyzeCoverage({
+      runId: 'run1',
+      manifest,
+      policyDecisions,
+      drained: { traces: [], evidence: [], ...drained },
+      db,
+    })
+  } finally { db.close() }
+}
+
+/** 读回 coverage_fields 单行（列值锁用） */
+function fieldRow(fieldId: string): Record<string, unknown> {
+  const db = openCoverageDb(join(dir, 'c.db'))
+  try {
+    return db.prepare('SELECT * FROM coverage_fields WHERE field_id = ?').get(fieldId) as Record<string, unknown>
+  } finally { db.close() }
+}
+
+describe('analyzeCoverage — 四态与三指标', () => {
+  it('covered：required/optional 且 accessHit', () => {
+    const r = analyzeWith({ hits: HITS(['data.name', 'data.tags[]']) })
+    expect(r.missingRequiredFields.map((f) => f.fieldPath)).toEqual(['data.email'])
+    expect(fieldRow('h1')).toMatchObject({ coverage_state: 'covered' })
   })
 
-  it('optional 未命中不计入 missing（D7 v0 只看 required）', () => {
-    const M: ApiManifest = { ...MANIFEST, fields: [MANIFEST.fields[1]!] }  // 仅 optional 字段
-    const db = openCoverageDb(join(dir, 'c.db'))
-    try {
-      const r = analyzeCoverage(db, 'run1', M, { hits: [] })
-      expect(r.missing).toEqual([])         // 无 required 字段的 manifest → empty missing
-      void r
-    } finally { db.close() }
+  it('uiHit 计入 covered；suspicious evidence 不计入且进 suspiciousCoverage；weak 计入且进 weakEvidenceFields', () => {
+    const r = analyzeWith({
+      hits: HITS(['data.address.city']),
+      evidence: [
+        { fieldPath: 'data.name', visible: true, textSample: 'Alice' },
+        { fieldPath: 'data.email', visible: true, textSample: '' },
+        { fieldPath: 'data.tags[]', visible: false, textSample: 'secret' },
+      ],
+    })
+    // data.name：无 access hit 但 evidence valid → uiHit → covered
+    expect(fieldRow('h1')).toMatchObject({ coverage_state: 'covered', access_hit: 0, ui_hit: 1 })
+    // data.email：weak 计 hit → covered 且进 weak 清单
+    expect(fieldRow('h2')).toMatchObject({ coverage_state: 'covered', ui_hit: 1 })
+    expect(r.weakEvidenceFields.map((f) => f.fieldPath)).toEqual(['data.email'])
+    // data.tags[]：suspicious 不算 hit → notApplicable + 进 suspiciousCoverage + suspicious 列置 1
+    expect(fieldRow('h3')).toMatchObject({ coverage_state: 'notApplicable', ui_hit: 0, suspicious: 1 })
+    expect(r.suspiciousCoverage.map((f) => f.fieldPath)).toEqual(['data.tags[]'])
+    // data.address.city：本用例唯一 access 命中 → covered
+    expect(fieldRow('h5')).toMatchObject({ coverage_state: 'covered', access_hit: 1 })
   })
 
-  it('required 未命中 → missing 含该 fieldPath', () => {
-    const M: ApiManifest = { ...MANIFEST, fields: [MANIFEST.fields[0]!] }
-    const db = openCoverageDb(join(dir, 'c.db'))
-    try {
-      const r = analyzeCoverage(db, 'run1', M, { hits: [] })
-      expect(r.missing).toEqual(['data.id'])
-    } finally { db.close() }
+  it('ignored 命中 → ignored-returned 集合（§22 数据）', () => {
+    const r = analyzeWith({ hits: HITS(['data.name', 'data.internalRiskScore']) })
+    expect(r.ignoredReturnedFields).toEqual([
+      expect.objectContaining({
+        fieldPath: 'data.internalRiskScore',
+        state: 'ignored',
+        hitCount: 1,
+        matchedRule: { source: 'user-config', pattern: 'data.internalRiskScore' },
+      }),
+    ])
+    expect(fieldRow('h4')).toMatchObject({ policy_status: 'ignored', coverage_state: 'ignored', access_hit: 1 })
   })
 
-  it('coverage_fields 行写入：13 列、state 与计数正确', () => {
-    const db = openCoverageDb(join(dir, 'c.db'))
-    try {
-      analyzeCoverage(db, 'run1', MANIFEST, { hits: [{ normalizedPath: 'data.id', count: 2 }] })
-      const row = db.prepare(`SELECT * FROM coverage_fields WHERE field_id = 'f_id'`).get() as Record<string, unknown>
-      expect(row).toMatchObject({
-        id: 'cf_run1_data.id',
-        run_id: 'run1',
-        field_id: 'f_id',
-        endpoint_id: 'ep1',
-        field_path: 'data.id',
-        policy_status: 'default',
-        coverage_state: 'covered',
-        access_hit: 1,
-        ui_hit: 0,
-        assertion_hit: 0,
-        suspicious: 0,
-        counted_required: 1,
-        counted_effective: 1,
-      })
-      const row2 = db.prepare(`SELECT * FROM coverage_fields WHERE field_id = 'f_addr'`).get() as Record<string, unknown>
-      expect(row2).toMatchObject({ coverage_state: 'optional-unhit', counted_required: 0, counted_effective: 0 })
-    } finally { db.close() }
+  it('三指标算术（§21.6）与零分母', () => {
+    const r = analyzeWith({ hits: HITS(['data.name', 'data.tags[]', 'data.internalRiskScore', 'data.address.city']) })
+    expect(r.metrics.requiredCoverage).toBeCloseTo(1 / 2)        // name 命中 / email 未命中
+    expect(r.metrics.effectiveCoverage).toBeCloseTo(3 / 4)       // 分母 required2+optional2；covered: name/tags[]/city
+    expect(r.metrics.rawBackendFieldCoverage).toBeCloseTo(4 / 5) // returned 4 / response 5
+    // 空分母：无 required 字段 → 0（不 NaN）
+    const noReqFields = FIELDS.filter((f) => f.required !== true)
+    const m: ApiManifest = { ...MANIFEST, fields: MANIFEST.fields.filter((f) => !f.required) }
+    const r2 = analyzeWith({ hits: [] }, m, evaluatePolicy(noReqFields, POLICY))
+    expect(r2.metrics.requiredCoverage).toBe(0)
+    expect(r2.metrics.effectiveCoverage).toBe(0)
+    expect(r2.metrics.rawBackendFieldCoverage).toBe(0)
+  })
+
+  it('metrics 计数与 §28.2 形状（endpoints/counts）', () => {
+    const r = analyzeWith({
+      hits: HITS(['data.name', 'data.tags[]', 'data.internalRiskScore', 'data.address.city']),
+      traces: [TRACE_GET_USER],
+    })
+    expect(r.runId).toBe('run1')
+    expect(r.metrics).toMatchObject({
+      endpointsTotal: 1,
+      endpointsCalled: 1,
+      fieldsTotal: 5,
+      fieldsReturned: 4,
+      requiredFields: 2,
+      missingRequiredFields: 1,
+      ignoredReturnedFields: 1,
+      suspiciousFields: 0,
+    })
+    expect(r.endpoints).toEqual([
+      { endpointId: 'getUser', method: 'GET', path: '/users/{id}', called: true, fieldsTotal: 5, fieldsCovered: 3 },
+    ])
+  })
+
+  it('coverage_fields 列值锁（13 列逐列绑定，state 迁移 D6）', () => {
+    analyzeWith({ hits: HITS(['data.name', 'data.internalRiskScore']) })
+    // data.name（schema required → default required；命中 → covered）
+    expect(fieldRow('h1')).toMatchObject({
+      id: 'cf_run1_data.name',
+      run_id: 'run1',
+      field_id: 'h1',
+      endpoint_id: 'getUser',
+      field_path: 'data.name',
+      policy_status: 'required',
+      coverage_state: 'covered',
+      access_hit: 1,
+      ui_hit: 0,
+      assertion_hit: 0,
+      suspicious: 0,
+      counted_required: 1,
+      counted_effective: 1,
+    })
+    // data.email（required 未命中 → missing）
+    expect(fieldRow('h2')).toMatchObject({ coverage_state: 'missing', counted_required: 1, counted_effective: 1 })
+    // data.tags[]（optional 未命中 → notApplicable，取代旧 'optional-unhit'）
+    expect(fieldRow('h3')).toMatchObject({ coverage_state: 'notApplicable', counted_required: 0, counted_effective: 1 })
+    // data.internalRiskScore（user-config ignored → counted_*=0）
+    expect(fieldRow('h4')).toMatchObject({ policy_status: 'ignored', coverage_state: 'ignored', counted_required: 0, counted_effective: 0 })
+  })
+})
+
+describe('analyzeCoverage — requests 摘要（§28.2 契约完整性）', () => {
+  it('traces → requests 逐请求投影；缺失的可选字段不臆造', () => {
+    const r = analyzeWith({
+      hits: HITS(['data.name']),
+      traces: [
+        // 全字段 trace（RequestTraceCore 形状）
+        {
+          requestId: 'r1', endpointId: 'getUser', method: 'GET', url: 'http://x/users/1',
+          path: '/users/{id}', status: 200, durationMs: 5, startedAt: 't0', endedAt: 't1',
+        },
+        // 最小 trace（缺 requestId/url 等）→ 缺省字段保持缺省
+        { endpointId: 'getUser', method: 'POST' },
+      ],
+    })
+    expect(r.requests).toEqual([
+      {
+        requestId: 'r1', endpointId: 'getUser', method: 'GET', url: 'http://x/users/1',
+        path: '/users/{id}', status: 200, durationMs: 5, startedAt: 't0', endedAt: 't1',
+      },
+      { endpointId: 'getUser', method: 'POST' },
+    ])
+  })
+
+  it('空 traces → requests 空数组', () => {
+    const r = analyzeWith({ hits: HITS(['data.name']), traces: [] })
+    expect(r.requests).toEqual([])
   })
 })
