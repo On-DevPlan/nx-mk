@@ -74,7 +74,8 @@ function spyWarn(): ReturnType<typeof vi.spyOn> {
 }
 
 // —— Phase 3（spec §3.5）analyzer 输入 fixture：1 response 字段 data.name 的 manifest ——
-// （Phase 2 用例给 manifest 使 analyzer 正常跑，不触发「manifest 缺失」skip warn）
+// （Phase 2 用例给 manifest 使 analyzer 正常跑，不触发「manifest 缺失/形状非法 →
+// 空 manifest 空报告照常落盘 + warn」分支 —— spec §4 错误处理表）
 const MANIFEST_1FIELD = {
   version: '1',
   source: { type: 'openapi', input: 'x.json', hash: 'h' },
@@ -138,7 +139,7 @@ describe('runMain collect 装配（spec §3.6）', () => {
   it('run 结束后 coverage.db 文件存在于注入的 cwd（tmp）', async () => {
     writeFileSync(configPath, "plugins: []\ncollect:\n  url: 'http://localhost:5173'\n")
     const log = silenceConsole()
-    const warn = spyWarn() // manifest 缺失 → analyzer skip warn（本用例不断言，静音）
+    const warn = spyWarn() // manifest 缺失 → 空 manifest 空报告照常落盘 + warn（本用例不断言，静音）
     try {
       await runMain({ configPath, runId: 'run_file', cwd: workDir })
     } finally {
