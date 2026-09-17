@@ -8,7 +8,7 @@
  * - collect.url 非 http(s) → CONFIG_INVALID fail-fast（spec §4）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, existsSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runMain } from '../commands/run'
@@ -47,11 +47,13 @@ vi.mock('@nx-mk/kernel', async (importOriginal) => {
 let workDir: string
 let configPath: string
 let dbPath: string
+let reportPath: string
 
 beforeEach(() => {
   workDir = mkdtempSync(join(tmpdir(), 'nx-mk-run-collect-'))
   configPath = join(workDir, 'nx-mk.config.yml')
   dbPath = join(workDir, '.nx-mk', 'coverage.db')
+  reportPath = join(workDir, '.nx-mk', 'coverage-report.json')
   writeFileSync(configPath, 'plugins: []\nlogLevel: info\n')
   createPlaywrightPluginMock.mockClear()
 })
@@ -71,8 +73,38 @@ function spyWarn(): ReturnType<typeof vi.spyOn> {
   return vi.spyOn(console, 'warn').mockImplementation(() => {})
 }
 
+// —— Phase 3（spec §3.5）analyzer 输入 fixture：1 response 字段 data.name 的 manifest ——
+// （Phase 2 用例给 manifest 使 analyzer 正常跑，不触发「manifest 缺失」skip warn）
+const MANIFEST_1FIELD = {
+  version: '1',
+  source: { type: 'openapi', input: 'x.json', hash: 'h' },
+  generatedAt: '',
+  schemas: {},
+  fields: [
+    {
+      id: 'h1',
+      endpointId: 'ep1',
+      direction: 'response',
+      status: '200',
+      path: 'data.name',
+      normalizedPath: 'data.name',
+      name: 'name',
+      type: 'string',
+      required: true,
+      source: { openapiPointer: '' },
+    },
+  ],
+  endpoints: [{ id: 'ep1', method: 'GET', path: '/api/users', responses: [{ status: '200', fields: [] }] }],
+}
+
+// 写 manifest fixture（analyzer 门控输入：缺失则跳过分析并 warn）
+function writeManifestFixture(): void {
+  mkdirSync(join(workDir, '.nx-mk'), { recursive: true })
+  writeFileSync(join(workDir, '.nx-mk', 'manifest.json'), JSON.stringify(MANIFEST_1FIELD))
+}
+
 describe('runMain collect 装配（spec §3.6）', () => {
-  it('collect 缺失 → 不建 coverage.db', async () => {
+  it('collect 缺失 → 不建 coverage.db；不产 coverage-report.json（行为不变回归）', async () => {
     const log = silenceConsole()
     try {
       await runMain({ configPath, runId: 'run_nodb', cwd: workDir })
@@ -80,10 +112,12 @@ describe('runMain collect 装配（spec §3.6）', () => {
       log.mockRestore()
     }
     expect(existsSync(dbPath)).toBe(false)
+    expect(existsSync(reportPath)).toBe(false)
   })
 
-  it('collect 配置 → runs 表登记本次 run（insertRun → endRun completed）', async () => {
+  it('collect 配置 → runs 表登记本次 run（insertRun → endRun completed，不带 terminatedBy）', async () => {
     writeFileSync(configPath, "plugins: []\ncollect:\n  url: 'http://localhost:5173'\n")
+    writeManifestFixture() // 非 goal run → terminatedBy undefined → COALESCE 保留 NULL
     const log = silenceConsole()
     try {
       await runMain({ configPath, runId: 'run_db', cwd: workDir })
@@ -93,8 +127,8 @@ describe('runMain collect 装配（spec §3.6）', () => {
     expect(existsSync(dbPath)).toBe(true)
     const db = openCoverageDb(dbPath)
     try {
-      expect(db.prepare('SELECT id, status, ended_at FROM runs').all()).toEqual([
-        { id: 'run_db', status: 'completed', ended_at: expect.any(String) },
+      expect(db.prepare('SELECT id, status, ended_at, terminated_by FROM runs').all()).toEqual([
+        { id: 'run_db', status: 'completed', ended_at: expect.any(String), terminated_by: null },
       ])
     } finally {
       db.close()
@@ -104,10 +138,12 @@ describe('runMain collect 装配（spec §3.6）', () => {
   it('run 结束后 coverage.db 文件存在于注入的 cwd（tmp）', async () => {
     writeFileSync(configPath, "plugins: []\ncollect:\n  url: 'http://localhost:5173'\n")
     const log = silenceConsole()
+    const warn = spyWarn() // manifest 缺失 → analyzer skip warn（本用例不断言，静音）
     try {
       await runMain({ configPath, runId: 'run_file', cwd: workDir })
     } finally {
       log.mockRestore()
+      warn.mockRestore()
     }
     // db path 指 tmp：不存在于仓库 cwd，只存在于注入的 workDir
     expect(existsSync(dbPath)).toBe(true)
@@ -115,6 +151,7 @@ describe('runMain collect 装配（spec §3.6）', () => {
 
   it('注入共享 collector → run 结束 flushDrained 落 field_hits/request_traces/ui_evidence', async () => {
     writeFileSync(configPath, "plugins: []\ncollect:\n  url: 'http://localhost:5173'\n")
+    writeManifestFixture() // Phase 3：manifest 在场 → analyzer 正常跑（不触发 skip warn）
     const collector = createCollector()
     collector.trace({
       requestId: 'r1',
@@ -163,6 +200,7 @@ describe('runMain collect 装配（spec §3.6）', () => {
 
   it('Ruling 5 装配：collect 配置（无注入）→ 自建共享 collector 喂插件 → 产出经 flush 落库（不 warn）', async () => {
     writeFileSync(configPath, "plugins: []\ncollect:\n  url: 'http://localhost:5173'\n")
+    writeManifestFixture() // Phase 3：manifest 在场 → analyzer 正常跑（不触发 skip warn）
     // 本次装配的插件镜像真实行为：beforeRun 向【run.ts 传入的共享 collector】投递
     // 浏览器通道回捞的 trace/evidence —— 断言同一实例最终被 flush 落库
     createPlaywrightPluginMock.mockImplementationOnce(
