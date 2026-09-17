@@ -120,7 +120,7 @@ tests/integration/
 
 ### 3.1 store 读层（`src/server/store/`）
 
-- **runs-store**：扫 `.nx-mk/runs/` 子目录 → runId 列表（目录是主键来源——非 collect run 也有目录无 db 行）；每 run 附 events.jsonl / manifest.json 存在性
+- **runs-store**：扫 `.nx-mk/runs/` 子目录 → runId 列表（目录是主键来源——非 collect run 也有目录无 db 行）；每 run 附 events.jsonl 存在性（manifest.json 是 workspace 级产物，不随 run——在 `/api/runs` 顶层以 `manifestAvailable` 报告）
 - **db-reader**：`new Database(path, { readonly: true })` + `PRAGMA busy_timeout = 2000`；文件不存在/打开失败 → 返回 null（不抛）；每次查询包 try，SQLITE_BUSY → 上层映射 503。**绝不**跑 SCHEMA_SQL/ensureColumn
 - **report-reader**：读 `.nx-mk/coverage-report.json` → 形状门控（object + `runId: string` + `metrics` 对象且三指标为 number；四数组缺省补 `[]`）→ 不合法返回 null（手法同 run.ts `isManifestShaped`）；**runId 匹配门控**：report 是最新 run 的覆盖写产物，`report.runId ≠ 查询目标 runId` 时调用方按缺失处理（旧 run 的 metrics/ignored → 404，requests → 回落 db 投影，见 D12）
 - **queries**：camelCase 投影 §25 各表列——`TraceRow`（§25.4 列集）、`FieldHitRow`（§25.6）、`UiEvidenceRow`（§25.7 含 text_sample）、`CoverageFieldRow`（§25.8 十三列）、`RunRow`（§25.1 + terminated_by）。字段集 = 对应表列，不臆造
@@ -143,19 +143,19 @@ tests/integration/
 - **router**：模式表 `[{ pattern: '/runs/:runId/fields', page: FieldsList }, …]`；`useHashRoute()` 监听 hashchange，返回 `{ path, params }`；`navigate(to)` 写 `location.hash`
 - **usePolling**：mount 时 fetch 一次 + setInterval（默认 5000ms）+ `refresh()`；unmount 清理 + AbortController；错误态显示后继续轮询
 - **api**：`getJson<T>(path)` → 非 2xx 抛 `ApiError(status, hint)`；页面据此渲染 404 空态/降级提示
-- **页面**：表格与卡片为纯展示组件；FieldsList 按 state 四组折叠，行内展开 policyStatus/hitCount/matchedRule + ui_evidence（textSample 可见）；RequestDetail 三段（trace / 关联 hits / 关联 evidence，空关联显示 "not associated"——v0 数据现实，见 §8 风险）
+- **页面**：表格与卡片为纯展示组件；FieldsList 按 state 四组折叠，行内展开 policyStatus/hitCount/matchedRule/accessHit/uiHit（evidence 的 textSample 展示在 RequestDetail 页——7 条路由契约不含 per-field evidence 查询）；RequestDetail 三段（trace / 关联 hits / 关联 evidence，空关联显示 "not associated"——v0 数据现实，见 §8 风险）
 - UI 文案英文（与 CLI stdout 惯例一致）；中文注释纪律不变
 
 ### 3.5 API 响应形状（§30.2 只读子集，完整契约在 `src/shared/api-types.ts`）
 
 | 路由 | 响应 | 降级/404 |
 |---|---|---|
-| `GET /api/runs` | `{ runs: RunListItem[] }`，RunListItem = `{ runId, hasEvents, hasManifest, hasReport, status?, startedAt?, endedAt?, terminatedBy? }` | `.nx-mk` 缺失 → `{runs:[]}` |
+| `GET /api/runs` | `{ runs: RunListItem[], manifestAvailable: boolean }`，RunListItem = `{ runId, hasEvents, hasReport, status?, startedAt?, endedAt?, terminatedBy? }` | `.nx-mk` 缺失 → `{runs:[], manifestAvailable:false}` |
 | `GET /api/runs/:runId` | RunListItem + `{ dbRow?: RunRow }` | 未知 runId → 404 |
 | `GET /api/runs/:runId/metrics` | `{ runId, status?, terminatedBy?, metrics: CoverageReportMetrics }` | report 缺失 → 404 + `hint: 'coverage-report.json is written at run end; re-run nx-mk run'` |
 | `GET /api/runs/:runId/requests` | `{ requests: RequestTraceSummary[] }` | report 有 → report.requests；无 report → request_traces 按 run 投影；两者皆无 → `{requests:[]}` |
 | `GET /api/runs/:runId/requests/:requestId` | `{ trace: TraceRow, hits: FieldHitRow[], evidence: UiEvidenceRow[] }`（hits/evidence 按 request_id 关联，可能为空数组） | requestId 于 traces 与 report 均无 → 404 |
-| `GET /api/runs/:runId/fields` | `{ fields: CoverageFieldRow[] }` | db/表缺失 → `{fields:[]}`（UI 空态） |
+| `GET /api/runs/:runId/fields` | `{ fields: Array<CoverageFieldRow & { hitCount?: number; matchedRule?: FieldCoverageItem['matchedRule'] }> }`（db 行为基座；report 命中该 run 时按 fieldPath 富化 hitCount/matchedRule——两值不在 §25.8 列中） | db/表缺失 → `{fields:[]}`（UI 空态） |
 | `GET /api/runs/:runId/ignored` | `{ ignored: FieldCoverageItem[] }` | report 缺失 → 404 + 同 metrics hint |
 
 RequestTraceSummary/FieldCoverageItem 复用 `@nx-mk/coverage` 导出（workspace 依赖）；db 行投影类型定义在 shared/api-types.ts。
