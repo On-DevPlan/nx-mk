@@ -181,3 +181,32 @@ describe('analyzeCoverage — 四态与三指标', () => {
     expect(fieldRow('h4')).toMatchObject({ policy_status: 'ignored', coverage_state: 'ignored', counted_required: 0, counted_effective: 0 })
   })
 })
+
+describe('analyzeCoverage — requests 摘要（§28.2 契约完整性）', () => {
+  it('traces → requests 逐请求投影；缺失的可选字段不臆造', () => {
+    const r = analyzeWith({
+      hits: HITS(['data.name']),
+      traces: [
+        // 全字段 trace（RequestTraceCore 形状）
+        {
+          requestId: 'r1', endpointId: 'getUser', method: 'GET', url: 'http://x/users/1',
+          path: '/users/{id}', status: 200, durationMs: 5, startedAt: 't0', endedAt: 't1',
+        },
+        // 最小 trace（缺 requestId/url 等）→ 缺省字段保持缺省
+        { endpointId: 'getUser', method: 'POST' },
+      ],
+    })
+    expect(r.requests).toEqual([
+      {
+        requestId: 'r1', endpointId: 'getUser', method: 'GET', url: 'http://x/users/1',
+        path: '/users/{id}', status: 200, durationMs: 5, startedAt: 't0', endedAt: 't1',
+      },
+      { endpointId: 'getUser', method: 'POST' },
+    ])
+  })
+
+  it('空 traces → requests 空数组', () => {
+    const r = analyzeWith({ hits: HITS(['data.name']), traces: [] })
+    expect(r.requests).toEqual([])
+  })
+})

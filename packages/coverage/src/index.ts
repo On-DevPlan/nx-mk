@@ -14,4 +14,11 @@ export {
   type CoverageReportMetrics,
   type FieldCoverageItem,
   type EndpointCoverage,
+  type RequestTraceSummary,
 } from './analyzer/index.js'
+export {
+  evaluatePolicy,
+  type PolicyConfig,
+  type PolicyDecision,
+  type ManifestFieldLike,
+} from './policy/index.js'

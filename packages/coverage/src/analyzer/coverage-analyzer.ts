@@ -9,7 +9,7 @@ import type { ApiManifest } from '@nx-mk/manifest-schema'
 import { classifyEvidence } from '../anti-cheat/index.js'
 import type { EvidenceQuality } from '../anti-cheat/index.js'
 import type { PolicyDecision } from '../policy/index.js'
-import type { CoverageReport, FieldCoverageItem, EndpointCoverage } from './report.js'
+import type { CoverageReport, FieldCoverageItem, EndpointCoverage, RequestTraceSummary } from './report.js'
 
 export interface AnalyzerDb {
   prepare(sql: string): {
@@ -20,7 +20,8 @@ export interface AnalyzerDb {
 
 export interface AnalyzeDrained {
   hits: { normalizedPath: string; count: number }[]
-  traces: { endpointId?: string; method?: string; path?: string }[]
+  /** traces 输入即 §28.2 摘要形状（client RequestTraceCore 结构兼容；多余字段投影时丢弃） */
+  traces: RequestTraceSummary[]
   evidence: { fieldPath: string; visible?: boolean; textSample?: string }[]
 }
 
@@ -154,6 +155,20 @@ export function analyzeCoverage(input: AnalyzeInput): CoverageReport {
   })
   const endpointsCalled = endpoints.filter((e) => e.called).length
 
+  // requests 摘要（§28.2 契约完整性）：drained.traces 逐请求投影 —— 已知键逐一选取，
+  // 输入缺失的可选字段保持 undefined（不臆造）
+  const requests: RequestTraceSummary[] = drained.traces.map((t) => ({
+    requestId: t.requestId,
+    endpointId: t.endpointId,
+    method: t.method,
+    url: t.url,
+    path: t.path,
+    status: t.status,
+    durationMs: t.durationMs,
+    startedAt: t.startedAt,
+    endedAt: t.endedAt,
+  }))
+
   return {
     runId,
     metrics: {
@@ -174,5 +189,6 @@ export function analyzeCoverage(input: AnalyzeInput): CoverageReport {
     ignoredReturnedFields,
     suspiciousCoverage,
     endpoints,
+    requests,
   }
 }

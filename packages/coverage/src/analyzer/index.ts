@@ -4,4 +4,5 @@ export type {
   CoverageReportMetrics,
   FieldCoverageItem,
   EndpointCoverage,
+  RequestTraceSummary,
 } from './report.js'
