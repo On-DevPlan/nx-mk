@@ -35,4 +35,7 @@ describe('resolvePage', () => {
   it('unknown → not-found', () => {
     expect(resolvePage('/nope')).toEqual({ page: 'not-found', params: {} })
   })
+  it('malformed percent-escape → not-found（不在渲染期抛 URIError）', () => {
+    expect(resolvePage('/runs/%zz')).toEqual({ page: 'not-found', params: {} })
+  })
 })

@@ -27,8 +27,13 @@ export function matchRoute(pattern: string, path: string): Record<string, string
   for (let i = 0; i < pp.length; i++) {
     const seg = pp[i]!
     const actual = sp[i]!
-    if (seg.startsWith(':')) params[seg.slice(1)] = decodeURIComponent(actual)
-    else if (seg !== actual) return null
+    if (seg.startsWith(':')) {
+      try {
+        params[seg.slice(1)] = decodeURIComponent(actual)
+      } catch {
+        return null // 畸形百分号转义 → 按未知路径处理（not-found），不在渲染期抛 URIError
+      }
+    } else if (seg !== actual) return null
   }
   return params
 }
