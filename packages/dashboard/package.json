@@ -14,7 +14,9 @@
   },
   "files": ["dist", "dist-ui"],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && vite build",
+    "build:server": "tsup",
+    "build:ui": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf dist dist-ui .turbo *.tsbuildinfo"
