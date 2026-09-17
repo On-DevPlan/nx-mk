@@ -144,6 +144,43 @@ describe('loadConfig', () => {
       loadConfig({ path: cfgPath, cwd: workDir, runId: makeRunId('r'), subcommand: 'run' }),
     ).rejects.toMatchObject({ code: 'CONFIG_INVALID' })
   })
+
+  it('Phase 3（spec §3.2）：coverage 段 passthrough 正确；未配置时为 undefined', async () => {
+    // 默认：不写 coverage 段 → cfg.coverage 为 undefined
+    const cfgPath = join(workDir, 'nx-mk.config.yml')
+    writeFileSync(cfgPath, 'plugins: []\n')
+    const noCoverage = await loadConfig({
+      path: cfgPath,
+      cwd: workDir,
+      runId: makeRunId('r'),
+      subcommand: 'run',
+    })
+    expect((noCoverage as { coverage?: unknown }).coverage).toBeUndefined()
+
+    // 解析：coverage 三个 glob 列表原样透出（config.passthrough 语义，同 collect 段例）
+    writeFileSync(
+      cfgPath,
+      "plugins: []\ncoverage:\n  ignored:\n    - '**.metadata.**'\n  required:\n    - 'data.name'\n",
+    )
+    const cfg = await loadConfig({
+      path: cfgPath,
+      cwd: workDir,
+      runId: makeRunId('r'),
+      subcommand: 'run',
+    })
+    expect((cfg as { coverage?: unknown }).coverage).toEqual({
+      ignored: ['**.metadata.**'],
+      required: ['data.name'],
+    })
+  })
+
+  it('Phase 3：非法 coverage（required 含非字符串）→ CONFIG_INVALID', async () => {
+    const cfgPath = join(workDir, 'nx-mk.config.yml')
+    writeFileSync(cfgPath, 'plugins: []\ncoverage:\n  required:\n    - 42\n')
+    await expect(
+      loadConfig({ path: cfgPath, cwd: workDir, runId: makeRunId('r'), subcommand: 'run' }),
+    ).rejects.toMatchObject({ code: 'CONFIG_INVALID' })
+  })
 })
 
 // Suppress unused-import warning for KernelError (re-exported for callers)
