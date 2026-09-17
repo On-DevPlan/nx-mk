@@ -34,6 +34,9 @@ export const PAGE_SCAN_SCRIPT = `(() => {
     dataMkField: el.getAttribute('data-mk-field') || '',
     visible: mkVisible(el),
     inViewport: mkInViewport(el),
+    // anti-cheat 空标记判定样本（spec §3.4）：textContent 可能为 null —— 先归空串
+    // 再 trim 截断 80（与 UiEvidenceCore.textSample 的截断契约对齐）
+    text: ((el.textContent || '') + '').trim().slice(0, 80),
   }))
 })()`
 
@@ -42,12 +45,15 @@ interface RawDescriptor {
   dataMkField?: unknown
   visible?: unknown
   inViewport?: unknown
+  text?: unknown
 }
 
 export interface ParsedDescriptor {
   dataMkField: string
   visible: boolean
   inViewport: boolean
+  /** 元素 textContent 样本（≤80 字符）—— scanDom 透传为 UiEvidenceCore.textSample */
+  text: string
 }
 
 /**
@@ -65,6 +71,7 @@ export function toDescriptors(raw: unknown): ParsedDescriptor[] {
       dataMkField: d.dataMkField,
       visible: d.visible === true,
       inViewport: d.inViewport === true,
+      text: typeof d.text === 'string' ? d.text.slice(0, 80) : '',
     })
   }
   return out

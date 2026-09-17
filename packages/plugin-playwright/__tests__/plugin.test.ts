@@ -73,8 +73,8 @@ describe('scanner（page.evaluate 注入脚本 + 结构组装）', () => {
       { dataMkField: 'data.name', visible: false, inViewport: true },
     ])
     expect(out).toEqual([
-      { dataMkField: 'data.id', visible: true, inViewport: false },
-      { dataMkField: 'data.name', visible: false, inViewport: true },
+      { dataMkField: 'data.id', visible: true, inViewport: false, text: '' },
+      { dataMkField: 'data.name', visible: false, inViewport: true, text: '' },
     ])
     // 非数组输入 → 空数组（防御性）
     expect(toDescriptors(undefined)).toEqual([])
@@ -84,9 +84,10 @@ describe('scanner（page.evaluate 注入脚本 + 结构组装）', () => {
     const evaluate = vi.fn(async () => [...EVAL_RESULT])
     const out = await scanPage(evaluate)
     expect(evaluate).toHaveBeenCalledOnce()
-    // 注入的就是 PAGE_SCAN_SCRIPT（含 data-mk-field 标记）
+    // 注入的就是 PAGE_SCAN_SCRIPT（含 data-mk-field 标记）；缺 text 的原始条目
+    // 经 toDescriptors 防御性归一为 text: ''
     expect(String(evaluate.mock.calls[0]?.[0])).toContain('data-mk-field')
-    expect(out).toEqual([...EVAL_RESULT])
+    expect(out).toEqual([...EVAL_RESULT].map((d) => ({ ...d, text: '' })))
   })
 
   it('scanPage：evaluate 拒绝 → 返回 [] 不抛（spec §4 row 3 包容）+ onScanError 回调', async () => {
@@ -95,6 +96,21 @@ describe('scanner（page.evaluate 注入脚本 + 结构组装）', () => {
     expect(out).toEqual([])
     expect(onScanError).toHaveBeenCalledOnce()
     expect((onScanError.mock.calls[0]?.[0] as Error).message).toBe('inject boom')
+  })
+
+  it('toDescriptors 透传 text（字符串截断 80；非字符串 → 空）', () => {
+    // 超长样本截断到 80 —— 与 UiEvidenceCore.textSample 的截断契约对齐
+    const long = toDescriptors([{ dataMkField: 'a', visible: true, inViewport: true, text: 'x'.repeat(100) }])
+    expect(long[0].text).toBe('x'.repeat(80))
+    // 非字符串（信任边界外）→ 空串，不向上传播畸形值
+    const bad = toDescriptors([{ dataMkField: 'a', visible: true, inViewport: true, text: 42 }])
+    expect(bad[0].text).toBe('')
+  })
+
+  it('PAGE_SCAN_SCRIPT 采集 textContent（脚本含 textContent 与 slice(0, 80)）', async () => {
+    const { PAGE_SCAN_SCRIPT } = await import('../src/scanner.js')
+    expect(PAGE_SCAN_SCRIPT).toContain('textContent')
+    expect(PAGE_SCAN_SCRIPT).toContain('slice(0, 80)')
   })
 })
 
