@@ -101,3 +101,70 @@ describe('缓存与安全', () => {
     expect((p as AnyObj).id).toBe(7)
   })
 })
+
+describe('原型方法名白名单（spec §3.4 anti-cheat #3）', () => {
+  it('Promise 方法名不进 hit 且不包裹：then/catch/finally/toJSON', () => {
+    const fn = () => 1
+    const c = makeCollector()
+    const p = createTrackedProxy({ then: fn, catch: fn, finally: fn, toJSON: fn } as AnyObj, { ...BASE, collector: c })
+    const obj = p as AnyObj
+    expect(obj.then).toBe(fn)
+    expect(obj.catch).toBe(fn)
+    expect(obj.finally).toBe(fn)
+    expect(obj.toJSON).toBe(fn)
+    expect(c.hits).toHaveLength(0)
+  })
+
+  it('Array 方法名不进 hit：join/map/filter/reduce/forEach/keys/values/entries/size', () => {
+    const c = makeCollector()
+    const p = createTrackedProxy({ tags: [1, 2] } as AnyObj, { ...BASE, collector: c })
+    const tags = (p as { tags: unknown[] }).tags as unknown as Record<string, unknown>
+    const proto = Array.prototype as unknown as Record<string, unknown>
+    for (const name of ['join', 'map', 'filter', 'reduce', 'forEach', 'keys', 'values', 'entries', 'size']) {
+      expect(tags[name]).toBe(proto[name])
+    }
+    // tags 本身是真字段（唯一 hit）；方法名读取一律透传不追加
+    expect(c.hits.map((h) => h.fieldPath)).toEqual(['data.tags'])
+  })
+
+  it('length 仅对 Array target 生效：数组 length 无 hit；plain object 的 length 是真字段仍 hit+包裹', () => {
+    const c1 = makeCollector()
+    const arrP = createTrackedProxy([1, 2, 3] as unknown as AnyObj, { ...BASE, collector: c1 })
+    expect((arrP as AnyObj).length).toBe(3)
+    expect(c1.hits).toHaveLength(0)
+
+    const c2 = makeCollector()
+    const objP = createTrackedProxy({ length: 5 } as AnyObj, { ...BASE, collector: c2 })
+    expect((objP as AnyObj).length).toBe(5) // 数字原值
+    expect(c2.hits.map((h) => h.fieldPath)).toEqual(['data.length'])
+  })
+
+  it('Object 原型名不进 hit：valueOf/toString/hasOwnProperty', () => {
+    const fn = () => 1
+    const c = makeCollector()
+    const p = createTrackedProxy({ valueOf: fn, toString: fn, hasOwnProperty: fn } as AnyObj, { ...BASE, collector: c })
+    const obj = p as AnyObj
+    expect(obj.valueOf).toBe(fn)
+    expect(obj.toString).toBe(fn)
+    expect(obj.hasOwnProperty).toBe(fn)
+    expect(c.hits).toHaveLength(0)
+  })
+
+  it('真实字段不受影响（回归）：name/id/address 照常 hit + 嵌套包裹', () => {
+    const c = makeCollector()
+    const address = { city: 'HZ' }
+    const p = createTrackedProxy({ name: 'n', id: 'u1', address } as AnyObj, { ...BASE, collector: c })
+    const obj = p as AnyObj
+    // 沿既有模式：先求值到普通值再断言（避免 vitest 内部枚举 proxy 干扰 hit 计数）
+    const nameV = obj.name
+    const idV = obj.id
+    const addr = obj.address as AnyObj
+    const cityV = addr.city
+    expect(nameV).toBe('n')
+    expect(idV).toBe('u1')
+    expect(addr === address).toBe(false) // 嵌套包裹
+    expect(cityV).toBe('HZ')
+    const paths = c.hits.map((h) => h.fieldPath)
+    expect(paths).toEqual(['data.name', 'data.id', 'data.address', 'data.address.city'])
+  })
+})
