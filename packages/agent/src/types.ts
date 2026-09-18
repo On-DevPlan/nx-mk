@@ -93,3 +93,28 @@ export interface AgentConfig {
   provider?: AgentProviderConfig
   loop?: AgentLoopConfig
 }
+
+// ---------------------------------------------------------------------
+// runtime 入口（LoopDeps 为注入缝；claude adapter 在 CLI 装配层构造，runtime 不感知 spawn）
+// ---------------------------------------------------------------------
+export interface LoopDeps {
+  provider: AgentProvider
+  apiUiAgent: CoverageAgentPlugin
+  reviewAgent: CoverageAgentPlugin    // 其 verify() 即 guard
+}
+export interface LoopOptions {
+  projectRoot: string
+  report: CoverageReport
+  config: AgentConfig                 // 原始可选段；默认值由 runtime 回填
+  log?: (msg: string) => void
+}
+export interface LoopSummary {
+  agentRunId: string
+  iterations: number
+  produced: number
+  rejected: number
+  failed: number
+  givenUp: number
+  patchDir: string                    // 相对 projectRoot
+  stoppedBy: 'backlog-empty' | 'max-iterations' | 'no-improvement'
+}

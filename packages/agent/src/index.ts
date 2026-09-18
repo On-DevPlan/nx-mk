@@ -16,6 +16,9 @@ export {
   type AgentConfig,
   type AgentProviderConfig,
   type AgentLoopConfig,
+  type LoopDeps,
+  type LoopOptions,
+  type LoopSummary,
 } from './types.js'
 
 export {
@@ -51,3 +54,13 @@ export {
   applyTasks,
   createApiUiAgent,
 } from './agents/api-ui.js'
+
+export {
+  AGENT_DEFAULTS,
+  resolveAgentConfig,
+  makeAgentRunId,
+  renderManifestSummary,
+  renderPolicySummary,
+  runAgentLoop,
+  type ResolvedAgentConfig,
+} from './runtime.js'
