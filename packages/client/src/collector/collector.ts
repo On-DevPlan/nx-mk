@@ -110,6 +110,7 @@ export function createCollector(): Collector {
       }
       return out
     },
+    // v0: multi-turn collection should read+clear in a single evaluate to avoid intermediate-push data loss
     drain() {
       const out = { hits: [...hitMap.values()], traces: [...traces], evidence: [...evidence] }
       hitMap.clear(); reported.clear(); traces.length = 0; reportedTraces.clear(); reportedEndpoints.clear(); evidence.length = 0
