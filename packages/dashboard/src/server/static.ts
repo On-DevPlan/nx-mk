@@ -5,7 +5,6 @@
  * resolve 强制落在 assets root 内；穿越矩阵用例测试锁定。
  */
 import { readFile } from 'node:fs/promises'
-import { existsSync, statSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 
@@ -14,9 +13,12 @@ const MIME: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
   '.json': 'application/json; charset=utf-8',
   '.map': 'application/json; charset=utf-8',
   '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
 }
 
 export function registerStatic(app: FastifyInstance, uiDistDir: string): void {
@@ -46,10 +48,15 @@ export function registerStatic(app: FastifyInstance, uiDistDir: string): void {
     // 归一化后强制在 assets root 内（../、绝对路径、编码变体一律 404）
     const abs = resolve(assetsRoot, decoded)
     if (!abs.startsWith(assetsRoot + sep)) return reply.code(404).send()
-    if (!existsSync(abs) || !statSync(abs).isFile()) return reply.code(404).send()
-    const dot = abs.lastIndexOf('.')
-    const type = dot === -1 ? 'application/octet-stream' : MIME[abs.slice(dot)] ?? 'application/octet-stream'
-    const body = await readFile(abs)
-    return reply.type(type).send(body)
+    // A5：单次 readFile + catch ENOENT → 404，消除 existsSync/readFile 之间 TOCTOU 竞态
+    try {
+      const body = await readFile(abs)
+      const dot = abs.lastIndexOf('.')
+      const type = dot === -1 ? 'application/octet-stream' : MIME[abs.slice(dot)] ?? 'application/octet-stream'
+      return reply.type(type).send(body)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return reply.code(404).send()
+      throw err
+    }
   })
 }
