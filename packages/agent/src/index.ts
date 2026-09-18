@@ -17,3 +17,13 @@ export {
   type AgentProviderConfig,
   type AgentLoopConfig,
 } from './types.js'
+
+export {
+  extractDiff,
+  sanitizeFieldSlug,
+  writePatchFile,
+  toPosixRel,
+  gitApplyCheck,
+  type GitApplyFn,
+  type GitRunResult,
+} from './patches.js'
