@@ -5,7 +5,6 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { KernelError } from '@nx-mk/kernel'
 import { loopMain, type LoopCliDeps } from '../commands/loop.js'
 import type { LoopOptions, LoopSummary } from '@nx-mk/agent'
 

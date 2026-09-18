@@ -94,9 +94,9 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
   const agentRunId = makeAgentRunId()
   const nxMkDir = join(opts.projectRoot, '.nx-mk')
 
-  // E9（PLN-9）：产物目录 / 共享库准备失败 → KERNEL_INTERNAL（退出码 5）
-  const failInternal = (scope: string, err: unknown): KernelError =>
-    err instanceof KernelError ? err : new KernelError('KERNEL_INTERNAL', `failed to prepare ${scope} under ${nxMkDir}`, err)
+  // E9/E10（PLN-9）：目录准备 / 共享库读写失败 → KERNEL_INTERNAL（退出码 5）；已是 KernelError 则原样透传
+  const wrapInternal = (what: string, err: unknown): KernelError =>
+    err instanceof KernelError ? err : new KernelError('KERNEL_INTERNAL', `${what} under ${nxMkDir}`, err)
 
   let patchDir: string
   let rejectedDir: string
@@ -114,7 +114,7 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
     beforeCoverage = opts.report.metrics.requiredCoverage
     db.insertRun(agentRunId, new Date().toISOString(), 'agent-loop')
   } catch (err) {
-    throw failInternal('.nx-mk artifacts', err)
+    throw wrapInternal('failed to prepare .nx-mk artifacts', err)
   }
 
   const ctx: AgentContext = {
@@ -176,7 +176,7 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
           try {
             abs = writePatchFile(patchDir, `iter-${iterations}-${slug}.patch`, r.diffText ?? '')
           } catch (err) {
-            throw failInternal('patch file', err) // E9
+            throw wrapInternal('failed to prepare patch file', err) // E9
           }
           r.patchRelPath = toPosixRel(abs, opts.projectRoot)
           // PLN-4：逐 task 单结果包装；PLN-6：无 verify 视为 pass
@@ -196,17 +196,21 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
               mkdirSync(dirname(dest), { recursive: true })
               renameSync(abs, dest)
             } catch (err) {
-              throw failInternal('rejected archive', err) // E9
+              throw wrapInternal('failed to prepare rejected archive', err) // E9
             }
             if (st.tries >= 2) { status = 'given-up'; givenUp += 1 } else { status = 'rejected'; rejected += 1 }
             const why = vr.checks.filter((c) => c.outcome === 'reject').map((c) => `${c.name}: ${c.detail ?? 'rejected'}`).join('; ')
             summary = `${r.task.fieldId}: ${why}`
           }
         }
-        persistIteration(db, {
-          id: `ai_${agentRunId}_${iterations}_${i}`, runId: agentRunId, iteration: iterations,
-          status, summary, beforeCoverage, diffPath,
-        })
+        try {
+          persistIteration(db, {
+            id: `ai_${agentRunId}_${iterations}_${i}`, runId: agentRunId, iteration: iterations,
+            status, summary, beforeCoverage, diffPath,
+          })
+        } catch (err) {
+          throw wrapInternal('failed to persist agent_iterations row', err) // E10
+        }
         log(`  iter ${iterations} [${i + 1}/${applied.results.length}] ${r.task.fieldId} → ${status}`)
       }
 
@@ -219,9 +223,18 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
       }
     }
 
-    db.endRun(agentRunId, new Date().toISOString(), 'completed')
+    try {
+      db.endRun(agentRunId, new Date().toISOString(), 'completed')
+    } catch (err) {
+      throw wrapInternal('failed to end agent run', err) // E10
+    }
   } catch (err) {
-    db.endRun(agentRunId, new Date().toISOString(), 'failed')
+    // E10：标记失败的 UPDATE 自身失败（如写锁仍被占用）时吞掉并记日志，不得掩盖原始错误
+    try {
+      db.endRun(agentRunId, new Date().toISOString(), 'failed')
+    } catch (endErr) {
+      log(`[agent] failed to mark run ${agentRunId} as failed: ${endErr instanceof Error ? endErr.message : String(endErr)}`)
+    }
     throw err
   } finally {
     db.close()
