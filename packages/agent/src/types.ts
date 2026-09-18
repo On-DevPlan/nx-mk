@@ -6,6 +6,10 @@
  */
 import type { CoverageReport } from '@nx-mk/coverage'
 
+// 协议再出口（EXEC-4）：AgentContext.report 内嵌 CoverageReport —— types.ts 是 SDK 唯一事实源，
+// 消费方（含 T7 runtime）应能从本模块取到该类型，不必直依赖 @nx-mk/coverage。
+export type { CoverageReport } from '@nx-mk/coverage'
+
 // 任务：v0 只有 render-field 一种；字段级 diff 粒度
 export interface AgentTask {
   type: 'render-field'

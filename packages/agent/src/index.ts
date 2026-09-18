@@ -37,3 +37,10 @@ export {
   type RunClaudeResult,
   type ClaudeCodeProviderOptions,
 } from './provider/claude-code.js'
+
+export {
+  addedLines,
+  verifyDiff,
+  createReviewAgent,
+  type ApplyCheckFn,
+} from './agents/review.js'
