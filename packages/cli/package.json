@@ -22,7 +22,8 @@
     "@nx-mk/client": "workspace:*",
     "@nx-mk/coverage": "workspace:*",
     "@nx-mk/plugin-playwright": "workspace:*",
-    "@nx-mk/dashboard": "workspace:*"
+    "@nx-mk/dashboard": "workspace:*",
+    "@nx-mk/agent": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.3.3",

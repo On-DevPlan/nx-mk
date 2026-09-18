@@ -19,6 +19,7 @@ export {
   type LoopDeps,
   type LoopOptions,
   type LoopSummary,
+  type CoverageReport,
 } from './types.js'
 
 export {
