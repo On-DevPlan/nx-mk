@@ -35,7 +35,10 @@ function makeMockCtx(opts: { cwd: string; openapi?: string | undefined }): Plugi
   const api: KernelAPI = {
     run: async () => ({ runId: 'r' as never, durationMs: 0 }),
     shutdown: async () => {},
-    getState: () => ({ runId: 'r' as never, currentPhase: null, startedAt: '', loadedPlugins: [] }),
+    // KernelState 快照（M1 起含 pluginStates）；getRunId/getSubcommand 为只读查询
+    getState: () => ({
+      runId: 'r' as never, currentPhase: null, startedAt: '', loadedPlugins: [], pluginStates: new Map(),
+    }),
     getRunId: () => 'r' as never,
     getSubcommand: () => 'run',
   }
@@ -45,6 +48,12 @@ function makeMockCtx(opts: { cwd: string; openapi?: string | undefined }): Plugi
     events,
     kernel: api,
     cwd: opts.cwd,
+    // M14 Goal Loop 报告 / 信号 API（本插件不使用，no-op 存根对齐类型）
+    emitReport: () => {},
+    emitSignal: () => {},
+    getTurn: () => 0,
+    getCoverage: () => ({ total: 0, covered: 0, ratio: 0, missing: [] }),
+    getMissing: () => [],
   }
 }
 
