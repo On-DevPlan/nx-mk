@@ -1,9 +1,11 @@
 /** /runs —— 历史运行列表（spec §3.4） */
+import { ApiError } from '../api'
 import { usePolling } from '../hooks'
 import type { RunsListResponse } from '../../shared/api-types'
 
 export function RunsListPage() {
-  const { data } = usePolling<RunsListResponse>('/api/runs')
+  const { data, error } = usePolling<RunsListResponse>('/api/runs')
+  if (error instanceof ApiError) return <p className="error">error {error.status}: {error.detailMessage}</p>
   if (!data) return <p>loading…</p>
   return (
     <section>

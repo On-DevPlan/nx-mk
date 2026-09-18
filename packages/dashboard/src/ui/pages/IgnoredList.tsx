@@ -8,6 +8,7 @@ export function IgnoredListPage({ runId }: { runId: string }) {
   if (error instanceof ApiError && error.status === 404) {
     return <p className="empty">No coverage report for this run (overwritten by the latest run).</p>
   }
+  if (error instanceof ApiError) return <p className="error">error {error.status}: {error.detailMessage}</p>
   if (!data) return <p>loading…</p>
   return (
     <section>

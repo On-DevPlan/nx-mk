@@ -18,6 +18,7 @@ const STATE_LABEL: Record<(typeof STATES)[number], string> = {
 export function FieldsListPage({ runId }: { runId: string }) {
   const { data, error } = usePolling<FieldsListResponse>(`/api/runs/${runId}/fields`)
   if (error instanceof ApiError && error.status === 404) return <p className="empty">Run not found: {runId}</p>
+  if (error instanceof ApiError) return <p className="error">error {error.status}: {error.detailMessage}</p>
   if (!data) return <p>loading…</p>
   if (data.fields.length === 0) {
     return (

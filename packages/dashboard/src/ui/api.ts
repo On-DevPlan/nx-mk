@@ -20,6 +20,12 @@ export class ApiError extends Error {
   get serverError(): string | undefined {
     return (this.body as ApiErrorResponse | null)?.error
   }
+
+  /** B6：非 404 错误态的展示文案 —— 优先服务端 detail/error，缺省降级为 HTTP reason */
+  get detailMessage(): string {
+    const b = this.body as { detail?: unknown; error?: unknown } | null
+    return typeof b?.detail === 'string' ? b.detail : typeof b?.error === 'string' ? b.error : 'request failed'
+  }
 }
 
 export async function getJson<T>(path: string, fetchImpl: typeof fetch = fetch): Promise<T> {

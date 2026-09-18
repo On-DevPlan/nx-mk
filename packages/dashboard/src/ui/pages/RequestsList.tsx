@@ -6,6 +6,7 @@ import type { RequestsListResponse } from '../../shared/api-types'
 export function RequestsListPage({ runId }: { runId: string }) {
   const { data, error } = usePolling<RequestsListResponse>(`/api/runs/${runId}/requests`)
   if (error instanceof ApiError && error.status === 404) return <p className="empty">Run not found: {runId}</p>
+  if (error instanceof ApiError) return <p className="error">error {error.status}: {error.detailMessage}</p>
   if (!data) return <p>loading…</p>
   return (
     <section>

@@ -9,6 +9,7 @@ export function RunOverviewPage({ runId }: { runId: string }) {
   if (detail.error instanceof ApiError && detail.error.status === 404) {
     return <p className="empty">Run not found: {runId}</p>
   }
+  if (detail.error instanceof ApiError) return <p className="error">error {detail.error.status}: {detail.error.detailMessage}</p>
   if (!detail.data) return <p>loading…</p>
   const m = metrics.error instanceof ApiError ? undefined : metrics.data?.metrics
   return (
