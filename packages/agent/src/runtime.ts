@@ -5,7 +5,7 @@
  * provider/agent 均由 LoopDeps 注入（Phase 4 StartDeps 同风格），runtime 不感知 spawn。
  */
 import { mkdirSync, renameSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { KernelError } from '@nx-mk/kernel'
 import { openCoverageDb, type CoverageDb, type CoverageReport } from '@nx-mk/coverage'
 import { sanitizeFieldSlug, toPosixRel, writePatchFile } from './patches.js'
@@ -190,7 +190,11 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
             summary = `${r.task.fieldId}: accepted`
           } else {
             try {
-              renameSync(abs, join(rejectedDir, `iter-${iterations}-${slug}.patch`))
+              // EXEC-7：嵌套 slug（白名单含 '/'）在 rename 目标侧同样要建父目录 —— 与
+              // writePatchFile 的 PLN-8 递归建目录对称（否则 rejected 留档 ENOENT → E9）
+              const dest = join(rejectedDir, `iter-${iterations}-${slug}.patch`)
+              mkdirSync(dirname(dest), { recursive: true })
+              renameSync(abs, dest)
             } catch (err) {
               throw failInternal('rejected archive', err) // E9
             }
