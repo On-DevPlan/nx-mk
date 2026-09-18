@@ -27,3 +27,13 @@ export {
   type GitApplyFn,
   type GitRunResult,
 } from './patches.js'
+
+export {
+  READONLY_ALLOWED_TOOLS,
+  defaultRunClaude,
+  classifyClaudeSpawnError,
+  createClaudeCodeProvider,
+  type RunClaudeFn,
+  type RunClaudeResult,
+  type ClaudeCodeProviderOptions,
+} from './provider/claude-code.js'
