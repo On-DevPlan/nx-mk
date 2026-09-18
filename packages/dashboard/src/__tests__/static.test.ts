@@ -101,6 +101,7 @@ describe('static hosting', () => {
     ['photo.jpg', 'image/jpeg'],
     ['favicon.ico', 'image/x-icon'],
     ['font.woff2', 'font/woff2'],
+    ['app.js.map', 'application/json'],
   ])('A6: /assets/%s served with correct MIME', async (file, mime) => {
     writeFileSync(join(uiDist, 'assets', file), 'x')
     const app = buildServer({ nxMkDir: nxMk, uiDistDir: uiDist })
