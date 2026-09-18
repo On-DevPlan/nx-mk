@@ -44,3 +44,10 @@ export {
   createReviewAgent,
   type ApplyCheckFn,
 } from './agents/review.js'
+
+export {
+  planTasks,
+  buildPrompt,
+  applyTasks,
+  createApiUiAgent,
+} from './agents/api-ui.js'
