@@ -52,7 +52,7 @@ export interface LoadConfigInput {
   path: string
   cwd: string
   runId: RunId
-  subcommand: 'run' | 'init' | 'doctor' | 'start'
+  subcommand: 'run' | 'init' | 'doctor' | 'start' | 'loop'
   cliOverrides?: Partial<Config>
   env?: NodeJS.ProcessEnv
 }

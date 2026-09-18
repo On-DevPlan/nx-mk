@@ -48,6 +48,28 @@ export const DashboardConfigSchema = z.object({
 })
 export type DashboardConfig = z.infer<typeof DashboardConfigSchema>
 
+// Phase 5（spec §3.8）：agent 段 —— provider（唯一 claude-code，E3）+ loop 两小节；
+// 全部 optional：默认值由 @nx-mk/agent runtime 回填（AGENT_DEFAULTS），config 层不设默认
+export const AgentProviderConfigSchema = z.object({
+  type: z.literal('claude-code'),
+  timeoutMs: z.number().int().positive().optional(),
+  maxTurns: z.number().int().positive().optional(),
+})
+export type AgentProviderConfig = z.infer<typeof AgentProviderConfigSchema>
+
+export const AgentLoopConfigSchema = z.object({
+  maxIterations: z.number().int().positive().optional(),
+  stopIfNoImprovementRounds: z.number().int().positive().optional(),
+  maxTasksPerIteration: z.number().int().positive().optional(),
+})
+export type AgentLoopConfig = z.infer<typeof AgentLoopConfigSchema>
+
+export const AgentConfigSchema = z.object({
+  provider: AgentProviderConfigSchema.optional(),
+  loop: AgentLoopConfigSchema.optional(),
+})
+export type AgentConfig = z.infer<typeof AgentConfigSchema>
+
 // 顶层配置 schema：插件列表上限 20，输出目录必须是相对路径
 export const ConfigSchema = z
   .object({
@@ -67,5 +89,7 @@ export const ConfigSchema = z
     coverage: CoverageConfigSchema.optional(),
     // Phase 4：可选 dashboard 段（spec §3.6 —— start 命令消费 port/open）
     dashboard: DashboardConfigSchema.optional(),
+    // Phase 5：可选 agent 段（spec §3.8 —— loop 命令消费 provider/loop 两小节）
+    agent: AgentConfigSchema.optional(),
   })
   .passthrough()
