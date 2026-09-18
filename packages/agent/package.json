@@ -1,0 +1,33 @@
+{
+  "name": "@nx-mk/agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "nx-mk agent-sdk — coverage-gap Agent Loop (suggest-diff, claude-code provider)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@nx-mk/kernel": "workspace:*",
+    "@nx-mk/coverage": "workspace:*",
+    "better-sqlite3": "^11.10.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.10.0",
+    "tsup": "^8.0.2",
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.4"
+  }
+}

@@ -18,9 +18,10 @@ import { runInit } from './commands/init.js'
 import { runDoctor } from './commands/doctor.js'
 import { runMigrate } from './commands/migrate.js'
 import { startMain } from './commands/start.js'
+import { loopMain } from './commands/loop.js'
 
 // 子命令联合类型（run 为缺省值）
-type Subcommand = 'run' | 'init' | 'doctor' | 'migrate' | 'start'
+type Subcommand = 'run' | 'init' | 'doctor' | 'migrate' | 'start' | 'loop'
 
 // argv 解析结果：子命令 + 各类全局选项（config/logLevel/outputDir/runId 可覆盖配置）
 interface ParsedArgs {
@@ -43,6 +44,9 @@ interface ParsedArgs {
     port?: number
     noRun: boolean
   }
+  loop: {
+    maxIterations?: number
+  }
 }
 
 const HELP = `nx-mk — OpenAPI-driven API/UI coverage analyzer
@@ -56,6 +60,7 @@ Subcommands:
   doctor   Verify the environment (Node, config, plugins)
   migrate  Migrate static fetch('/api/...') calls to api.ns.method() (SDK-CG3)
   start    Start the local Dashboard at 127.0.0.1:4317 (auto-runs analysis unless --no-run)
+  loop     Run the Agent Loop: turn coverage gaps into suggested diffs (no workspace writes)
 
 Options:
   --config <path>        Path to nx-mk.config.yml (overrides lookup)
@@ -64,6 +69,7 @@ Options:
   --run-id <id>          Override the auto-generated run id
   --port <n>             Dashboard port (start only; overrides config dashboard.port)
   --no-run               (start) serve existing artifacts without running analysis
+  --max-iterations <n>   (loop) override agent.loop.maxIterations
   --manifest <path>      Path to .nx-mk/manifest.json (migrate only, default ./.nx-mk/manifest.json)
   --dir <path>           Source dir to scan (migrate only, default ./src)
   --api-prefix <prefix>  fetch URL prefix (migrate only, default /api)
@@ -88,6 +94,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     version: false,
     migrate: { dryRun: false, json: false },
     start: { noRun: false },
+    loop: {},
   }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
@@ -139,6 +146,15 @@ function parseArgs(argv: string[]): ParsedArgs {
       case '--dry-run':
         out.migrate.dryRun = true
         break
+      case '--max-iterations': {
+        const raw = argv[++i]
+        const n = Number(raw)
+        if (!Number.isInteger(n) || n < 1) {
+          throw new KernelError('KERNEL_INTERNAL', `Invalid --max-iterations: ${raw}`)
+        }
+        out.loop.maxIterations = n
+        break
+      }
       case '--json':
         out.migrate.json = true
         break
@@ -147,6 +163,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       case 'doctor':
       case 'migrate':
       case 'start':
+      case 'loop':
         out.subcommand = a
         break
       default:
@@ -218,6 +235,16 @@ async function main(): Promise<void> {
         runId: args.runId ?? generateRunId(),
         ...(args.start.port !== undefined ? { port: args.start.port } : {}),
         ...(args.start.noRun ? { noRun: true } : {}),
+        cliOverrides: { logLevel: args.logLevel, outputDir: args.outputDir },
+      })
+      return
+    }
+    case 'loop': {
+      // loop 必须有配置文件（agent 段可选 —— 全默认值可跑）
+      const configPath = await resolveConfigPath(args.configPath)
+      await loopMain({
+        configPath,
+        ...(args.loop.maxIterations !== undefined ? { maxIterations: args.loop.maxIterations } : {}),
         cliOverrides: { logLevel: args.logLevel, outputDir: args.outputDir },
       })
       return

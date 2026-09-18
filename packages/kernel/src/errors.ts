@@ -3,7 +3,7 @@
  *
  * 内核所有可预期错误都包装为携带机器可读 ErrorCode 的 KernelError；
  * CLI 顶层捕获后调用 mapErrorCodeToExit 设置进程退出码：
- * 2=配置错误、3=插件加载错误、4=插件钩子错误、5=内核内部错误。
+ * 2=配置/运行前置错误、3=插件加载错误、4=插件钩子错误、5=内核内部错误。
  */
 
 // 错误码按错误来源分类，决定最终的进程退出码
@@ -15,6 +15,8 @@ export type ErrorCode =
   | 'PLUGIN_CONFIG_INVALID'
   | 'PLUGIN_DEPENDENCY_MISSING'  // ← M3：插件 inject 依赖未满足
   | 'PLUGIN_HOOK_FAILED'
+  | 'RUN_NOT_FOUND'          // → 2（运行前置产物缺失，用户可自修）
+  | 'PROVIDER_UNAVAILABLE'   // → 2（外部依赖缺失，用户可自修）
   | 'KERNEL_INTERNAL'
 
 // 内核统一错误类：code 供程序化判断与退出码映射，cause 保留原始错误便于排查
@@ -32,9 +34,12 @@ export class KernelError extends Error {
 // 错误码 → 进程退出码映射；1 为兜底（未分类错误），见 CLI 顶层 catch
 export function mapErrorCodeToExit(code: ErrorCode | undefined): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
   switch (code) {
-    // 配置类：文件缺失或内容非法 → 退出码 2
+    // 配置类：文件缺失或内容非法；运行前置产物缺失（loop 无 report）；
+    // 外部依赖缺失（claude CLI 未安装）→ 退出码 2（配置/运行前置错误）
     case 'CONFIG_NOT_FOUND':
     case 'CONFIG_INVALID':
+    case 'RUN_NOT_FOUND':
+    case 'PROVIDER_UNAVAILABLE':
       return 2
     // 插件加载类：动态 import 失败或插件结构非法 → 退出码 3
     case 'PLUGIN_LOAD_FAILED':

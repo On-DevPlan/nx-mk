@@ -83,6 +83,19 @@ node ../../packages/cli/dist/index.js start
 - 页面：Overview（最新 run 三指标）/ Runs / run 总览 / Requests 列表+详情（含 field hits 与 UI evidence 文本样本）/ Fields 四态列表 / Returned-but-ignored
 - 数据全部只读自 `.nx-mk/`（coverage.db readonly + coverage-report.json + runs 目录）；UI 每 5 秒轮询，运行中的 run 完成后数据自动出现
 
+## Agent Loop（Phase 5，实验）
+
+`nx-mk loop` 读取最新 `.nx-mk/coverage-report.json`，把 missing required 字段分批交给本地 `claude` CLI 产出 unified diff，经静态 review guard 后落 `.nx-mk/patches/`。全程不写工作区文件（suggest-diff 模式）：
+
+```bash
+nx-mk run          # 先产出 coverage report
+nx-mk loop         # 产 diff → .nx-mk/patches/<agentRunId>/
+git apply .nx-mk/patches/<agentRunId>/*.patch
+nx-mk run          # 验证 requiredCoverage 真实提升
+```
+
+前置：本地已安装并登录 `claude` CLI（loop 只授 Read/Grep/Glob 只读工具，agent 无写文件通道）。可选配置（provider 超时 / 轮数 / 批次）见 demo `nx-mk.config.yml` 尾部注释。注意：含 `/` 的字段 id 生成的补丁文件名可能带子目录，shell 通配用 `find .nx-mk/patches/<id> -name '*.patch'` 更稳。
+
 ## 开发
 
 ```bash
@@ -99,5 +112,6 @@ packages/
 ├── config/                # @mk/config — 配置 schema + loader
 ├── manifest/              # @mk/manifest — OpenAPI → Manifest（占位）
 ├── cli/                   # @mk/cli — npx mk 入口（占位）
-└── plugin-swagger/        # @mk/plugin-swagger — OpenAPI 适配插件（占位）
+├── plugin-swagger/        # @mk/plugin-swagger — OpenAPI 适配插件（占位）
+└── agent/                 # @nx-mk/agent — Agent Loop（claude-code provider / api-ui-agent / review-agent / suggest-diff 落盘）
 ```

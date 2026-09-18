@@ -54,3 +54,16 @@ runtime:
 dashboard:
   port: 4317
   open: true
+
+# Phase 5 Agent Loop（可选 —— 无此段 = 全默认值）。`nx-mk loop` 消费最新 coverage report，
+# 把 missing required 字段交给本地 claude CLI 产 diff 到 .nx-mk/patches/（不写工作区）；
+# 人工 git apply 后重跑 nx-mk run 验证 requiredCoverage 提升。
+# agent:
+#   provider:
+#     type: claude-code
+#     timeoutMs: 300000
+#     maxTurns: 8
+#   loop:
+#     maxIterations: 5
+#     stopIfNoImprovementRounds: 2
+#     maxTasksPerIteration: 5
