@@ -22,7 +22,7 @@
 2. **`nx-mk loop` 子命令**（plan §9 预定名「运行 Agent Loop」）：消费 `.nx-mk/coverage-report.json` → N 轮「plan → 产 diff → review guard → 落盘落库」→ stdout 轮次摘要
 3. **suggest-diff 铁律（plan D1）**：全链路零工作区写入——claude 子进程只授只读工具集；diff 只落 `.nx-mk/patches/<agentRunId>/`；可应用性验证用 `git apply --check`（不落盘）
 4. **review guard（review-agent）**：v0 为**纯静态规则引擎，不调 AI**——`git apply --check` + anti-cheat 静态启发式（ignored-render / JSON.stringify dump / console.log 探针）
-5. **`agent_iterations` 审计落库**：复用 `@nx-mk/coverage` 既有 `openCoverageDb`（§25.9 DDL 已逐字存在）；agent 自建 run 目录，不污染历史 run
+5. **`agent_iterations` 审计落库**：写共享库 `.nx-mk/coverage.db`（`openCoverageDb` 复用，§25.9 DDL 已逐字存在）；agent 建自己的 runs 行 + run 目录，不污染历史 run 行
 6. **config `agent:` 段**（provider + loop 两小节）+ cli/config/kernel 三处接线 + 退出码扩展
 7. **注入式可测**：`runAgentLoop` 接受 provider/agent 注入（对齐 Phase 4 `StartDeps` 模式），scripted fake 驱动全部 loop 集成测试；真 claude 调用不进 CI
 
@@ -64,7 +64,7 @@
 | R1 | provider = `spawn('claude', ['-p', prompt, '--output-format', 'json', '--allowedTools', 'Read,Grep,Glob', ...])`，cwd=项目根 | 只读工具集让 claude 能读真实源码产准确 diff，同时 D1 在子进程内部也成立（无 Edit/Write 权限）。代价：diff 行号准确性依赖模型，由 `git apply --check` 兜底把关 |
 | R2 | loop 输入固定为执行时刻 `.nx-mk/coverage-report.json`；轮内不重跑 run | diff 未 apply 时重跑结果相同，纯浪费。代价：报告过时由用户负责（摘要提示 report 的 runId） |
 | R3 | `agent_iterations.after_coverage` 一律 NULL | 未测量不造假。`before_coverage` 写 loop 起点 `metrics.requiredCoverage` |
-| R4 | agent 每次执行自建 run 目录（`.nx-mk/runs/<agentRunId>/`），经 `openCoverageDb` 建 9 表 + 写 `runs` 行（status='agent-loop'） | 审计归属清晰；副作用：agent run 自然出现在 dashboard runs 列表（hasEvents=false, hasReport=false），无需改 dashboard |
+| R4 | agent 写**共享库** `.nx-mk/coverage.db`（与 run 同库；`openCoverageDb` 幂等建表 + `busy_timeout`），`runs` 行 status='agent-loop' + agent_iterations 落此库；另建 `.nx-mk/runs/<agentRunId>/` 空目录供 dashboard 目录扫描可见 | dashboard 三来源之一就是共享库（`join(nxMkDir,'coverage.db')`）——独立 db 会落进无人读取的库；runs 目录扫描只认子目录存在。副作用：agent run 出现在 dashboard runs 列表（hasEvents=false） |
 | R5 | review guard 的 JSON.stringify-dump / console.log 探针做**静态文本级**正则启发式 | 与 Phase 3 排除的「运行时探针版」不冲突——guard 面对的是 diff 文本，本来就可静态判。代价：启发式有漏报误报，v0 接受 |
 | R6 | **每字段跨轮唯一尝试**：一个 fieldId 在一次 loop 执行内至多产出一个 accepted diff；rejected/failed 的字段在后续轮重试一次，再败即放弃（'given-up'） | 防止固定 report 下轮次空转与重复 diff |
 | R7 | **轮次 = 批次**：每轮从 missingRequiredFields 待办中取 `maxTasksPerIteration`（默认 5）个字段 | 使多轮循环在 D1（report 固定）下有真实语义：循环即分批推进 + 提前放弃机制 |
@@ -91,7 +91,8 @@ Agent Plugin         packages/agent/src/agents/{api-ui,review}.ts（内置两个
       │  读入 + 轻量形状门（runId + metrics 三指标存在）
       ▼
 runAgentLoop（agentRunId = makeRunId('agent')）
-  建 .nx-mk/runs/<agentRunId>/ + openCoverageDb + runs 行(status='agent-loop')
+  mkdir .nx-mk/runs/<agentRunId>/ + openCoverageDb(.nx-mk/coverage.db)（R4：共享库）
+  + busy_timeout + runs 行(status='agent-loop')
       │  每 iteration ≤ maxIterations:
       │   1. api-ui-agent.plan(ctx)   → 待办批次（R6/R7：跨轮唯一尝试 + 每轮 maxTasksPerIteration）
       │   2. 逐 task: api-ui-agent.apply → provider.edit（spawn claude，只读工具集）
@@ -263,17 +264,17 @@ spawn('claude', [
 ```
 .nx-mk/
   coverage-report.json              # 既有，loop 只读
-  runs/<agentRunId>/                # R4：agent 自建 run 目录
-    coverage.db                     # openCoverageDb 建 9 表；runs 行 status='agent-loop'
-                                    # agent_iterations 逐 task 一行：
-                                    #   id=ai_<agentRunId>_<iter>_<taskIdx>
-                                    #   run_id=<agentRunId>  iteration=<N>
-                                    #   status='produced'|'rejected'|'failed'|'given-up'
-                                    #   summary=<task.reason 短文>
-                                    #   before_coverage=<起点 requiredCoverage>
-                                    #   after_coverage=NULL（R3）
-                                    #   diff_path=<patches 相对路径|NULL>
-    （无 events.jsonl / kernel.log —— dashboard hasEvents=false 兼容）
+  coverage.db                       # 既有共享库（run/agent 同库，R4）
+    runs 行：id=<agentRunId> status='agent-loop' started_at/ended_at
+    agent_iterations 逐 task 一行：
+      id=ai_<agentRunId>_<iter>_<taskIdx>
+      run_id=<agentRunId>  iteration=<N>
+      status='produced'|'rejected'|'failed'|'given-up'
+      summary=<task.reason 短文>
+      before_coverage=<起点 requiredCoverage>
+      after_coverage=NULL（R3）
+      diff_path=<patches 相对路径|NULL>
+  runs/<agentRunId>/                # 空目录：dashboard 目录扫描可见性（R4）
   patches/<agentRunId>/
     iter-<N>-<fieldSlug>.patch      # verdict=pass 的 diff
     rejected/iter-<N>-<fieldSlug>.patch   # reject 留档（不参与 git apply 清单）
@@ -362,7 +363,7 @@ Agent loop completed: agent_20260918_...
 | E7 | `git apply --check` 非零 | G1 reject；diff 留档 rejected/ | 无退出（task 级） |
 | E8 | 项目根非 git 仓库 | G1 记 skipped，verdict 由 G2-G4 决定（R10） | 无退出 |
 | E9 | patches / run 目录写失败 | 进程报错退出 | KERNEL_INTERNAL → 5 |
-| E10 | coverage.db 写入 busy/失败 | 进程报错退出（agent 写自建新库，无读者竞争） | KERNEL_INTERNAL → 5 |
+| E10 | coverage.db 写入 busy/失败 | 进程报错退出（共享库可能被并发 run 占写——openCoverageDb 后设 `busy_timeout=2000`，超时仍败才抛） | KERNEL_INTERNAL → 5 |
 
 退出码映射扩展（errors.ts，纯增量）：
 
