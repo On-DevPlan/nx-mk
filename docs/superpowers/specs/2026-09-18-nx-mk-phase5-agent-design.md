@@ -421,3 +421,19 @@ Agent loop completed: agent_20260918_...
 | §38 `maxIterations: 5` / `stopIfNoImprovementRounds: 2` | 逐字保留为默认值 | 忠实原文 |
 | §25.9 agent_iterations | DDL 逐字（已存在于 `coverage/src/db/schema.ts:127`），本期只新增写入方 | 表结构零漂移；status 枚举值为本期定义：produced/rejected/failed/given-up |
 | plan §9 `npx mk report` / `replay` / `migrate` | 均不在本期（report/replay 未见于已实现命令，migrate 属 SDK-CG3 后置） | roadmap Phase 5 五项之外 |
+
+---
+
+## 附注 B：v0 实现偏差与已知界限落档（2026-09-18 执行期裁定，随 PR #11 合入）
+
+执行期（SDD 控制台裁定）确定的 spec 偏差与 v0 界限。原 SDD 台账随验收清理删除，本节为唯一持久记录：
+
+| # | 位置 | spec 原文 | v0 实际 | 裁定理由 |
+|---|---|---|---|---|
+| B1 | §3.2 形状门 | `runId + metrics 三指标存在` | 只检 `runId` + `metrics.requiredCoverage` 存在（`packages/cli/src/commands/loop.ts`） | 单指标已足以判定报告可用，三指标全检无增量价值 |
+| B2 | §3.7 `agent_iterations.summary` | `<task.reason 短文>` | `` `${fieldId}: accepted / <error 原因> / <检查名: detail>` ``（`packages/agent/src/runtime.ts`） | summary 需自解释定位到字段；reject 细节（G1-G4 命中项）是留档的核心价值 |
+
+两条 v0 已知界限（非 spec 偏差，能力后置，v1 提示词质量杠杆）：
+
+- B3：ignored 字段 id 不进 claude prompt——prompt 只给 §44.4 的「不碰 ignored」约束指令，不枚举具体 id；guard G2 仍静态兜底
+- B4：`ctx.policySummary` 已由 report 派生（R8）但生产链路未消费（prompt 未引用）——与 B3 同批后置
