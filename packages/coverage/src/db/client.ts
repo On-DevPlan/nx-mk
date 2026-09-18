@@ -36,6 +36,14 @@ export class CoverageDb {
     return this.db.pragma(sql, opts as never)
   }
 
+  /**
+   * B1（hygiene）：批量写事务透传 —— 形状对齐 better-sqlite3：
+   * transaction(fn) 返回包装可调用，再调用一次执行；任一失败全回滚。
+   */
+  transaction(fn: () => void): () => void {
+    return this.db.transaction(fn)
+  }
+
   prepare(sql: string): SqliteStatement {
     return this.db.prepare(sql)
   }

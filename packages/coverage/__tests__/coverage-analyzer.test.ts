@@ -210,3 +210,67 @@ describe('analyzeCoverage — requests 摘要（§28.2 契约完整性）', () =
     expect(r.requests).toEqual([])
   })
 })
+
+describe('analyzeCoverage — B1 写入原子性（hygiene）', () => {
+  it('mid-loop insert failure rolls back all coverage_fields rows (transaction path)', () => {
+    // 真实 CoverageDb（better-sqlite3）→ 有 transaction → 走单事务批量落库
+    const db = openCoverageDb(join(dir, 'b1.db'))
+    try {
+      db.insertRun('run_b1', new Date().toISOString(), 'running')
+      // 干扰行：插入函数在第 3 行时抛错，验证前 2 行也一起回滚
+      let calls = 0
+      const realPrepare = db.prepare.bind(db)
+      const insSpy = (sql: string) => {
+        const real = realPrepare(sql)
+        if (sql.includes('INSERT OR REPLACE INTO coverage_fields')) {
+          return {
+            run: (...params: unknown[]): unknown => {
+              calls += 1
+              if (calls === 3) throw new Error('simulated mid-loop failure')
+              return real.run(...params)
+            },
+            get: real.get.bind(real),
+          }
+        }
+        return real
+      }
+      ;(db as unknown as { prepare: typeof insSpy }).prepare = insSpy
+      expect(() =>
+        analyzeCoverage({
+          runId: 'run_b1', manifest: MANIFEST, policyDecisions: DECISIONS,
+          drained: { traces: [], evidence: [], hits: HITS(['data.name']) },
+          db,
+        }),
+      ).toThrow('simulated mid-loop failure')
+      ;(db as unknown as { prepare: typeof realPrepare }).prepare = realPrepare
+      // 回滚验证：任意行都没落库
+      const n = db.prepare('SELECT COUNT(*) AS n FROM coverage_fields WHERE run_id = ?').get('run_b1') as { n: number }
+      expect(n.n).toBe(0)
+    } finally { db.close() }
+  })
+
+  it('CoverageDb without transaction capability degrades to row-by-row (behavior unchanged)', () => {
+    // 兼容性锁：无 transaction 的替身走逐条路径，写结果与事务路径一致
+    const db = openCoverageDb(join(dir, 'b1b.db'))
+    try {
+      let wrapped = false
+      const proxy = {
+        prepare: db.prepare.bind(db),
+        // better-sqlite3 形状：transaction(fn) 返回包装可调用，再调用一次执行
+        transaction: (fn: () => void): (() => void) => () => {
+          wrapped = true
+          fn()
+        },
+      }
+      db.insertRun('run_b1b', new Date().toISOString(), 'running')
+      analyzeCoverage({
+        runId: 'run_b1b', manifest: MANIFEST, policyDecisions: DECISIONS,
+        drained: { traces: [], evidence: [], hits: HITS(['data.name']) },
+        db: proxy as unknown as Parameters<typeof analyzeCoverage>[0]['db'],
+      })
+      expect(wrapped).toBe(true)
+      const n = db.prepare('SELECT COUNT(*) AS n FROM coverage_fields WHERE run_id = ?').get('run_b1b') as { n: number }
+      expect(n.n).toBe(5) // MANIFEST 5 response fields, all inserted
+    } finally { db.close() }
+  })
+})
