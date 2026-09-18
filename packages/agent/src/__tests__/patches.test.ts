@@ -2,7 +2,7 @@
  * diff 通道单测（spec §3.7 / R9 / G1）：提取、slug 消毒、落盘、git apply --check 四态。
  * gitApplyCheck 用注入替身 —— 真实 git 全链在 tests/integration（T9）。
  */
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
@@ -53,6 +53,13 @@ describe('writePatchFile / toPosixRel', () => {
     const rel = toPosixRel(abs, root)
     expect(rel).toBe('.nx-mk/patches/agent_x/iter-1-field.patch')
     expect(rel).not.toContain('\\')
+  })
+
+  it('creates intermediate directories when the field slug contains slashes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nx-mk-patches-nested-'))
+    const dir = join(root, '.nx-mk', 'patches', 'run1')
+    const abs = writePatchFile(dir, 'iter-1-GET_/api/users.200.body__.name.patch', '+nested')
+    expect(readFileSync(abs, 'utf8')).toBe('+nested\n')
   })
 })
 

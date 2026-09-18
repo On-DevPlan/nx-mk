@@ -4,7 +4,7 @@
  */
 import { execFile } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, dirname, relative } from 'node:path'
 
 // 从模型输出提取 diff 文本（R9）：优先全部 fenced ```diff / ```patch 块（按出现顺序拼接）；
 // 兜底：输出整体含 'diff --git' 时取全文；否则 null（E6 → task failed）
@@ -27,8 +27,9 @@ export function sanitizeFieldSlug(fieldId: string): string {
 
 // 落盘一个 patch 文件（目录不存在则递归创建），返回绝对路径
 export function writePatchFile(patchDir: string, filename: string, diffText: string): string {
-  mkdirSync(patchDir, { recursive: true })
   const abs = join(patchDir, filename)
+  // PLN-8：嵌套 slug（白名单含 '/'）→ 实际文件路径的父目录整体递归创建
+  mkdirSync(dirname(abs), { recursive: true })
   writeFileSync(abs, diffText.endsWith('\n') ? diffText : diffText + '\n', 'utf8')
   return abs
 }
