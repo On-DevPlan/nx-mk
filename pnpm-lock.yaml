@@ -292,6 +292,9 @@ importers:
       '@nx-mk/config':
         specifier: workspace:*
         version: link:../config
+      '@nx-mk/plugin-swagger':
+        specifier: workspace:^
+        version: link:../plugin-swagger
       '@nx-mk/schema':
         specifier: workspace:*
         version: link:../schema
