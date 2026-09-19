@@ -24,6 +24,7 @@ export class Poller {
   ) {}
 
   start(): void {
+    if (this.timer !== null) return // 幂等：重复调用不泄漏 interval（hygiene-A3）
     void this.refresh()
     this.timer = setInterval(() => void this.refresh(), this.opts.intervalMs ?? POLL_INTERVAL_MS)
   }
@@ -44,7 +45,9 @@ export class Poller {
         this.opts.onError(new ApiError(res.status, body))
         return
       }
-      this.opts.onUpdate(await res.json())
+      const data = await res.json()
+      if (controller.signal.aborted) return // 被取代的旧响应不回调（hygiene-A4）
+      this.opts.onUpdate(data)
     } catch (err) {
       if (controller.signal.aborted) return // 被 stop/新 refresh 取代，不报错
       this.opts.onError(err)

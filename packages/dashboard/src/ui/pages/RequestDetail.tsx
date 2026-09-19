@@ -11,6 +11,7 @@ export function RequestDetailPage({ runId, requestId }: { runId: string; request
   if (error instanceof ApiError && error.status === 404) {
     return <p className="empty">Request not found: {requestId}</p>
   }
+  if (error instanceof ApiError) return <p className="error">error {error.status}: {error.detailMessage}</p>
   if (!data) return <p>loading…</p>
   const t = data.trace
   return (

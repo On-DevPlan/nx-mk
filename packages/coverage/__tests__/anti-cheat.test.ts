@@ -22,3 +22,27 @@ describe('classifyEvidence', () => {
     expect(classifyEvidence({ visible: true, textSample: '  ', fieldPath: 'data.name' })).toBe('weak')
   })
 })
+
+describe('classifyEvidence — B3 noise guard（hygiene）', () => {
+  // v0 锁定（原终审 T9 'startsWith 弱判别' 的兜底断言）：
+  // 字段 id 末段为 Promise/Object 原型方法名（与 METHOD_NAME_BLOCKLIST 同名的集合，仅语义说明——
+  // classifier 是纯等值比对，不依赖 blocklist）时，占位文本判定仍以「样本 === 末段全等」为准：
+  const PROTO_NAMES = ['then', 'catch', 'finally', 'toJSON', 'valueOf', 'toString', 'constructor'] as const
+
+  it('末段为原型方法名且样本与前缀变体不同 → valid（不产 phantom weak）', () => {
+    for (const name of PROTO_NAMES) {
+      expect(classifyEvidence({ visible: true, textSample: `${name}X`, fieldPath: `data.${name}` })).toBe('valid')
+    }
+  })
+
+  it('末段为原型方法名且样本全等 → weak（占位判定对原型名同样生效）', () => {
+    for (const name of PROTO_NAMES) {
+      expect(classifyEvidence({ visible: true, textSample: name, fieldPath: `data.${name}` })).toBe('weak')
+    }
+  })
+
+  it('嵌套路径取末段比对（data.depth.then 全等 → weak；近似值 → valid）', () => {
+    expect(classifyEvidence({ visible: true, textSample: 'then', fieldPath: 'data.depth.then' })).toBe('weak')
+    expect(classifyEvidence({ visible: true, textSample: 'thenx', fieldPath: 'data.depth.then' })).toBe('valid')
+  })
+})

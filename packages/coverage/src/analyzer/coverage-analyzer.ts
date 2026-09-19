@@ -16,6 +16,12 @@ export interface AnalyzerDb {
     run(...params: unknown[]): unknown
     get(...params: unknown[]): unknown
   }
+  /**
+   * B1（hygiene）：批量写事务 —— 真实 CoverageDb（better-sqlite3 db 底座）提供；
+   * 任一行失败则全部回滚。可选以保持测试替身兼容（无 transaction 时逐条执行，行为同前）。
+   * 形状对齐 better-sqlite3：transaction(fn) 返回包装后的可调用，需要再调用一次执行。
+   */
+  transaction?(fn: () => void): () => void
 }
 
 export interface AnalyzeDrained {
@@ -76,6 +82,9 @@ export function analyzeCoverage(input: AnalyzeInput): CoverageReport {
        (id, run_id, field_id, endpoint_id, field_path, policy_status, coverage_state, access_hit, ui_hit, assertion_hit, suspicious, counted_required, counted_effective)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
+  // B1（hygiene）：先收集全部行参数（纯分析），循环结束后单事务批量落库 ——
+  // 中途任意一行失败 → 全部回滚，避免失败 run 残留部分 coverage_fields
+  const rows: unknown[][] = []
 
   // 2-3. 遍历 manifest.fields（direction==='response'）：查 decision（缺 → 'unknown'、两分母不进）；
   //      state 判定 + 四组清单组装 + metrics 累计（分母为零 → 0，不 NaN）
@@ -130,11 +139,22 @@ export function analyzeCoverage(input: AnalyzeInput): CoverageReport {
     if (policyStatus === 'ignored' && hit) ignoredReturnedFields.push(item)
 
     // 5. coverage_fields 13 列逐列绑定（id `cf_${runId}_${normalizedPath}`；assertion_hit 恒 0）
-    ins.run(
+    rows.push([
       `cf_${runId}_${f.normalizedPath}`, runId, f.id, f.endpointId, f.normalizedPath,
       policyStatus, state, accessHit ? 1 : 0, uiHit ? 1 : 0, 0, suspicious ? 1 : 0,
       countedRequired ? 1 : 0, countedEffective ? 1 : 0,
-    )
+    ])
+  }
+
+  // B1：单事务批量落库（有 transaction 能力时——形状对齐 better-sqlite3：
+  // transaction(fn) 返回包装可调用，需再调用一次执行；任一行失败全回滚）；否则逐条（测试替身兼容）
+  if (db.transaction) {
+    const tx = db.transaction(() => {
+      for (const r of rows) ins.run(...r)
+    })
+    tx()
+  } else {
+    for (const r of rows) ins.run(...r)
   }
 
   // 4. endpoints：manifest.endpoints × traces endpointId 去重（'unknown'/空 不计 called）

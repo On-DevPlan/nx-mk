@@ -32,6 +32,36 @@ it('stop() halts polling and aborts inflight', async () => {
   expect(fetchImpl).toHaveBeenCalledTimes(1)
 })
 
+it('start() is idempotent — multiple calls schedule only one interval (hygiene-A3)', () => {
+  vi.useFakeTimers()
+  const setIntervalSpy = vi.spyOn(global, 'setInterval')
+  const poller = new Poller('/api/x', { fetchImpl: async () => okResponse(), onUpdate: () => {}, onError: () => {} })
+  poller.start()
+  poller.start()
+  poller.start()
+  expect(setIntervalSpy).toHaveBeenCalledTimes(1)
+  poller.stop()
+})
+
+it('aborted response is dropped — onUpdate not called for superseded fetch (hygiene-A4)', async () => {
+  vi.useFakeTimers()
+  let resolveFirst: (r: Response) => void = () => {}
+  const fetchImpl = vi.fn()
+    .mockImplementationOnce(() => new Promise<Response>((res) => { resolveFirst = res }))
+    .mockImplementation(async () => okResponse())
+  const onUpdate = vi.fn()
+  const poller = new Poller('/api/x', { fetchImpl, onUpdate, onError: () => {}, intervalMs: 10 })
+  poller.start()
+  await vi.advanceTimersByTimeAsync(0) // first fetch inflight (pending)
+  void poller.refresh() // second refresh aborts the first
+  await vi.advanceTimersByTimeAsync(0)
+  resolveFirst(new Response(JSON.stringify({ stale: true }), { status: 200 })) // now resolve the aborted one
+  await vi.advanceTimersByTimeAsync(0)
+  expect(onUpdate).toHaveBeenCalledTimes(1) // only the non-aborted (second) response callbacks
+  expect(onUpdate).not.toHaveBeenCalledWith({ stale: true })
+  poller.stop()
+})
+
 it('errors keep polling（503 busy 自愈，spec §4）', async () => {
   vi.useFakeTimers()
   let fail = true

@@ -137,6 +137,8 @@ export async function drainBrowserCollector(
   evaluate: (fn: unknown) => Promise<unknown>,
   collector: Collector,
 ): Promise<void> {
+  // v0: 读与清空是两次独立 evaluate —— 中间窗口内页面新 push 的条目会丢。
+  // v1 方向：单次 evaluate 内 read+clear（同 collector.ts drain 的同款权衡，hygiene-B7）
   // 读回捞脚本：保留页数组引用（清空用原引用保序 —— 页面代码可能另持引用）
   const READ_SHIM =
     '(() => { const c = window.__MK_COLLECTOR__; if (!c) return null; return { hits: c.hits.slice(), traces: c.traces.slice() } })()'

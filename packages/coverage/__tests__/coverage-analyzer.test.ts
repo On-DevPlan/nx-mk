@@ -210,3 +210,103 @@ describe('analyzeCoverage — requests 摘要（§28.2 契约完整性）', () =
     expect(r.requests).toEqual([])
   })
 })
+
+describe('analyzeCoverage — B1 写入原子性（hygiene）', () => {
+  it('mid-loop insert failure rolls back all coverage_fields rows (transaction path)', () => {
+    // 真实 CoverageDb（better-sqlite3）→ 有 transaction → 走单事务批量落库
+    const db = openCoverageDb(join(dir, 'b1.db'))
+    try {
+      db.insertRun('run_b1', new Date().toISOString(), 'running')
+      // 干扰行：插入函数在第 3 行时抛错，验证前 2 行也一起回滚
+      let calls = 0
+      const realPrepare = db.prepare.bind(db)
+      const insSpy = (sql: string) => {
+        const real = realPrepare(sql)
+        if (sql.includes('INSERT OR REPLACE INTO coverage_fields')) {
+          return {
+            run: (...params: unknown[]): unknown => {
+              calls += 1
+              if (calls === 3) throw new Error('simulated mid-loop failure')
+              return real.run(...params)
+            },
+            get: real.get.bind(real),
+          }
+        }
+        return real
+      }
+      ;(db as unknown as { prepare: typeof insSpy }).prepare = insSpy
+      expect(() =>
+        analyzeCoverage({
+          runId: 'run_b1', manifest: MANIFEST, policyDecisions: DECISIONS,
+          drained: { traces: [], evidence: [], hits: HITS(['data.name']) },
+          db,
+        }),
+      ).toThrow('simulated mid-loop failure')
+      ;(db as unknown as { prepare: typeof realPrepare }).prepare = realPrepare
+      // 回滚验证：任意行都没落库
+      const n = db.prepare('SELECT COUNT(*) AS n FROM coverage_fields WHERE run_id = ?').get('run_b1') as { n: number }
+      expect(n.n).toBe(0)
+    } finally { db.close() }
+  })
+
+  it('transaction-capable db: analyzer uses the transaction branch (wrapped=true, all rows written)', () => {
+    // 兼容性锁：带 transaction 的替身走批量路径，写结果正确
+    const db = openCoverageDb(join(dir, 'b1b.db'))
+    try {
+      let wrapped = false
+      const proxy = {
+        prepare: db.prepare.bind(db),
+        // better-sqlite3 形状：transaction(fn) 返回包装可调用，再调用一次执行
+        transaction: (fn: () => void): (() => void) => () => {
+          wrapped = true
+          fn()
+        },
+      }
+      db.insertRun('run_b1b', new Date().toISOString(), 'running')
+      analyzeCoverage({
+        runId: 'run_b1b', manifest: MANIFEST, policyDecisions: DECISIONS,
+        drained: { traces: [], evidence: [], hits: HITS(['data.name']) },
+        db: proxy as unknown as Parameters<typeof analyzeCoverage>[0]['db'],
+      })
+      expect(wrapped).toBe(true)
+      const n = db.prepare('SELECT COUNT(*) AS n FROM coverage_fields WHERE run_id = ?').get('run_b1b') as { n: number }
+      expect(n.n).toBe(5) // MANIFEST 5 response fields, all inserted
+    } finally { db.close() }
+  })
+
+  it('db without transaction capability degrades to row-by-row (behavior unchanged)', () => {
+    // 真 fallback 锁：db 完全没有 transaction 属性 → 逐条路径仍写全所有行
+    const db = openCoverageDb(join(dir, 'b1c.db'))
+    try {
+      const proxy = { prepare: db.prepare.bind(db) } // 无 transaction 属性
+      db.insertRun('run_b1c', new Date().toISOString(), 'running')
+      analyzeCoverage({
+        runId: 'run_b1c', manifest: MANIFEST, policyDecisions: DECISIONS,
+        drained: { traces: [], evidence: [], hits: HITS(['data.name']) },
+        db: proxy as unknown as Parameters<typeof analyzeCoverage>[0]['db'],
+      })
+      const n = db.prepare('SELECT COUNT(*) AS n FROM coverage_fields WHERE run_id = ?').get('run_b1c') as { n: number }
+      expect(n.n).toBe(5)
+    } finally { db.close() }
+  })
+})
+
+describe('analyzeCoverage — unknown 分支（hygiene-B2）', () => {
+  it('decision 缺失 → policy_status=unknown，state=notApplicable，不进两分母（spec §3.3）', () => {
+    // 构造 decision 全缺（evaluatePolicy 对空输入返回空数组）：analyzer 走 `?? 'unknown'`
+    // 分支 —— v0 锁定：不抛错、不计 counted_*，policy_status 落 unknown 列
+    const r = analyzeWith({ hits: HITS(['data.name']) }, MANIFEST, [])
+    // unknown + access 命中 → state=covered（判定序：ignored → hit → …）
+    expect(fieldRow('h1')).toMatchObject({ policy_status: 'unknown', coverage_state: 'covered', access_hit: 1 })
+    // unknown + 未命中 → state=notApplicable（h5 data.address.city 无 hit）
+    expect(fieldRow('h5')).toMatchObject({
+      policy_status: 'unknown',
+      coverage_state: 'notApplicable',
+      access_hit: 0,
+      counted_required: 0,
+      counted_effective: 0,
+    })
+    // 分母不进：metrics 字段数照计（fieldsTotal 来自 manifest），required/effective 分母全 0
+    expect(r.metrics).toMatchObject({ requiredFields: 0, requiredCoverage: 0, effectiveCoverage: 0 })
+  })
+})

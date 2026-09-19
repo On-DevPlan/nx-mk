@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildServer } from '../server/index.js'
+import { readFile } from 'node:fs/promises'
 
 let dir: string
 let uiDist: string
@@ -61,6 +62,52 @@ describe('static hosting', () => {
     const app = buildServer({ nxMkDir: nxMk, uiDistDir: uiDist })
     const res = await app.inject({ method: 'GET', url: '/api/nope' })
     expect(res.statusCode).toBe(404)
+    await app.close()
+  })
+
+  it('A5: ENOENT mid-read → 404 (no TOCTOU race)', async () => {
+    // doMock + resetModules：重新加载的 static.js 拿到抛 ENOENT 的 readFile。
+    // fastify 保持真实（不读 assets）。
+    vi.resetModules()
+    vi.doMock('node:fs/promises', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:fs/promises')>()
+      return {
+        ...actual,
+        readFile: vi.fn(async (p: unknown) => {
+          throw Object.assign(new Error(`ENOENT: no such file: ${String(p)}`), { code: 'ENOENT' })
+        }),
+      }
+    })
+    try {
+      const { registerStatic } = await import('../server/static.js')
+      const fastify = (await import('fastify')).default
+      const app = fastify()
+      registerStatic(app, uiDist)
+      const res = await app.inject({ method: 'GET', url: '/assets/app.js' })
+      expect(res.statusCode).toBe(404) // ENOENT → 404（实现前此处 500，TOCTOU 已消除）
+      await app.close()
+    } finally {
+      vi.doUnmock('node:fs/promises')
+      vi.resetModules()
+    }
+  })
+
+  it.each([
+    ['app.js', 'text/javascript; charset=utf-8'],
+    ['app.css', 'text/css; charset=utf-8'],
+    ['data.json', 'application/json; charset=utf-8'],
+    ['icon.svg', 'image/svg+xml'],
+    ['img.png', 'image/png'],
+    ['photo.jpg', 'image/jpeg'],
+    ['favicon.ico', 'image/x-icon'],
+    ['font.woff2', 'font/woff2'],
+    ['app.js.map', 'application/json'],
+  ])('A6: /assets/%s served with correct MIME', async (file, mime) => {
+    writeFileSync(join(uiDist, 'assets', file), 'x')
+    const app = buildServer({ nxMkDir: nxMk, uiDistDir: uiDist })
+    const res = await app.inject({ method: 'GET', url: `/assets/${file}` })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain(mime.split(';')[0])
     await app.close()
   })
 })
