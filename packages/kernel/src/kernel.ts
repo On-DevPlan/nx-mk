@@ -5,20 +5,21 @@
  * 每个阶段前后触发插件的 before/after 钩子。任一阶段抛错即 fail-fast：
  * 在 finally 中统一走 shutdown 收尾，由 CLI 层按错误码映射进程退出码（见 errors.ts）。
  * 每次运行在 .nx-mk/runs/{runId}/ 下产出 kernel.log、error.log、events.jsonl。
+ *
+ * A1 拆分：阶段驱动机器（transitionPlugin / 钩子捕获 / runPhase）在 kernel-runtime.ts，
+ * 本文件持有全部可变闭包状态并经 KernelRuntimeDeps 访问器缝注入 —— 行为零变化。
  */
-import { existsSync, mkdirSync, createWriteStream } from 'node:fs'
+import { mkdirSync, createWriteStream } from 'node:fs'
 import { join } from 'node:path'
 import { createLogger } from './logger'
 import { EventBus } from './event-bus'
-import { runHook, runHooksForPhase, hookNameForPhase } from './hooks'
-import { loadPlugins, resolveDependencies } from './plugin-registry'
-import { runGoalLoop } from './goal-loop'
-import { readInitialCoverageFromManifest } from './initial-coverage'
 import { KernelError, mapErrorCodeToExit } from './errors'
+import { createKernelRuntime } from './kernel-runtime'
+import type { KernelLoopState } from './kernel-runtime'
 import type { KernelAPI, Plugin, PluginContext, RunResult } from './plugin'
-import type { GoalResult, KernelState, Phase, PluginWorkerState, ResolvedConfig, RunId } from './types'
+import type { GoalResult, KernelState, Phase, ResolvedConfig, RunId } from './types'
 import type { Coverage, MissingItem, PluginReport, PluginSignal } from './types'
-import { assertNever, makePluginName, makeRunId, PHASES } from './types'
+import { makeRunId, PHASES } from './types'
 
 // 创建内核的入参：configPath 必填；plugins 仅供测试注入，生产环境走配置动态加载
 export interface CreateKernelOptions {
@@ -73,297 +74,36 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
   // 最终配置：loadConfig 阶段填充，此前为 null
   let config: ResolvedConfig | null = null
   // 各阶段开始时间戳，用于计算 phase:end 事件的 durationMs
-  let phaseTimers = new Map<Phase, number>()
+  const phaseTimers = new Map<Phase, number>()
   // shutdown 幂等保护：缓存首次调用的 Promise，重复调用直接复用
   let shutdownPromise: Promise<void> | null = null
   // 是否成功跑完前 4 个阶段（决定 finally 中是否执行 shutdown 收尾）
   let runFinished = false
-  // 最近一次插件钩子失败的「插件名 + 钩子名 + 原始错误」，供 catch 中发出 plugin:error 事件
-  let lastPluginError: {
-    name: string
-    hook: string
-    error: { message: string; stack?: string }
-  } | null = null
 
-  /**
-   * M14：Goal Loop 共享状态（mutable）。run 阶段触发 Goal Loop 时填充。
-   * buildCtx 的 emit/emitSignal/getTurn/getCoverage 方法读/写这里。
-   * 中文：把循环状态集中在 createKernel 闭包内，避免与外部状态耦合。
-   */
-  const loopState = {
-    reports: [] as PluginReport[],
+  /** M14：Goal Loop 共享状态（mutable）—— 结构与读写方见 kernel-runtime.ts 的 KernelLoopState */
+  const loopState: KernelLoopState = {
+    reports: [],
     turn: 0,
     coverage: { total: 0, covered: 0, ratio: 1.0, missing: [] as MissingItem[] } as Coverage,
     idleTurns: 0,
   }
 
-  /**
-   * 转移插件状态并发出 plugin:state-change 事件（M1）。
-   * 若目标状态与当前状态一致则跳过（避免冗余事件）。
-   * 中文：集中所有状态转移，便于未来加入 invariant 检查与日志。
-   *
-   * M5 增强：用 switch + assertNever 显式列举 PluginWorkerState 所有 kind，
-   * 编译期保证新增状态时所有分支都会被检查。
-   */
-  function transitionPlugin(
-    name: string,
-    to: PluginWorkerState,
-  ): void {
-    const key = makePluginName(name)
-    const previous = state.pluginStates.get(key)
-    const fromKind: PluginWorkerState['kind'] = previous?.kind ?? 'pending'
-    const toKind = to.kind
-    state.pluginStates.set(key, to)
-    // 旧字段同步：loadedPlugins 记录"已加载"集合（active 之前的转移都算加载）
-    if (toKind === 'active' && !state.loadedPlugins.includes(name)) {
-      state.loadedPlugins.push(name)
-    }
-    if (fromKind === toKind) return
-    // 构造事件载荷：error 字段仅 failed 状态携带
-    const baseEvent = {
-      type: 'plugin:state-change' as const,
-      name,
-      from: fromKind,
-      to: toKind,
-      timestamp: new Date().toISOString(),
-    }
-    let event: typeof baseEvent & { error?: { code: string; message: string } }
-    switch (toKind) {
-      case 'active':
-      case 'done':
-      case 'pending':
-      case 'loading':
-      case 'unloading':
-      case 'disposed':
-        event = baseEvent
-        break
-      case 'failed':
-        event = { ...baseEvent, error: to.error }
-        break
-      default:
-        assertNever(toKind)
-    }
-    events.emit(event)
-  }
-
-  // 中文说明：带错误捕获的钩子批量执行器。除了透传 fail-fast 语义外，
-  // 额外记录「哪个插件的哪个钩子」失败及原始错误，供 api.run() 顶层 catch
-  // 发出 plugin:error 事件并写结构化 error.log。
-  /**
-   * Wrapper around runHooksForPhase that captures which plugin + hook failed,
-   * so the top-level catch in api.run() can emit a `plugin:error` event
-   * and write a structured line to error.log per spec §3.4 + §5.1.
-   */
-  async function runHooksForPhaseWithCapture(
-    phase: Phase,
-    timing: 'before' | 'after',
-    phasePlugins: Plugin[],
-    ctx: PluginContext,
-  ): Promise<void> {
-    const name = hookNameForPhase(phase, timing)
-    // 逐个插件串行执行；捕获后先记录失败详情再原样抛出（fail-fast）
-    for (const plugin of phasePlugins) {
-      try {
-        await runHook(name, plugin, ctx)
-      } catch (err) {
-        // 中文：优先取被包装前的原始错误（cause）的信息与堆栈，
-        // 让下游看到插件真实报错（如 "hook-boom"）而非外层包装文案
-        // Prefer the inner cause's message (the original plugin error)
-        // so downstream consumers see "hook-boom", not the wrapper
-        // "Plugin 'p-thrower' hook 'run' failed: hook-boom".
-        const innerMessage =
-          err instanceof KernelError && err.cause instanceof Error
-            ? err.cause.message
-            : (err as Error).message
-        const innerStack =
-          err instanceof KernelError && err.cause instanceof Error
-            ? err.cause.stack
-            : err instanceof Error
-              ? err.stack
-              : undefined
-        lastPluginError = {
-          name: plugin.name,
-          hook: name,
-          error: {
-            message: innerMessage,
-            stack: innerStack,
-          },
-        }
-        // M1：钩子失败时把插件状态置为 failed
-        transitionPlugin(plugin.name, {
-          kind: 'failed',
-          error: {
-            code: err instanceof KernelError ? err.code : 'PLUGIN_HOOK_FAILED',
-            message: innerMessage,
-          },
-          failedAt: new Date().toISOString(),
-        })
-        throw err
-      }
-    }
-  }
-
-  /**
-   * 执行单个阶段：更新内核状态 → 发 phase:start 事件 → 按阶段分发插件钩子
-   * → 计算耗时并发 phase:end 事件。各阶段的具体行为见下方分支注释。
-   */
-  async function runPhase(phase: Phase): Promise<void> {
-    state.currentPhase = phase
-    phaseTimers.set(phase, Date.now())
-    events.emit({ type: 'phase:start', phase, timestamp: new Date().toISOString() })
-
-    // —— 阶段 1：loadConfig —— 读取并校验 nx-mk.config.yml
-    if (phase === 'loadConfig') {
-      await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
-      // 配置文件不存在直接抛 CONFIG_NOT_FOUND（退出码 2）
-      if (!existsSync(opts.configPath)) {
-        throw new KernelError('CONFIG_NOT_FOUND', `Config file not found: ${opts.configPath}`)
-      }
-      // 动态 import 打破 kernel ↔ config 的循环依赖（config 包反向依赖 kernel 的类型与错误类）
-      const { loadConfig } = await import('@nx-mk/config')
-      config = await loadConfig({ path: opts.configPath, cwd, runId: opts.runId, subcommand: opts.subcommand })
-      await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
-    } else if (phase === 'resolvePlugins') {
-      // —— 阶段 2：resolvePlugins —— 按配置的 plugins 列表动态加载 npm 插件包
-      await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
-      // 测试注入了 plugins 则跳过加载，否则走 plugin-registry 的动态 import 链路
-      if (opts.plugins === undefined) {
-        // Ruling 5 追加缝（excludePluginNames）：先过滤配置数组（防双实例双 launch）
-        const excluded = new Set(opts.excludePluginNames ?? [])
-        const names = excluded.size === 0
-          ? config!.plugins
-          : config!.plugins.filter((n) => !excluded.has(n))
-        plugins = await loadPlugins(names, { cwd, config: config! })
-        // Ruling 5 追加缝（extraPlugins）：加载完成后追加程序化装配的插件
-        if (opts.extraPlugins?.length) plugins = [...plugins, ...opts.extraPlugins]
-        // 每加载成功一个插件：发 plugin:loaded 事件并写入内核状态
-        for (const p of plugins) {
-          events.emit({ type: 'plugin:loaded', name: p.name, version: p.version })
-          state.loadedPlugins.push(p.name)
-          // M1：每个加载成功的插件立即置为 active
-          transitionPlugin(p.name, { kind: 'active', activatedAt: new Date().toISOString() })
-        }
-      } else {
-        // 测试路径：注入的 plugins 也走 active 转移以保证 pluginStates 与 loadedPlugins 一致；
-        // Ruling 5 追加缝（extraPlugins）：与生产路径语义一致，追加后同批转移
-        if (opts.extraPlugins?.length) plugins = [...plugins, ...opts.extraPlugins]
-        for (const p of plugins) {
-          if (!state.loadedPlugins.includes(p.name)) {
-            state.loadedPlugins.push(p.name)
-          }
-          transitionPlugin(p.name, { kind: 'active', activatedAt: new Date().toISOString() })
-        }
-      }
-      await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
-    } else if (phase === 'initPlugins') {
-      // —— 阶段 3：initPlugins —— 校验插件依赖 + 预留的插件初始化阶段
-      await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
-      // M3：检查所有插件的 inject 依赖是否被 provide 满足
-      // 不满足时抛 PLUGIN_DEPENDENCY_MISSING（退出码 7），fail-fast
-      resolveDependencies(plugins)
-      // kernel default: no-op (plugin instance is already constructed)
-      // 中文：内核默认无动作（插件对象在工厂调用时已构造完成），仅触发前后钩子
-      await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
-    } else if (phase === 'run') {
-      // —— 阶段 4：run —— 主工作阶段，触发 beforeRun 钩子后运行 Goal Loop（M14），
-      // 最后触发 afterRun 钩子。Goal Loop 仅在 config.goal 定义时启用，否则保持
-      // 原 push-based 行为（向后兼容）。
-      // C1（Task 6 审查裁定）：reports/turn/idleTurns 重置必须在 beforeRun 钩子之前 ——
-      // 否则 beforeRun 期 emitReport 的报告（如 plugin-playwright 的 field-hit）会在
-      // Goal Loop 启动前被清空，spec §1.4.2「field-hit 提前 goal-met」静默失败。
-      // initial coverage 仍在 beforeRun 之后读取（plugin-swagger 在 beforeRun 写 manifest）。
-      loopState.reports = []
-      loopState.turn = 0
-      loopState.idleTurns = 0
-      await runHooksForPhaseWithCapture(phase, 'before', plugins, buildCtx())
-      if (config?.goal) {
-        // Goal Loop 路径：构建共享循环状态 + AbortController
-        // initial coverage 从 .nx-mk/manifest.json 读（plugin-swagger 在 beforeRun 写入）；
-        // 文件缺失则回退 placeholder，让 demo 模式仍能跑通。
-        loopState.coverage = readInitialCoverageFromManifest(cwd, {
-          ignoredGlobs: (config as { coverage?: { ignored?: string[] } }).coverage?.ignored,
-        })
-        const goalAbort = new AbortController()
-        // 触发手动 shutdown 时同步终止 goal loop
-        if (shutdownPromise) goalAbort.abort()
-        try {
-          const goalResult = await runGoalLoop({
-            plugins,
-            goal: config.goal,
-            initialCoverage: loopState.coverage,
-            // 把 loopState 访问器注入 runGoalLoop —— 让 reports / turn 真正双向流动
-            getReports: () => loopState.reports,
-            onTurn: (t) => { loopState.turn = t },
-            ctx: buildCtx(),
-            signal: goalAbort.signal,
-          })
-          state.collectionResult = goalResult
-          // 发出 goal:met 或 goal:unmet 事件
-          if (goalResult.kind === 'met') {
-            events.emit({
-              type: 'goal:met',
-              coverage: goalResult.coverage,
-              turns: goalResult.turns,
-              durationMs: goalResult.durationMs,
-            })
-          } else {
-            // GoalResult.terminatedBy 在 kind='unmet' 时只能是 4 种之一；其余视为内核 bug
-            const reason = goalResult.terminatedBy
-            switch (reason) {
-              case 'max-turns':
-              case 'idle':
-              case 'timeout':
-              case 'all-failed':
-                events.emit({
-                  type: 'goal:unmet',
-                  reason,
-                  coverage: goalResult.coverage,
-                  turns: goalResult.turns,
-                })
-                break
-              case 'goal-met':
-              case 'aborted':
-                // met 不应走 else 分支；aborted 单独事件类型，这里不应到达
-                throw new KernelError(
-                  'KERNEL_INTERNAL',
-                  `Unexpected unmet terminatedBy: ${reason}`,
-                )
-              default:
-                assertNever(reason)
-            }
-          }
-        } catch (err) {
-          // Goal Loop 内部错误：包装为 KERNEL_INTERNAL，让上层 fail-fast 处理
-          throw new KernelError(
-            'KERNEL_INTERNAL',
-            `Goal loop failed: ${(err as Error).message}`,
-            err,
-          )
-        }
-      }
-      await runHooksForPhaseWithCapture(phase, 'after', plugins, buildCtx())
-    } else if (phase === 'shutdown') {
-      // —— 阶段 5：shutdown —— 关停收尾，插件按加载的逆序执行
-      // Reverse order
-      // 中文：逆序保证后加载的插件先清理，避免依赖反向残留
-      const reversed = [...plugins].reverse()
-      // Per spec §3.3, shutdown hook errors only log (don't throw)
-      // 中文：shutdown 钩子异常只记录不抛出，保证其余插件也能完成收尾
-      const safeRun = async (timing: 'before' | 'after') => {
-        try {
-          await runHooksForPhase(phase, timing, reversed, buildCtx())
-        } catch (err) {
-          logger.error('shutdown hook error (suppressed)', { phase, timing, err: (err as Error).message })
-        }
-      }
-      await safeRun('before')
-      await safeRun('after')
-    }
-
-    // 计算阶段耗时并发出结束事件（durationMs 供性能分析）
-    const durationMs = Date.now() - (phaseTimers.get(phase) ?? Date.now())
-    events.emit({ type: 'phase:end', phase, durationMs })
-  }
+  // 阶段驱动机器（kernel-runtime.ts）：访问器缝保持拆分前的闭包语义
+  const runtime = createKernelRuntime({
+    opts,
+    cwd,
+    events,
+    logger,
+    state,
+    loopState,
+    phaseTimers,
+    getPlugins: () => plugins,
+    setPlugins: (next) => { plugins = next },
+    getConfig: () => config,
+    setConfig: (next) => { config = next },
+    isManualShutdown: () => shutdownPromise !== null,
+    buildCtx,
+  })
 
   /**
    * 构造传给插件钩子的上下文（config + logger + events + kernel 句柄）。
@@ -411,7 +151,7 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       const ordered = PHASES.filter((p) => p !== 'shutdown')
       try {
         for (const phase of ordered) {
-          await runPhase(phase)
+          await runtime.runPhase(phase)
         }
         runFinished = true
         // spec §3.1 审计链：goal run 的终止原因与覆盖率快照随 RunResult 返回（Task 8 的 run.ts 消费）；
@@ -429,6 +169,7 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
           code: err instanceof KernelError ? err.code : 'KERNEL_INTERNAL',
           message: (err as Error).message,
         }
+        const lastPluginError = runtime.getLastPluginError()
         if (lastPluginError) {
           // 中文：错误来源是插件钩子时——
           // 先发 plugin:error 再发 kernel:error（spec §3.4 的顺序要求）；
@@ -466,7 +207,7 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       } finally {
         // 成功或失败都执行 shutdown 收尾，并落盘日志、关闭事件流
         if (runFinished || state.error) {
-          await runPhase('shutdown')
+          await runtime.runPhase('shutdown')
           await logger.flush()
           await new Promise<void>((resolve) => eventsStream.end(() => resolve()))
         }
@@ -477,7 +218,7 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       if (shutdownPromise) return shutdownPromise
       shutdownPromise = (async () => {
         logger.info('entering shutdown', { reason: reason ?? 'manual' })
-        await runPhase('shutdown')
+        await runtime.runPhase('shutdown')
         await logger.flush()
         await new Promise<void>((resolve) => eventsStream.end(() => resolve()))
       })()
