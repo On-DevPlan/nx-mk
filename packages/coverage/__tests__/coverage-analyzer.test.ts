@@ -290,3 +290,23 @@ describe('analyzeCoverage — B1 写入原子性（hygiene）', () => {
     } finally { db.close() }
   })
 })
+
+describe('analyzeCoverage — unknown 分支（hygiene-B2）', () => {
+  it('decision 缺失 → policy_status=unknown，state=notApplicable，不进两分母（spec §3.3）', () => {
+    // 构造 decision 全缺（evaluatePolicy 对空输入返回空数组）：analyzer 走 `?? 'unknown'`
+    // 分支 —— v0 锁定：不抛错、不计 counted_*，policy_status 落 unknown 列
+    const r = analyzeWith({ hits: HITS(['data.name']) }, MANIFEST, [])
+    // unknown + access 命中 → state=covered（判定序：ignored → hit → …）
+    expect(fieldRow('h1')).toMatchObject({ policy_status: 'unknown', coverage_state: 'covered', access_hit: 1 })
+    // unknown + 未命中 → state=notApplicable（h5 data.address.city 无 hit）
+    expect(fieldRow('h5')).toMatchObject({
+      policy_status: 'unknown',
+      coverage_state: 'notApplicable',
+      access_hit: 0,
+      counted_required: 0,
+      counted_effective: 0,
+    })
+    // 分母不进：metrics 字段数照计（fieldsTotal 来自 manifest），required/effective 分母全 0
+    expect(r.metrics).toMatchObject({ requiredFields: 0, requiredCoverage: 0, effectiveCoverage: 0 })
+  })
+})
