@@ -249,8 +249,8 @@ describe('analyzeCoverage — B1 写入原子性（hygiene）', () => {
     } finally { db.close() }
   })
 
-  it('CoverageDb without transaction capability degrades to row-by-row (behavior unchanged)', () => {
-    // 兼容性锁：无 transaction 的替身走逐条路径，写结果与事务路径一致
+  it('transaction-capable db: analyzer uses the transaction branch (wrapped=true, all rows written)', () => {
+    // 兼容性锁：带 transaction 的替身走批量路径，写结果正确
     const db = openCoverageDb(join(dir, 'b1b.db'))
     try {
       let wrapped = false
@@ -271,6 +271,22 @@ describe('analyzeCoverage — B1 写入原子性（hygiene）', () => {
       expect(wrapped).toBe(true)
       const n = db.prepare('SELECT COUNT(*) AS n FROM coverage_fields WHERE run_id = ?').get('run_b1b') as { n: number }
       expect(n.n).toBe(5) // MANIFEST 5 response fields, all inserted
+    } finally { db.close() }
+  })
+
+  it('db without transaction capability degrades to row-by-row (behavior unchanged)', () => {
+    // 真 fallback 锁：db 完全没有 transaction 属性 → 逐条路径仍写全所有行
+    const db = openCoverageDb(join(dir, 'b1c.db'))
+    try {
+      const proxy = { prepare: db.prepare.bind(db) } // 无 transaction 属性
+      db.insertRun('run_b1c', new Date().toISOString(), 'running')
+      analyzeCoverage({
+        runId: 'run_b1c', manifest: MANIFEST, policyDecisions: DECISIONS,
+        drained: { traces: [], evidence: [], hits: HITS(['data.name']) },
+        db: proxy as unknown as Parameters<typeof analyzeCoverage>[0]['db'],
+      })
+      const n = db.prepare('SELECT COUNT(*) AS n FROM coverage_fields WHERE run_id = ?').get('run_b1c') as { n: number }
+      expect(n.n).toBe(5)
     } finally { db.close() }
   })
 })
