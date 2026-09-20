@@ -148,3 +148,34 @@ export interface ApiErrorResponse {
   error: string
   hint?: string
 }
+
+// —— Phase 4.5：Replay Request（spec §2.1/R1-R5；plan §27.2 ReplaySafety v0 子集）——
+
+export type ReplayVerdict = 'safe' | 'idempotent' | 'unsafe' | 'blocked'
+
+/** POST /api/runs/:runId/replay/request/:requestId 响应（R4：replay-error 也是 200） */
+export interface ReplayResponse {
+  /** 留痕文件 ID（= 文件名去 .json）；留痕写失败为 null（结果仍返回） */
+  replayId: string | null
+  verdict: ReplayVerdict
+  reason: string
+  ok: boolean
+  status: number | 'replay-error' | null
+  durationMs: number | null
+  /** 响应 body 前 500 字符（R5 截断规则）；replay-error 时 null */
+  bodyPreview: string | null
+  /** replay-error 时的错误摘要（E3） */
+  error?: string
+}
+
+/** GET /api/runs/:runId/replays —— 留痕列表（v0 扩展路由，§30.2 未列） */
+export interface ReplaySummary {
+  replayId: string
+  verdict: ReplayVerdict
+  ok: boolean
+  status: number | 'replay-error' | null
+  createdAt: string
+}
+export interface ReplaysListResponse {
+  replays: ReplaySummary[]
+}
