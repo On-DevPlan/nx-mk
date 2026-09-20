@@ -35,10 +35,18 @@
  *   —— 整页导航时 shim 重新初始化、缓冲清零；未及回捞的 hits/traces 即丢。v0
  *   可接受（demo 无整页导航），Phase 3 若需跨导航可改为 sessionStorage 或常态回捞。
  */
-import { KernelError, type Plugin, type PluginReport } from '@nx-mk/kernel'
+import {
+  KernelError,
+  type Plugin,
+  type PluginReport,
+  type PluginConfigEntry,
+  type ResolvedConfig,
+} from '@nx-mk/kernel'
 import { createCollector, type Collector, type CollectReport } from '@nx-mk/client/collector'
 import type { CollectConfig } from '@nx-mk/config'
 import { launchCollect, hasChromium } from './runner.js'
+
+const PLUGIN_NAME = '@nx-mk/plugin-playwright'
 
 export interface PlaywrightPluginOptions {
   /** 目标应用地址（config.collect.url 缺省时的回退） */
@@ -49,6 +57,33 @@ export interface PlaywrightPluginOptions {
   maxTurns?: number
   /** 注入的共享 collector；缺省时插件自建 */
   collector?: Collector
+}
+
+export interface CollectTarget {
+  url?: string
+  waitForSelector?: string
+}
+
+/**
+ * W1d：per-plugin config 优先级链 —— plugins 列表中本插件对象条目的 config
+ * → 顶层 collect: 段 → 工厂 opts（CLI 装配注入）。
+ *
+ * 参数类型注：kernel 的 ResolvedConfig 不声明 collect 字段（该段是
+ * @nx-mk/config schema 的事，kernel 仅以交集断言消费），故 collect 以
+ * schema 的 CollectConfig 交集补入，plugins 仍取自 ResolvedConfig。
+ */
+export function resolveCollectTarget(
+  config: Pick<ResolvedConfig, 'plugins'> & { collect?: CollectConfig },
+  fallback: CollectTarget,
+): CollectTarget {
+  const own = config.plugins.find(
+    (e): e is PluginConfigEntry => typeof e === 'object' && e !== null && e.name === PLUGIN_NAME,
+  )
+  const cfg = (own?.config ?? {}) as { url?: string; waitForSelector?: string }
+  return {
+    url: cfg.url ?? config.collect?.url ?? fallback.url,
+    waitForSelector: cfg.waitForSelector ?? config.collect?.waitForSelector ?? fallback.waitForSelector,
+  }
 }
 
 /** CollectReport → PluginReport 映射（补齐可选字段的缺省值） */
@@ -76,9 +111,15 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
         if (cmd !== 'run' && cmd !== 'doctor') return
 
         // M3（Task 6 审查）：collect 段类型经 schema 收窄读取 —— kernel 的
-        // ResolvedConfig 尚未声明该字段，交集断言保证与 schema 类型一致
+        // ResolvedConfig 尚未声明该字段，交集断言保证与 schema 类型一致。
+        // W1d：plugins 列表存在本插件对象条目时视同已配置采集（条目级 config
+        // 等价于已配置采集），不因顶层 collect: 段缺失而静默跳过。
+        const config = ctx.config as ResolvedConfig
         const collect = (ctx.config as typeof ctx.config & { collect?: CollectConfig }).collect
-        if (!collect) {
+        const hasOwnEntry = config.plugins.some(
+          (e): e is PluginConfigEntry => typeof e === 'object' && e !== null && e.name === PLUGIN_NAME,
+        )
+        if (!collect && !hasOwnEntry) {
           ctx.logger.info('plugin-playwright: collect not configured, skipping', { cmd })
           return
         }
@@ -91,12 +132,13 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
         // doctor 只做环境自检（chromium 可用性），不执行完整页面收集
         if (cmd !== 'run') return
 
-        const url = collect.url ?? opts.url
+        const target = resolveCollectTarget(config, opts)
+        const url = target.url
         if (!url) {
           ctx.logger.warn('plugin-playwright: collect.url missing and no plugin url fallback')
           return
         }
-        const waitForSelector = collect.waitForSelector ?? opts.waitForSelector ?? '[data-mk-field]'
+        const waitForSelector = target.waitForSelector ?? '[data-mk-field]'
 
         let descs
         try {
