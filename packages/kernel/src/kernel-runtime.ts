@@ -246,7 +246,7 @@ export function createKernelRuntime(deps: KernelRuntimeDeps): KernelRuntime {
       await runHooksForPhaseWithCapture(phase, 'after', deps.getPlugins(), deps.buildCtx())
       // Phase 4.5（R7）：initPlugins 完成即快照插件清单供 dashboard 只读消费；
       // 生产装配与测试注入两条路径都在此收口。写失败静默（E4 兜底）。
-      writePluginsManifest(cwd, buildPluginsManifest(deps.getPlugins(), deps.getConfig()))
+      writePluginsManifest(cwd, buildPluginsManifest(deps.getPlugins(), deps.getConfig() ?? undefined))
     } else if (phase === 'run') {
       // —— 阶段 4：run —— 主工作阶段，触发 beforeRun 钩子后运行 Goal Loop（M14），
       // 最后触发 afterRun 钩子。Goal Loop 仅在 config.goal 定义时启用，否则保持
