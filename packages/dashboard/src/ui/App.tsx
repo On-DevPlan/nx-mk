@@ -12,6 +12,8 @@ import { RequestsListPage } from './pages/RequestsList'
 import { RequestDetailPage } from './pages/RequestDetail'
 import { FieldsListPage } from './pages/FieldsList'
 import { IgnoredListPage } from './pages/IgnoredList'
+import { ManifestBrowserPage } from './pages/ManifestBrowser'
+import { PluginSettingsPage } from './pages/PluginSettings'
 
 export function App() {
   const { page, params } = useHashRoute()
@@ -20,6 +22,7 @@ export function App() {
       <nav>
         <a href="#/">Overview</a>
         <a href="#/runs">Runs</a>
+        <a href="#/settings/plugins">Plugins</a>
       </nav>
       <main>
         {page === 'overview' && <OverviewPage key={JSON.stringify(params)} />}
@@ -39,6 +42,10 @@ export function App() {
         {page === 'ignored' && (
           <IgnoredListPage runId={params.runId ?? ''} key={JSON.stringify(params)} />
         )}
+        {page === 'manifest' && (
+          <ManifestBrowserPage runId={params.runId ?? ''} key={JSON.stringify(params)} />
+        )}
+        {page === 'settings' && <PluginSettingsPage key="settings" />}
         {page === 'not-found' && <p className="empty">Not found — pick a page above.</p>}
       </main>
     </>

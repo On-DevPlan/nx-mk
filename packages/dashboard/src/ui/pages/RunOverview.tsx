@@ -45,6 +45,8 @@ export function RunOverviewPage({ runId }: { runId: string }) {
         <a href={`#/runs/${runId}/fields`}>Fields →</a>
         {'　'}
         <a href={`#/runs/${runId}/ignored`}>Ignored →</a>
+        {'　'}
+        <a href={`#/runs/${runId}/manifest`}>Manifest browser</a>
       </div>
     </section>
   )

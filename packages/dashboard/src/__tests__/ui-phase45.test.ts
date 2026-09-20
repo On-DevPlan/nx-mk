@@ -66,6 +66,56 @@ vi.mock('../ui/hooks', async (importOriginal) => {
           refresh: () => {},
         }
       }
+      // PluginSettings：/api/plugins —— 给一个 entry 让卡片渲染
+      if (path === '/api/plugins') {
+        return {
+          data: {
+            plugins: [
+              {
+                name: 'p',
+                version: '1',
+                enabled: true,
+                config: null,
+                configSchema: null,
+              },
+            ],
+            stale: false,
+          } as unknown as T,
+          error: null,
+          refresh: () => {},
+        }
+      }
+      // ManifestBrowser：/api/runs/:runId/manifest —— 给一个最小 manifest
+      if (path.endsWith('/manifest')) {
+        return {
+          data: {
+            version: '1',
+            source: { type: 'openapi', input: 'x', hash: 'h' },
+            generatedAt: '',
+            schemas: {},
+            fields: [],
+            endpoints: [{ id: 'e1', method: 'GET', path: '/users' }],
+          } as unknown as T,
+          error: null,
+          refresh: () => {},
+        }
+      }
+      // ManifestBrowser：/api/runs/:runId/fields —— 空 list（policyByPath 为空，徽章显 —）
+      if (path.endsWith('/fields')) {
+        return {
+          data: { fields: [] } as unknown as T,
+          error: null,
+          refresh: () => {},
+        }
+      }
+      // ManifestBrowser：/api/runs/:runId/requests —— 空 list（全部未 called）
+      if (path.endsWith('/requests')) {
+        return {
+          data: { requests: [] } as unknown as T,
+          error: null,
+          refresh: () => {},
+        }
+      }
       // 兜底：默认返回 null data + null error（不抛错即可让页面走 loading 或正常分支）
       return { data: null as T | null, error: null, refresh: () => {} }
     },
@@ -89,5 +139,63 @@ describe('Phase 4.5 UI render', () => {
     const html = renderPage(createElement(OverviewPage, {}))
     expect(html).not.toContain('error 5')
     expect(typeof html).toBe('string')
+  })
+
+  it('PluginSettings renders cards with Copy YAML button', async () => {
+    const { PluginSettingsPage } = await import('../ui/pages/PluginSettings')
+    const html = renderPage(createElement(PluginSettingsPage, {}))
+    expect(html).toContain('Plugins')
+    expect(html).toContain('No schema exposed')
+    expect(html).toContain('Copy YAML')
+  })
+
+  it('ManifestBrowser renders endpoints table + schema section', async () => {
+    const { ManifestBrowserPage } = await import('../ui/pages/ManifestBrowser')
+    const html = renderPage(createElement(ManifestBrowserPage, { runId: 'run_a' }))
+    expect(html).toContain('Manifest')
+    expect(html).toContain('Endpoints')
+    expect(html).toContain('Schema')
+  })
+})
+
+describe('yamlSnippet 类型分支（spec §4 UI 层）', () => {
+  it('无 schema → 自由编辑提示（R8/E5）', async () => {
+    const { yamlSnippet } = await import('../ui/yaml-snippet')
+    const out = yamlSnippet({
+      name: 'bare',
+      version: '1.0.0',
+      enabled: true,
+      config: null,
+      configSchema: null,
+    })
+    expect(out).toContain('no schema exposed')
+  })
+
+  it('properties 按类型给占位；required 无 ?；enum 给首值', async () => {
+    const { yamlSnippet } = await import('../ui/yaml-snippet')
+    const out = yamlSnippet({
+      name: '@nx-mk/plugin-swagger',
+      version: '0.1.0',
+      enabled: true,
+      config: null,
+      configSchema: {
+        type: 'object',
+        required: ['url'],
+        properties: {
+          url: { type: 'string', description: 'swagger doc url' },
+          retries: { type: 'integer' },
+          strict: { type: 'boolean' },
+          mode: { type: 'string', enum: ['read', 'live'] },
+          tags: { type: 'array' },
+        },
+      },
+    })
+    expect(out).toContain('url: ')
+    expect(out).not.toContain('url?:')
+    expect(out).toContain('retries?: 0')
+    expect(out).toContain('strict?: false')
+    expect(out).toContain('"read"')
+    expect(out).toContain('tags?: []')
+    expect(out).toContain('# swagger doc url')
   })
 })
