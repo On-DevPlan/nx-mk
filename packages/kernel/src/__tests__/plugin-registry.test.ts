@@ -73,6 +73,22 @@ describe('loadPlugins', () => {
       expect((err as KernelError).code).toBe('PLUGIN_LOAD_FAILED')
     }
   })
+
+  it('接受 string | {name, config} 联合条目（W1）', async () => {
+    const plugins = await loadPlugins([
+      '@nx-mk/plugin-swagger',
+      { name: '@nx-mk/plugin-swagger', config: { maxTurns: 7 } },
+    ])
+    expect(plugins).toHaveLength(2)
+    expect(plugins[0]!.name).toBe('@nx-mk/plugin-swagger')
+  })
+
+  it('非法形状条目（对象缺 name）→ PLUGIN_LOAD_FAILED 前置校验失败', async () => {
+    // 运行期防御：kernel 侧 normalize 假定 schema 已把关，此处钉死坏对象不被静默吞
+    await expect(
+      loadPlugins([{ name: 42 } as unknown as string]),
+    ).rejects.toMatchObject({ code: 'PLUGIN_LOAD_FAILED' })
+  })
 })
 
 describe('loadPlugins — PLUGIN_SHAPE_INVALID paths', () => {

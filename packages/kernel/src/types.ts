@@ -87,9 +87,15 @@ export type PluginWorkerState =
   | { kind: 'unloading' }
   | { kind: 'disposed' }
 
+/** v1 per-plugin 配置条目（@nx-mk/config PluginEntrySchema 的结构镜像，WP7——kernel 不硬依赖 config 包） */
+export interface PluginConfigEntry {
+  name: string
+  config: Record<string, unknown>
+}
+
 // nx-mk.config.yml 的字段结构（对应 @nx-mk/config 中 Zod schema 的解析结果）
 export interface Config {
-  plugins: string[]
+  plugins: Array<string | PluginConfigEntry>
   logLevel: LogLevel
   outputDir: string
   // openapi: 指向 OpenAPI 3.x 文档的相对/绝对路径（Phase 1；未配置则为 undefined）

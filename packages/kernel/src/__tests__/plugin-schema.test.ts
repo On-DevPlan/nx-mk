@@ -12,9 +12,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { loadPlugins } from '../plugin-registry'
+import { loadPlugins, validateConfigSchema, normalizePluginEntries } from '../plugin-registry'
 import { KernelError } from '../errors'
 import { mapErrorCodeToExit } from '../errors'
+import type { Plugin } from '../plugin'
 
 let workDir: string
 
@@ -66,5 +67,40 @@ describe('M2: Plugin configSchema validation', () => {
     expect((caught as Error).message).toContain('invalid config:')
     expect((caught as Error).message).toContain('a')
     expect((caught as Error).message).toContain('b')
+  })
+})
+
+describe('W4’：validateConfigSchema 输入 = per-entry config（v1 反转）', () => {
+  const schemaPlugin = {
+    name: 'schema-p',
+    version: '1.0.0',
+    hooks: {},
+    configSchema: z.object({ maxTurns: z.number().int().positive() }),
+  } as unknown as Plugin
+
+  it('合法条目 config 通过', async () => {
+    await expect(validateConfigSchema(schemaPlugin, 'schema-p', { maxTurns: 3 })).resolves.toBeUndefined()
+  })
+
+  it('条目 config 缺必填字段 → PLUGIN_CONFIG_INVALID（旧全量语义下该字段来自顶层，此断言钉死反转）', async () => {
+    await expect(validateConfigSchema(schemaPlugin, 'schema-p', {})).rejects.toMatchObject({
+      code: 'PLUGIN_CONFIG_INVALID',
+    })
+  })
+
+  it('不声明 schema 的插件跳过校验（向后兼容）', async () => {
+    const bare = { name: 'b', version: '1', hooks: {} } as unknown as Plugin
+    await expect(validateConfigSchema(bare, 'b', { anything: true })).resolves.toBeUndefined()
+  })
+})
+
+describe('normalizePluginEntries（kernel 镜像，WP7）', () => {
+  it('裸 string → { name, config: {} }；对象透传', () => {
+    expect(
+      normalizePluginEntries(['a-pkg', { name: 'b-pkg', config: { x: 1 } }]),
+    ).toEqual([
+      { name: 'a-pkg', config: {} },
+      { name: 'b-pkg', config: { x: 1 } },
+    ])
   })
 })

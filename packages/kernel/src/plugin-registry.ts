@@ -10,13 +10,20 @@ import { readFileSync } from 'node:fs'
 import { KernelError } from './errors'
 import type { Plugin } from './plugin'
 import { CORE_SERVICES } from './plugin'
-import type { ResolvedConfig } from './types'
+import type { PluginConfigEntry } from './types'
 
 // cwd 决定插件包的解析基准（默认取当前进程工作目录）
-// config 用于 M2 configSchema 校验（可选）
 export interface LoadPluginsOptions {
   cwd?: string
-  config?: ResolvedConfig
+}
+
+/** 裸 string → { name, config: {} }（W3/WP7）；与 @nx-mk/config 的同名函数结构镜像 */
+export function normalizePluginEntries(
+  entries: ReadonlyArray<string | PluginConfigEntry>,
+): PluginConfigEntry[] {
+  return entries.map((e) =>
+    typeof e === 'string' ? { name: e, config: {} } : { name: e.name as string, config: e.config },
+  )
 }
 
 // 合法插件名 = 合法 npm 包名（可含 scope），用于拦截路径穿越等危险输入
@@ -29,18 +36,22 @@ function isValidPluginName(name: string): boolean {
 /**
  * 按配置顺序加载插件列表，返回可用的 Plugin 数组。
  * 串行处理且 fail-fast：任何一个插件加载/校验失败立即抛 KernelError。
+ * v1（W1）：条目接受 string | { name, config } 联合类型，config 为该插件的 per-plugin 配置。
  */
 export async function loadPlugins(
-  names: string[],
+  entries: ReadonlyArray<string | PluginConfigEntry>,
   opts: LoadPluginsOptions = {},
 ): Promise<Plugin[]> {
-  if (names.length === 0) return []
+  const list = normalizePluginEntries(entries)
+  if (list.length === 0) return []
   const cwd = opts.cwd ?? process.cwd()
   // 以用户项目目录为基准构造 require，让 package.json 解析走用户项目的 node_modules
   const require = createRequire(cwd + '/')
   const plugins: Plugin[] = []
-  for (const name of names) {
-    // 校验段 ①：插件名必须是合法 npm 包名
+  for (const entry of list) {
+    // 类型门做实：坏对象（name 非 string）归一为 ''，落进下方 isValidPluginName 失败链
+    const name = typeof entry.name === 'string' ? entry.name : ''
+    // 校验段 ①：插件名必须是合法 npm 包名（对象条目同样过这道门）
     if (!isValidPluginName(name)) {
       throw new KernelError(
         'PLUGIN_LOAD_FAILED',
@@ -83,9 +94,9 @@ export async function loadPlugins(
         err,
       )
     }
-    // 校验段 ④ + ⑤：结构校验 + configSchema 校验 + package.json 对照
+    // 校验段 ④ + ⑤：结构校验 + configSchema 校验（W4'：输入= 该条目的 per-plugin config）+ package.json 对照
     validateShape(plugin, name)
-    await validateConfigSchema(plugin as Plugin, name, opts.config ?? {} as ResolvedConfig)
+    await validateConfigSchema(plugin as Plugin, name, entry.config)
     await validatePackageMatch(plugin as Plugin, name, require)
     plugins.push(plugin as Plugin)
   }
@@ -116,17 +127,17 @@ function validateShape(plugin: unknown, name: string): void {
 }
 
 /**
- * M2：用插件声明的 configSchema 校验传入的配置对象。
+ * M2（v1 W4' 反转）：用插件声明的 configSchema 校验**该插件条目的 per-plugin config**。
  * 若插件未声明 schema，跳过校验。不修改传入的 config 对象（只读）。
  *
  * @param plugin - 已通过 validateShape 的插件对象
  * @param name - 插件名（错误信息用）
- * @param rawConfig - ResolvedConfig 全量配置（插件可从中读取自己的字段）
+ * @param rawConfig - 该插件条目的 config 对象（v0 的全量 ResolvedConfig 语义已废弃）
  */
-async function validateConfigSchema(
+export async function validateConfigSchema(
   plugin: Plugin,
   name: string,
-  rawConfig: ResolvedConfig,
+  rawConfig: Record<string, unknown>,
 ): Promise<void> {
   if (!plugin.configSchema) return  // 不声明则跳过（向后兼容）
   try {
