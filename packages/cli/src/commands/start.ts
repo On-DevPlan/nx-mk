@@ -13,7 +13,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { KernelError, makeRunId, type LogLevel } from '@nx-mk/kernel'
-import { loadConfig, type DashboardConfig } from '@nx-mk/config'
+import { loadConfig, findConfigFile, type DashboardConfig } from '@nx-mk/config'
 import { buildServer, resolveUiDistDir } from '@nx-mk/dashboard'
 
 export const DEFAULT_DASHBOARD_PORT = 4317
@@ -54,9 +54,20 @@ export async function startMain(opts: StartMainOptions): Promise<void> {
   const dash: DashboardConfig = (config as typeof config & { dashboard?: DashboardConfig }).dashboard ?? {}
   const port = opts.port ?? dash.port ?? DEFAULT_DASHBOARD_PORT
 
+  // v1 写回链：把用户配置文件绝对路径透传给 dashboard（发现失败不阻断 start，API 侧 409 诚实降级）
+  let configPath: string | undefined
+  try {
+    configPath = opts.configPath !== undefined
+      ? join(cwd, opts.configPath)
+      : await findConfigFile(cwd)
+  } catch {
+    configPath = undefined
+  }
+
   const server = buildServer({
     nxMkDir: join(cwd, '.nx-mk'),
     uiDistDir: resolveUiDistDir(),
+    ...(configPath !== undefined ? { configPath } : {}),
   })
 
   const deps: StartDeps = opts.deps ?? {

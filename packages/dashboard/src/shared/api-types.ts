@@ -232,3 +232,22 @@ export interface ManifestResponse {
   fields: ManifestFieldView[]
   endpoints: ManifestEndpointView[]
 }
+
+// —— v1：plugin config 写回链（spec §2.1/§2.3 + E1-E7 矩阵；WP1 写回本体在 @nx-mk/config）——
+
+/** PATCH /api/plugins/:name/config?dryRun=true 响应（spec §2.1/§2.3；WP2：errors 恒 []，形状门在路由层） */
+export interface ConfigWritePreviewResponse {
+  valid: boolean
+  errors: string[]
+  newYaml: string
+  yamlSha: string
+  diff: string
+}
+
+/** PATCH …?dryRun=false 响应（W6：.bak 单代备份 + 原子写） */
+export interface ConfigWriteApplyResponse {
+  applied: true
+  diff: string
+  bakPath: string
+  yamlSha: string
+}
