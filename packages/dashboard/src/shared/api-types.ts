@@ -179,3 +179,56 @@ export interface ReplaySummary {
 export interface ReplaysListResponse {
   replays: ReplaySummary[]
 }
+
+// —— Phase 4.5：plugin settings 只读（spec R6-R8/E4/E5；V5 config 语义）——
+
+export interface PluginEntryView {
+  name: string
+  version: string
+  enabled: boolean
+  /** 全量 ResolvedConfig JSON 快照（V5） */
+  config: unknown
+  /** JSON Schema 对象；无/不可序列化 → null（UI 显「No schema exposed」，R8/E5） */
+  configSchema: Record<string, unknown> | null
+}
+
+export interface PluginsResponse {
+  plugins: PluginEntryView[]
+  /** true = plugins-manifest.json 缺失/形状不过（E4）：UI 显「kernel 未产出清单」 */
+  stale: boolean
+}
+
+// —— Phase 4.5：manifest 浏览器（spec U6/E8；§16 ApiManifest 结构投影，不引 manifest-schema 依赖）——
+
+export interface ManifestEndpointView {
+  id: string
+  method: string
+  path: string
+  operationId?: string
+  summary?: string
+  tags?: string[]
+}
+
+export interface ManifestFieldView {
+  id: string
+  endpointId: string
+  direction: string
+  status?: string
+  path: string
+  normalizedPath: string
+  name: string
+  type: string
+  required?: boolean
+  nullable?: boolean
+  description?: string
+  enum?: string[]
+}
+
+export interface ManifestResponse {
+  version: string
+  source: { type: string; input: string; hash: string }
+  generatedAt: string
+  schemas: Record<string, unknown>
+  fields: ManifestFieldView[]
+  endpoints: ManifestEndpointView[]
+}

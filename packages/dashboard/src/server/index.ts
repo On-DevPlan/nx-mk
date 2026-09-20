@@ -1,6 +1,6 @@
 /**
  * buildServer —— Dashboard server 工厂（spec §3.2）：
- * 静态托管 + 7 条只读 /api 路由 + Phase 4.5 可操作路由（replay, SSE events）。
+ * 静态托管 + 7 条只读 /api 路由 + Phase 4.5 可操作路由（replay, SSE events, plugins, manifest）。
  * logger 关闭：本地分析台，stdout 由 start 命令管理。
  */
 import Fastify, { type FastifyInstance } from 'fastify'
@@ -12,6 +12,8 @@ import { registerFieldRoutes } from './routes/fields.js'
 import { registerIgnoredRoutes } from './routes/ignored.js'
 import { registerReplayRoutes } from './routes/replay.js'
 import { registerEventRoutes } from './routes/events.js'
+import { registerPluginRoutes } from './routes/plugins.js'
+import { registerManifestRoutes } from './routes/manifest.js'
 
 export interface BuildServerOptions {
   /** .nx-mk 目录（绝对或相对 cwd） */
@@ -33,6 +35,8 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
   registerIgnoredRoutes(app, ctx)
   registerReplayRoutes(app, ctx)
   registerEventRoutes(app, ctx)
+  registerPluginRoutes(app, ctx)
+  registerManifestRoutes(app, ctx)
   return app
 }
 
