@@ -267,6 +267,48 @@ describe('runMain coverage 产物（spec §3.5）', () => {
     }
   })
 
+  it('snapshots per-run manifest.json into the run dir (Phase 4.5 V2)', async () => {
+    writeManifestFixture()
+    const collector = fedCoverageCollector()
+    const log = silenceConsole()
+    const warn = spyWarn()
+    try {
+      await runMain({ configPath, runId: 'run_snap', cwd: workDir, collector })
+    } finally {
+      log.mockRestore()
+      warn.mockRestore()
+    }
+    // runId 从产物回读（避开 makeRunId 品牌层与未来可能的非确定性前缀）
+    const report = JSON.parse(readFileSync(reportPath, 'utf8')) as { runId: string }
+    const snapshotPath = join(workDir, '.nx-mk', 'runs', report.runId, 'manifest.json')
+    expect(existsSync(snapshotPath)).toBe(true)
+    const snap = JSON.parse(readFileSync(snapshotPath, 'utf8')) as { fields: unknown[] }
+    expect(Array.isArray(snap.fields)).toBe(true)
+  })
+
+  it('does not snapshot when manifest is missing (E8 honest 404 for legacy shape)', async () => {
+    writeFileSync(configPath, "plugins: []\ncollect:\n  url: 'http://localhost:5173'\n")
+    const collector = createCollector()
+    collector.hit({
+      requestId: 'r1',
+      endpointId: 'ep1',
+      fieldPath: 'data.name',
+      normalizedPath: 'data.name',
+      type: 'get',
+      timestamp: Date.now(),
+    })
+    const log = silenceConsole()
+    const warn = spyWarn()
+    try {
+      await runMain({ configPath, runId: 'run_nosnap', cwd: workDir, collector })
+    } finally {
+      log.mockRestore()
+      warn.mockRestore()
+    }
+    const report = JSON.parse(readFileSync(reportPath, 'utf8')) as { runId: string }
+    expect(existsSync(join(workDir, '.nx-mk', 'runs', report.runId, 'manifest.json'))).toBe(false)
+  })
+
   it('manifest 形状非法（JSON 合法但无 fields/endpoints）→ 同样空报告 + warn + completed（审查 M1）', async () => {
     writeFileSync(configPath, "plugins: []\ncollect:\n  url: 'http://localhost:5173'\n")
     mkdirSync(join(workDir, '.nx-mk'), { recursive: true })
