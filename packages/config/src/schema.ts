@@ -15,6 +15,24 @@ export const PluginNameSchema = z.string().regex(
   'plugin name must be a valid npm package name',
 )
 
+// v1（W1/W3）：插件条目联合类型 —— 裸包名字符串向后兼容；对象条目开 per-plugin 配置命名空间。
+// 裸 string 条目的 config 语义上视为 {}（由 normalizePluginEntries 归一化）。
+export const PluginEntrySchema = z.union([
+  PluginNameSchema,
+  z.object({
+    name: PluginNameSchema,
+    config: z.record(z.unknown()).default({}),
+  }),
+])
+export type PluginEntry = z.infer<typeof PluginEntrySchema>
+
+/** 裸 string → { name, config: {} }（W3）；kernel 侧有一份结构镜像实现（WP7，避免硬依赖） */
+export function normalizePluginEntries(
+  entries: ReadonlyArray<string | PluginEntry>,
+): Array<{ name: string; config: Record<string, unknown> }> {
+  return entries.map((e) => (typeof e === 'string' ? { name: e, config: {} } : { name: e.name, config: e.config }))
+}
+
 // M14：Goal Loop 配置 schema（与内核 GoalConfig 字段一一对应）
 export const GoalConfigSchema = z.object({
   targetRatio: z.number().min(0).max(1).default(1.0),
@@ -73,7 +91,7 @@ export type AgentConfig = z.infer<typeof AgentConfigSchema>
 // 顶层配置 schema：插件列表上限 20，输出目录必须是相对路径
 export const ConfigSchema = z
   .object({
-    plugins: z.array(PluginNameSchema).max(20, 'max 20 plugins').default([]),
+    plugins: z.array(PluginEntrySchema).max(20, 'max 20 plugins').default([]),
     logLevel: LogLevelSchema.default('info'),
     outputDir: z
       .string()
