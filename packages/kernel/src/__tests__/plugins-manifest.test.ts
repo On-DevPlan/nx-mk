@@ -19,13 +19,13 @@ const schemaWithoutJson = { '~standard': { validate: () => {} } } as unknown as 
 describe('buildPluginsManifest', () => {
   it('serializes name/version/enabled/config/configSchema', () => {
     const p: Plugin = { name: '@nx-mk/plugin-swagger', version: '0.1.0', hooks: {}, configSchema: fakeSchemaWithJson }
-    const m = buildPluginsManifest([p], { logLevel: 'info' } as never)
+    const m = buildPluginsManifest([p], { plugins: [{ name: '@nx-mk/plugin-swagger', config: { maxTurns: 7 } }] } as never)
     expect(m.plugins).toHaveLength(1)
     const e = m.plugins[0]!
     expect(e.name).toBe('@nx-mk/plugin-swagger')
     expect(e.version).toBe('0.1.0')
     expect(e.enabled).toBe(true)
-    expect(e.config).toEqual({ logLevel: 'info' })
+    expect(e.config).toEqual({ maxTurns: 7 })
     expect(e.configSchema).toEqual({ type: 'object', properties: { url: { type: 'string' } } })
     expect(typeof m.generatedAt).toBe('string')
   })
@@ -38,6 +38,14 @@ describe('buildPluginsManifest', () => {
   it('plugin without configSchema → null; undefined config → null', () => {
     const m = buildPluginsManifest([{ name: 'x', version: '1', hooks: {} }], undefined)
     expect(m.plugins[0]!.configSchema).toBeNull()
+    expect(m.plugins[0]!.config).toBeNull()
+  })
+
+  it('不在 plugins 列表的插件（extraPlugins 装配）→ config null（WP6）', () => {
+    const m = buildPluginsManifest(
+      [{ name: 'assembled', version: '1', hooks: {} }],
+      { plugins: ['@nx-mk/plugin-swagger'] } as never,
+    )
     expect(m.plugins[0]!.config).toBeNull()
   })
 })

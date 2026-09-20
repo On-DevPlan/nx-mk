@@ -3,13 +3,13 @@
  * .nx-mk/plugins-manifest.json，供 dashboard 只读消费（GET /api/plugins）。
  * 写失败静默跳过——dashboard 侧按缺失降级（E4），分析产物不缺角。
  *
- * V5 裁定：v0 无 per-plugin 配置命名空间（config.plugins 是 string[]，插件从全量
- * ResolvedConfig 读自己的字段），故 per-plugin config = 全量配置的 JSON 快照。
+ * V5' 裁定：v1 起 plugins 为联合类型，条目 config = per-plugin 配置（WP6：不在列表中的插件 → null）
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Plugin } from './plugin.js'
 import type { ResolvedConfig } from './types.js'
+import { normalizePluginEntries } from './plugin-registry.js'
 
 /** plugins-manifest.json 单条目形状（dashboard store/plugins-reader.ts 同构门控） */
 export interface PluginManifestEntry {
@@ -17,7 +17,7 @@ export interface PluginManifestEntry {
   version: string
   /** v0 无停用语义，恒 true；形状为 v1 预留 */
   enabled: boolean
-  /** 全量 ResolvedConfig 的 JSON 快照（V5 裁定）；不可序列化 → null */
+  /** per-plugin 配置（V5'）；不在 plugins 列表/不可得 → null */
   config: unknown
   /** standard-schema 适配器挂 jsonSchema 属性则取之；否则 null（spec E5/R8） */
   configSchema: Record<string, unknown> | null
@@ -39,21 +39,15 @@ export function serializeConfigSchema(schema: Plugin['configSchema']): Record<st
 }
 
 export function buildPluginsManifest(plugins: Plugin[], config: ResolvedConfig | undefined): PluginsManifestFile {
-  let configOut: unknown = null
-  if (config !== undefined) {
-    try {
-      configOut = JSON.parse(JSON.stringify(config))
-    } catch {
-      configOut = null // 不可序列化 → null（E5 同族降级）
-    }
-  }
+  const entries = config ? normalizePluginEntries(config.plugins) : []
+  const configByName = new Map(entries.map((e) => [e.name, e.config]))
   return {
     generatedAt: new Date().toISOString(),
     plugins: plugins.map((p) => ({
       name: p.name,
       version: p.version,
       enabled: true,
-      config: configOut,
+      config: configByName.get(p.name) ?? null,
       configSchema: serializeConfigSchema(p.configSchema),
     })),
   }

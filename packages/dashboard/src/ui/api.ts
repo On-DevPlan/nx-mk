@@ -60,3 +60,22 @@ export async function postJson<T>(path: string, body: unknown, fetchImpl: typeof
   }
   return (await res.json()) as T
 }
+
+/** PATCH JSON（v1 写回链 W2）；错误处理与 postJson 同构 */
+export async function patchJson<T>(path: string, body: unknown, fetchImpl: typeof fetch = fetch): Promise<T> {
+  const res = await fetchImpl(path, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    let errBody: unknown = null
+    try {
+      errBody = await res.json()
+    } catch {
+      // 空/非 JSON body 容忍
+    }
+    throw new ApiError(res.status, errBody)
+  }
+  return res.json() as Promise<T>
+}

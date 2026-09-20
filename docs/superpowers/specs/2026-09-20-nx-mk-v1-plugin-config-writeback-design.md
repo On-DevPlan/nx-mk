@@ -110,6 +110,21 @@ PATCH /api/plugins/:pluginName/rollback                     # ❌ 多代回滚�
 
 1. 全套 vitest 绿（543 → ~578±10）+ `pnpm -r typecheck` 零回归
 2. demo 手动验收：起服务 → /settings/plugins → Edit plugin-playwright config 改 maxTurns → Preview 显示 diff（含注释行原样保留）→ Apply → `nx-mk.config.yml.bak` 产生 + YML 内 config 变更 → `nx-mk run` 读取新值
-3. 铁律 grep：dashboard server 写路径白名单 = `replay.ts` + 新 `config-write.ts`（恰 2 文件）
+3. 铁律 grep：dashboard server 写路径白名单 = `replay.ts`（恰 1 文件；WP1 修订——config.yml 唯一写者在 config 包 `writeback.ts`）
 4. 向后兼容核查：现存未改格式 config 文件（string[]）全流程可用（schema 解析 + approve + run 零报错）
-5. D2 五依赖不破（yaml 依赖 config 包已有，dashboard 不新增）
+5. D2 五依赖不破（yaml 依赖 config 包已有，dashboard 不新增外部依赖，仅加 workspace 内部依赖 `@nx-mk/config`）
+
+## 6. 实现裁定记录（SDD 执行期，2026-09-20）
+
+- **WP1**：写回引擎落 `packages/config/src/writeback.ts`（config 包拥有 yaml 依赖）；dashboard 经 `@nx-mk/config: workspace:*` 消费。W8 修订：dashboard server fs 写白名单仍恰 1 文件（`replay.ts`）——config.yml 唯一写者在 config 包，强度只增不减。
+- **WP2**：E1 深度 configSchema 校验 v1 降为形状门（JSON object）；真实校验在 kernel 下次 run fail-fast（`PLUGIN_CONFIG_INVALID`）。理由：manifest 只有 JSON Schema 无 validator，深度校验需 ajv（破 D2）或 dashboard 加载插件包（危险面）。
+- **WP3**：编辑器 textarea 用 JSON（JSON ⊂ YAML），dashboard 不引入 yaml 解析。
+- **WP4**：`dryRun` 缺省 `true`（安全默认），仅显式 `?dryRun=false` 落盘。
+- **WP5**：kernel `validateConfigSchema` 导出以便单测钉死 W4' 反转；签名收窄为 `Record<string, unknown>`。
+- **WP6**：manifest 条目 config：在 plugins 列表 → 条目 config；不在（extraPlugins 装配）→ `null`。
+- **WP7**：kernel 与 config 各持一份 `normalizePluginEntries`（结构镜像，kernel 不硬依赖 config 包）。
+- **E6**（`YAML_SELF_HARM`）：defense-in-depth 路径，JSON-safe 输入不可触达，无直接单测（代码审读核验；路由 500 映射由 `statusForWriteError` 覆盖）。
+- 执行期实测：`%2F` 编码路径参数在 find-my-way 下正常匹配 `:pluginName`（fastify 解码），无需通配回落。
+- 执行期实现修正：yaml dump 需 `{ singleQuote: true }` 使新节点与文件既有单引号风格一致（yaml v2 默认双引号新节点）；未触及条目经探针验证字节不变。
+- 终态：588/588 测试（543 + 45，含终审修复轮新增 3 例 `resolveDashboardConfigPath`）+ typecheck 14 包全绿；铁律 grep 复核通过（dashboard server 写白名单恰 `replay.ts`——本计划修订目标域；`packages/config` 内 renameSync 仅 `writeback.ts`，仓内其他包另有既有 renameSync 用法，非本计划引入）。
+- 终审修复（commit 2d3970c）：start.ts configPath 改用 `resolve`（join 不重置绝对段，真实 start 流程曾产垃圾路径致 PATCH 全 409）；编辑器 textarea 变更即失效 preview（W2 确认门）；spec 声明收窄；`PluginEntryView.config` 注释同步 V5'。

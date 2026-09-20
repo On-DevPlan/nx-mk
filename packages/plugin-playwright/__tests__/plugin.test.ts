@@ -47,7 +47,7 @@ function makeCtx(overrides: Record<string, unknown> = {}): never {
   return {
     reports,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-    config: { collect: { url: 'http://localhost:5173' }, outputDir: '.nx-mk/runs' },
+    config: { collect: { url: 'http://localhost:5173' }, plugins: [], outputDir: '.nx-mk/runs' },
     cwd: '/tmp/x',
     kernel: { getSubcommand: () => 'run' },
     getTurn: () => 1,
@@ -251,7 +251,7 @@ describe('plugin hooks（mock browser）', () => {
 
   it('beforeRun：collect 配置缺失 → info 日志跳过（不抛）', async () => {
     const plugin = createPlaywrightPlugin({ url: 'http://localhost:5173' })
-    const ctx = makeCtx({ config: { outputDir: '.nx-mk/runs' } })
+    const ctx = makeCtx({ config: { plugins: [], outputDir: '.nx-mk/runs' } })
 
     await expect(plugin.hooks.beforeRun?.(ctx)).resolves.toBeUndefined()
     expect((ctx as Ctx).logger.info).toHaveBeenCalledWith(

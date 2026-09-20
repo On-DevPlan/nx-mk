@@ -11,6 +11,7 @@ export type {
   LogLevel,
   RunId,
   Config,
+  PluginConfigEntry,
   ResolvedConfig,
   KernelState,
   PluginReport,

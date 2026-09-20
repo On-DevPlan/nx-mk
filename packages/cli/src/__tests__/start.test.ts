@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { startMain } from '../commands/start.js'
+import { join, resolve } from 'node:path'
+import { startMain, resolveDashboardConfigPath } from '../commands/start.js'
 
 // open 参数：test 1 需 open:true（验证开浏览器）；其余用例默认 open:false（验证跳过）
 function writeConfig(dir: string, open = false): string {
@@ -79,5 +79,25 @@ describe('startMain', () => {
       configPath: join(dir, 'missing.yml'), runId: 'run_t6', cwd: dir,
       deps: { startServer: async () => {}, runOnce: async () => {}, openBrowser: () => {} },
     })).rejects.toMatchObject({ code: 'CONFIG_NOT_FOUND' })
+  })
+})
+
+// Finding 1：resolveConfigPath 的产物已是绝对路径 —— join 只拼接（D:\proj\D:\proj\…），
+// resolve 对绝对段重置。期望值用同输入的 resolve() 计算，保持平台无关。
+describe('resolveDashboardConfigPath', () => {
+  it('absolute arg passes through unchanged (not joined onto cwd)', () => {
+    const cwd = 'D:\\proj'
+    const arg = 'D:\\proj\\nx-mk.config.yml'
+    expect(resolveDashboardConfigPath(cwd, arg, 'D:\\other')).toBe(resolve(cwd, arg))
+  })
+
+  it('relative arg resolves against cwd', () => {
+    expect(resolveDashboardConfigPath('D:\\proj', 'conf/nx-mk.config.yml', 'D:\\other'))
+      .toBe(resolve('D:\\proj', 'conf/nx-mk.config.yml'))
+  })
+
+  it('undefined arg falls back to the discovered path', () => {
+    expect(resolveDashboardConfigPath('D:\\proj', undefined, 'D:\\discovered\\nx-mk.config.yml'))
+      .toBe('D:\\discovered\\nx-mk.config.yml')
   })
 })

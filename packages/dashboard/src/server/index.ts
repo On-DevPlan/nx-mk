@@ -22,12 +22,18 @@ export interface BuildServerOptions {
   uiDistDir: string
   /** SQLite busy_timeout 覆盖（测试注入小值）；缺省 2000ms */
   busyTimeoutMs?: number
+  /** 用户主配置文件绝对路径（start 命令发现后透传；缺省 = 写回 API 以 409 诚实降级） */
+  configPath?: string
 }
 
 export function buildServer(opts: BuildServerOptions): FastifyInstance {
   const app = Fastify({ logger: false })
   registerStatic(app, opts.uiDistDir)
-  const ctx = { nxMkDir: opts.nxMkDir, ...(opts.busyTimeoutMs !== undefined ? { busyTimeoutMs: opts.busyTimeoutMs } : {}) }
+  const ctx = {
+    nxMkDir: opts.nxMkDir,
+    ...(opts.configPath !== undefined ? { configPath: opts.configPath } : {}),
+    ...(opts.busyTimeoutMs !== undefined ? { busyTimeoutMs: opts.busyTimeoutMs } : {}),
+  }
   registerRunRoutes(app, ctx)
   registerMetricsRoutes(app, ctx)
   registerRequestRoutes(app, ctx)

@@ -186,7 +186,7 @@ export interface PluginEntryView {
   name: string
   version: string
   enabled: boolean
-  /** 全量 ResolvedConfig JSON 快照（V5） */
+  /** per-plugin 配置（V5'）；插件不在 plugins 列表 → null */
   config: unknown
   /** JSON Schema 对象；无/不可序列化 → null（UI 显「No schema exposed」，R8/E5） */
   configSchema: Record<string, unknown> | null
@@ -231,4 +231,23 @@ export interface ManifestResponse {
   schemas: Record<string, unknown>
   fields: ManifestFieldView[]
   endpoints: ManifestEndpointView[]
+}
+
+// —— v1：plugin config 写回链（spec §2.1/§2.3 + E1-E7 矩阵；WP1 写回本体在 @nx-mk/config）——
+
+/** PATCH /api/plugins/:name/config?dryRun=true 响应（spec §2.1/§2.3；WP2：errors 恒 []，形状门在路由层） */
+export interface ConfigWritePreviewResponse {
+  valid: boolean
+  errors: string[]
+  newYaml: string
+  yamlSha: string
+  diff: string
+}
+
+/** PATCH …?dryRun=false 响应（W6：.bak 单代备份 + 原子写） */
+export interface ConfigWriteApplyResponse {
+  applied: true
+  diff: string
+  bakPath: string
+  yamlSha: string
 }

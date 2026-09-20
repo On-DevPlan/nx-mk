@@ -205,13 +205,14 @@ export function createKernelRuntime(deps: KernelRuntimeDeps): KernelRuntime {
       await runHooksForPhaseWithCapture(phase, 'before', deps.getPlugins(), deps.buildCtx())
       // 测试注入了 plugins 则跳过加载，否则走 plugin-registry 的动态 import 链路
       if (opts.plugins === undefined) {
-        // Ruling 5 追加缝（excludePluginNames）：先过滤配置数组（防双实例双 launch）
+        // Ruling 5 追加缝（excludePluginNames）：先过滤配置数组（防双实例双 launch）——
+        // v1 起条目是联合类型，按条目名过滤（W1）
         const excluded = new Set(opts.excludePluginNames ?? [])
         const config = deps.getConfig()!
-        const names = excluded.size === 0
+        const entries = excluded.size === 0
           ? config.plugins
-          : config.plugins.filter((n) => !excluded.has(n))
-        const loaded = await loadPlugins(names, { cwd, config })
+          : config.plugins.filter((e) => !excluded.has(typeof e === 'string' ? e : e.name))
+        const loaded = await loadPlugins(entries, { cwd })
         // Ruling 5 追加缝（extraPlugins）：加载完成后追加程序化装配的插件
         deps.setPlugins(opts.extraPlugins?.length ? [...loaded, ...opts.extraPlugins] : loaded)
         // 每加载成功一个插件：发 plugin:loaded 事件并写入内核状态
