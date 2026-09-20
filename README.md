@@ -96,6 +96,23 @@ nx-mk run          # 验证 requiredCoverage 真实提升
 
 前置：本地已安装并登录 `claude` CLI（loop 只授 Read/Grep/Glob 只读工具，agent 无写文件通道）。可选配置（provider 超时 / 轮数 / 批次）见 demo `nx-mk.config.yml` 尾部注释。注意：含 `/` 的字段 id 生成的补丁文件名可能带子目录，shell 通配用 `find .nx-mk/patches/<id> -name '*.patch'` 更稳。
 
+## Phase 4.5：Dashboard 可操作化（手动验收）
+
+```bash
+# 0. 全量构建（含 @nx-mk/agent —— 不构建则 CLI loop 测试/运行缺依赖）
+corepack pnpm install --frozen-lockfile && corepack pnpm -r build
+
+# 1. 起分析 + Dashboard（demo 目录内）
+npx nx-mk start
+
+# 2. 浏览器验收清单：
+#    a. 请求详情页 → [Replay request]：safe GET 直接复刻 + .nx-mk/replays/<runId>/ 留痕；
+#    b. 构造 POST trace → 无 confirm 409 → Confirm replay 后成功（留痕 verdict=unsafe）；
+#    c. curl -N "http://127.0.0.1:4317/api/events" → run 进行时看到 stage:start/stage:done/agent:iteration；
+#    d. #/runs/<runId>/manifest → endpoints 表 + schema 字段表 + policy 徽章；
+#    e. #/settings/plugins → 内置插件卡片 + Copy YAML。
+```
+
 ## 开发
 
 ```bash

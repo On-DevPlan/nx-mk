@@ -1,5 +1,5 @@
 /** / —— 最新 run 总览（spec §3.4）：三指标大数字 + 计数徽章 + goal 终止原因 */
-import { usePolling } from '../hooks'
+import { useEventSource, usePolling } from '../hooks'
 import type { RunsListResponse, MetricsResponse } from '../../shared/api-types'
 
 function pct(n: number): string {
@@ -7,12 +7,14 @@ function pct(n: number): string {
 }
 
 export function OverviewPage() {
-  const runs = usePolling<RunsListResponse>('/api/runs')
-  const latest = runs.data?.runs.find((r) => r.hasReport) ?? null
+  const { data: runsData, error: runsError, refresh } = usePolling<RunsListResponse>('/api/runs')
+  const latest = runsData?.runs.find((r) => r.hasReport) ?? null
   const metrics = usePolling<MetricsResponse>(latest ? `/api/runs/${latest.runId}/metrics` : null)
-  if (runs.error !== null && runs.data === null) return <p className="error">failed to load runs</p>
-  if (!runs.data) return <p>loading…</p>
-  if (runs.data.runs.length === 0) {
+  // Phase 4.5（R11）：SSE 事件到达 → 立即 refresh（轮询保留，SSE 只是加速器）
+  const { connected } = useEventSource('/api/events', () => refresh())
+  if (runsError !== null && runsData === null) return <p className="error">failed to load runs</p>
+  if (!runsData) return <p>loading…</p>
+  if (runsData.runs.length === 0) {
     return <p className="empty">No runs yet — run <code>nx-mk run</code> first.</p>
   }
   const m = metrics.data?.metrics
@@ -20,6 +22,7 @@ export function OverviewPage() {
     <section>
       <h1>
         Overview {latest !== null ? <span className="muted">({latest.runId})</span> : null}
+        {connected ? <span className="badge">live</span> : null}
       </h1>
       {latest?.terminatedBy != null && <span className="badge ok">terminated: {latest.terminatedBy}</span>}
       {m !== undefined ? (

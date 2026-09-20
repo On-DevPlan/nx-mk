@@ -130,7 +130,21 @@ export async function runMain(opts: RunMainOptions): Promise<void> {
         let manifest: AnalyzeInput['manifest'] | undefined
         try {
           const parsed: unknown = JSON.parse(readFileSync(join(cwd, '.nx-mk', 'manifest.json'), 'utf8'))
-          if (isManifestShaped(parsed)) manifest = parsed
+          if (isManifestShaped(parsed)) {
+            manifest = parsed
+            // Phase 4.5（V2 裁定）：per-run manifest 快照 —— manifest 浏览器页数据源。
+            // 仅有效 manifest 落快照；缺失/形状非法不落 → 旧 run 由路由诚实 404（spec E8）。
+            // 写失败 warn 不阻断（快照是浏览便利产物，不是审计链三角）。
+            try {
+              writeFileSync(
+                join(cwd, '.nx-mk', 'runs', runId, 'manifest.json'),
+                JSON.stringify(parsed, null, 2),
+                'utf8',
+              )
+            } catch (err) {
+              console.warn(`per-run manifest snapshot write failed: ${(err as Error).message}`)
+            }
+          }
         } catch {
           /* 缺失/解析失败 → 下移 warn + 空报告 */
         }
