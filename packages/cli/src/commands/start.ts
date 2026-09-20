@@ -10,7 +10,7 @@
  * 测试不占真端口、不真跑 run、不真开浏览器。
  */
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
 import { KernelError, makeRunId, type LogLevel } from '@nx-mk/kernel'
 import { loadConfig, findConfigFile, type DashboardConfig } from '@nx-mk/config'
@@ -37,6 +37,15 @@ export interface StartDeps {
   openBrowser: (url: string) => void
 }
 
+/** dashboard 写回链的配置文件定位：CLI 参数（可能已是绝对路径）→ findConfigFile 逐级上溯。resolve 对绝对段重置，join 不会（终审 Finding 1）。 */
+export function resolveDashboardConfigPath(
+  cwd: string,
+  configPathArg: string | undefined,
+  discovered: string, // findConfigFile(cwd) 的结果（async 已在调用方 await）
+): string {
+  return configPathArg !== undefined ? resolve(cwd, configPathArg) : discovered
+}
+
 export async function startMain(opts: StartMainOptions): Promise<void> {
   const cwd = opts.cwd ?? process.cwd()
   // 预检配置存在性（F2，对照 run.ts：loadConfig 对不可读文件抛 CONFIG_INVALID，
@@ -54,12 +63,13 @@ export async function startMain(opts: StartMainOptions): Promise<void> {
   const dash: DashboardConfig = (config as typeof config & { dashboard?: DashboardConfig }).dashboard ?? {}
   const port = opts.port ?? dash.port ?? DEFAULT_DASHBOARD_PORT
 
-  // v1 写回链：把用户配置文件绝对路径透传给 dashboard（发现失败不阻断 start，API 侧 409 诚实降级）
+  // v1 写回链：把用户配置文件绝对路径透传给 dashboard。CLI 传入的 opts.configPath 可能已是
+  // 绝对路径（index.ts resolveConfigPath 的产物）——resolve 对绝对段重置，join 只会拼接；
+  // 发现失败不阻断 start，API 侧 409 诚实降级
   let configPath: string | undefined
   try {
-    configPath = opts.configPath !== undefined
-      ? join(cwd, opts.configPath)
-      : await findConfigFile(cwd)
+    const discovered = await findConfigFile(cwd)
+    configPath = resolveDashboardConfigPath(cwd, opts.configPath, discovered)
   } catch {
     configPath = undefined
   }

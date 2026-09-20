@@ -126,4 +126,4 @@ PATCH /api/plugins/:pluginName/rollback                     # ❌ 多代回滚�
 - **E6**（`YAML_SELF_HARM`）：defense-in-depth 路径，JSON-safe 输入不可触达，无直接单测（代码审读核验；路由 500 映射由 `statusForWriteError` 覆盖）。
 - 执行期实测：`%2F` 编码路径参数在 find-my-way 下正常匹配 `:pluginName`（fastify 解码），无需通配回落。
 - 执行期实现修正：yaml dump 需 `{ singleQuote: true }` 使新节点与文件既有单引号风格一致（yaml v2 默认双引号新节点）；未触及条目经探针验证字节不变。
-- 终态：585/585 测试（543 + 42）+ typecheck 14 包全绿；铁律 grep 复核通过（dashboard server 恰 `replay.ts`，`renameSync` 全仓仅 `config/src/writeback.ts`）。
+- 终态：585/585 测试（543 + 42）+ typecheck 14 包全绿；铁律 grep 复核通过（dashboard server 写白名单恰 `replay.ts`——本计划修订目标域；`packages/config` 内 renameSync 仅 `writeback.ts`，仓内其他包另有既有 renameSync 用法，非本计划引入）。

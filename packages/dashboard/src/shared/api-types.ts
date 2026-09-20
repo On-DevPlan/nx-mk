@@ -186,7 +186,7 @@ export interface PluginEntryView {
   name: string
   version: string
   enabled: boolean
-  /** 全量 ResolvedConfig JSON 快照（V5） */
+  /** per-plugin 配置（V5'）；插件不在 plugins 列表 → null */
   config: unknown
   /** JSON Schema 对象；无/不可序列化 → null（UI 显「No schema exposed」，R8/E5） */
   configSchema: Record<string, unknown> | null

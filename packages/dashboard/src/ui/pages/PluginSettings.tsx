@@ -117,7 +117,14 @@ export function ConfigEditor({ name, initial }: { name: string; initial: unknown
   return (
     <div className="section">
       <p className="empty">config is JSON (valid YAML) for plugin {name}</p>
-      <textarea rows={8} cols={60} value={text} onChange={(e) => setText(e.target.value)} />
+      <textarea
+        rows={8} cols={60} value={text}
+        onChange={(e) => {
+          setText(e.target.value)
+          // W2 两段式确认门：改文即失效旧 preview——否则 doApply 会拿新 text 配旧 yamlSha 写盘
+          setPreview(null)
+        }}
+      />
       <div>
         <button onClick={() => void doPreview()}>Preview</button>{' '}
         <button onClick={() => void doApply()} disabled={preview === null}>Apply</button>
