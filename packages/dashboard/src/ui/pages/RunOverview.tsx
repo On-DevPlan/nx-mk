@@ -1,11 +1,13 @@
 /** /runs/:runId —— 单 run 报告总览：三指标 + 四清单计数 + endpoints 比例 */
 import { ApiError } from '../api'
-import { usePolling } from '../hooks'
+import { useEventSource, usePolling } from '../hooks'
 import type { MetricsResponse, RunDetailResponse } from '../../shared/api-types'
 
 export function RunOverviewPage({ runId }: { runId: string }) {
   const detail = usePolling<RunDetailResponse>(`/api/runs/${runId}`)
   const metrics = usePolling<MetricsResponse>(`/api/runs/${runId}/metrics`)
+  // Phase 4.5（R11）：SSE 事件到达 → 立即 refresh（轮询保留，SSE 只是加速器）
+  const { connected } = useEventSource(`/api/events?runId=${runId}`, () => detail.refresh())
   if (detail.error instanceof ApiError && detail.error.status === 404) {
     return <p className="empty">Run not found: {runId}</p>
   }
@@ -14,7 +16,7 @@ export function RunOverviewPage({ runId }: { runId: string }) {
   const m = metrics.error instanceof ApiError ? undefined : metrics.data?.metrics
   return (
     <section>
-      <h1>{runId}</h1>
+      <h1>{runId} {connected ? <span className="badge">live</span> : null}</h1>
       {detail.data.terminatedBy != null && <span className="badge ok">terminated: {detail.data.terminatedBy}</span>}
       {m !== undefined ? (
         <>

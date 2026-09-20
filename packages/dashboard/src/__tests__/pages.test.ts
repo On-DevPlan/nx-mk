@@ -17,6 +17,8 @@ vi.mock('../ui/hooks', async () => {
   const error = await err500
   return {
     usePolling: <T,>() => ({ data: null as T | null, error }),
+    // Phase 4.5: RunOverview 在错误路径下也调用 useEventSource；mock 成 no-op 让现有 B6 断言继续生效
+    useEventSource: () => ({ connected: false }),
   }
 })
 

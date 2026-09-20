@@ -41,3 +41,22 @@ export async function getJson<T>(path: string, fetchImpl: typeof fetch = fetch):
   }
   return (await res.json()) as T
 }
+
+/** POST JSON 的通用包装（Phase 4.5 replay 用）；错误处理与 getJson 同构 */
+export async function postJson<T>(path: string, body: unknown, fetchImpl: typeof fetch = fetch): Promise<T> {
+  const res = await fetchImpl(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    let errBody: unknown = null
+    try {
+      errBody = await res.json()
+    } catch {
+      // 空/非 JSON body 容忍
+    }
+    throw new ApiError(res.status, errBody)
+  }
+  return (await res.json()) as T
+}
