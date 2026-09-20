@@ -12,6 +12,7 @@ import { loadPlugins, resolveDependencies } from './plugin-registry'
 import { runGoalLoop } from './goal-loop'
 import { readInitialCoverageFromManifest } from './initial-coverage'
 import { KernelError } from './errors'
+import { buildPluginsManifest, writePluginsManifest } from './plugins-manifest.js'
 import type { EventBus } from './event-bus'
 import type { Logger } from './logger'
 import type { CreateKernelOptions } from './kernel'
@@ -243,6 +244,9 @@ export function createKernelRuntime(deps: KernelRuntimeDeps): KernelRuntime {
       // kernel default: no-op (plugin instance is already constructed)
       // 中文：内核默认无动作（插件对象在工厂调用时已构造完成），仅触发前后钩子
       await runHooksForPhaseWithCapture(phase, 'after', deps.getPlugins(), deps.buildCtx())
+      // Phase 4.5（R7）：initPlugins 完成即快照插件清单供 dashboard 只读消费；
+      // 生产装配与测试注入两条路径都在此收口。写失败静默（E4 兜底）。
+      writePluginsManifest(cwd, buildPluginsManifest(deps.getPlugins(), deps.getConfig()))
     } else if (phase === 'run') {
       // —— 阶段 4：run —— 主工作阶段，触发 beforeRun 钩子后运行 Goal Loop（M14），
       // 最后触发 afterRun 钩子。Goal Loop 仅在 config.goal 定义时启用，否则保持
