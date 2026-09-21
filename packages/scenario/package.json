@@ -1,0 +1,33 @@
+{
+  "name": "@nx-mk/scenario",
+  "version": "0.1.0",
+  "private": true,
+  "description": "nx-mk Scenario DSL — schema/loader/runner/playwright driver/replay trail (plan §8)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "playwright-core": "^1.49.0",
+    "yaml": "^2.4.5",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "tsup": "^8.0.2",
+    "vitest": "^1.0.4",
+    "@types/node": "^20.10.0"
+  }
+}
