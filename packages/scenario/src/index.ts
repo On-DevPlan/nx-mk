@@ -3,3 +3,4 @@ export { ScenarioFileSchema, ScenarioSchema, ScenarioStepSchema, GotoStepSchema,
 export { globToRegExp, loadScenarios, type LoadedScenario, type LoadScenariosResult } from './dsl-loader.js'
 export { runScenario, runScenarioSuite, stepIdOf, type StepDriver, type StepResult, type ScenarioRunResult, type SuiteItem } from './runner.js'
 export { hasChromium, createPlaywrightDriver, runScenarioWithPage, runScenarioSuiteInBrowser, type SuiteObservers } from './playwright-runner.js'
+export { ScenarioReplayError, replayScenario, replayLaunch, makeScenarioReplayId, writeScenarioReplayTrail, type ScenarioReplayTrail } from './scenario-replay.js'
