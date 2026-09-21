@@ -2,7 +2,7 @@
   "name": "@nx-mk/plugin-swagger",
   "version": "0.1.0",
   "private": true,
-  "description": "nx-mk OpenAPI plugin (placeholder; Phase 1)",
+  "description": "nx-mk OpenAPI plugin — parse config.openapi into .nx-mk/manifest.json",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

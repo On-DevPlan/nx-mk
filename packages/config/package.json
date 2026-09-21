@@ -2,7 +2,7 @@
   "name": "@nx-mk/config",
   "version": "0.1.0",
   "private": true,
-  "description": "nx-mk config schema and YAML loader",
+  "description": "nx-mk config schema, YAML loader and user-config writeback",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
