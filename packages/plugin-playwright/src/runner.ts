@@ -58,16 +58,5 @@ export async function launchCollect(
   }
 }
 
-/**
- * hasChromium —— doctor 检查：尝试真实 launch 一次 headless chromium。
- * 缺浏览器二进制（npx playwright install 未执行）时 launch 会 reject → false。
- */
-export async function hasChromium(): Promise<boolean> {
-  try {
-    const browser = await chromium.launch({ headless: true })
-    await browser.close()
-    return true
-  } catch {
-    return false
-  }
-}
+// S4：hasChromium 迁入 @nx-mk/scenario（依赖方向 plugin-playwright → scenario）；re-export 向后兼容
+export { hasChromium } from '@nx-mk/scenario'

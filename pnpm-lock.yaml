@@ -368,6 +368,9 @@ importers:
       '@nx-mk/kernel':
         specifier: workspace:*
         version: link:../kernel
+      '@nx-mk/scenario':
+        specifier: workspace:*
+        version: link:../scenario
       playwright-core:
         specifier: ^1.49.0
         version: 1.63.0
