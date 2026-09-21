@@ -2,7 +2,7 @@
   "name": "@nx-mk/coverage",
   "version": "0.1.0",
   "private": true,
-  "description": "nx-mk coverage store — SQLite §25 DDL + trace/evidence flush",
+  "description": "nx-mk coverage store and analyzer — SQLite §25 DDL + trace/evidence flush + policy engine",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

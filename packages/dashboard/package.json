@@ -2,7 +2,7 @@
   "name": "@nx-mk/dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "nx-mk local dashboard — read-only coverage console (server + UI)",
+  "description": "nx-mk local dashboard — fastify API + React UI over .nx-mk artifacts",
   "type": "module",
   "main": "./dist/server/index.js",
   "types": "./dist/server/index.d.ts",

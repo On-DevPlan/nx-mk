@@ -2,7 +2,7 @@
   "name": "@nx-mk/kernel",
   "version": "0.1.0",
   "private": true,
-  "description": "nx-mk microkernel: plugin lifecycle + event bus",
+  "description": "nx-mk microkernel: plugin lifecycle + event bus + goal loop",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
