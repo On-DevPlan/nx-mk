@@ -45,8 +45,11 @@ export function createPlaywrightDriver(page: Page): StepDriver {
 export interface SuiteObservers {
   /** goto 完成后（plugin 侧：PAGE_SCAN → field-hit emitReport，SP6） */
   afterGoto?(scenarioId: string, page: Page, url: string): Promise<void>
-  /** 每步 drain 时点（plugin 侧：drainBrowserCollector + 归因 tag，SP6） */
-  afterStep?(scenarioId: string, tag: { scenarioId: string; dslStepId?: string }): Promise<void>
+  /**
+   * 每步 drain 时点（plugin 侧：drainBrowserCollector + 归因 tag，SP6）。
+   * T6 接口演进：第三参透传 page —— plugin 的回捞需要 page.evaluate（S6 归因闭环）。
+   */
+  afterStep?(scenarioId: string, tag: { scenarioId: string; dslStepId?: string }, page: Page): Promise<void>
 }
 
 export async function runScenarioWithPage(scenario: Scenario, page: Page, observers?: SuiteObservers): Promise<ScenarioRunResult> {
@@ -58,7 +61,7 @@ export async function runScenarioWithPage(scenario: Scenario, page: Page, observ
       if (observers?.afterGoto) await observers.afterGoto(scenario.id, page, url)
     },
     drain: async (tag) => {
-      if (observers?.afterStep) await observers.afterStep(scenario.id, tag)
+      if (observers?.afterStep) await observers.afterStep(scenario.id, tag, page)
     },
   }
   return runScenario(scenario, driver)
