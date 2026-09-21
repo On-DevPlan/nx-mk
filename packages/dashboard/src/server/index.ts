@@ -14,6 +14,7 @@ import { registerReplayRoutes } from './routes/replay.js'
 import { registerEventRoutes } from './routes/events.js'
 import { registerPluginRoutes } from './routes/plugins.js'
 import { registerManifestRoutes } from './routes/manifest.js'
+import { registerScenarioRoutes } from './routes/scenarios.js'
 
 export interface BuildServerOptions {
   /** .nx-mk 目录（绝对或相对 cwd） */
@@ -43,6 +44,7 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
   registerEventRoutes(app, ctx)
   registerPluginRoutes(app, ctx)
   registerManifestRoutes(app, ctx)
+  registerScenarioRoutes(app, ctx)
   return app
 }
 

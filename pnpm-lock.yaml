@@ -249,6 +249,12 @@ importers:
       '@nx-mk/coverage':
         specifier: workspace:*
         version: link:../coverage
+      '@nx-mk/kernel':
+        specifier: workspace:*
+        version: link:../kernel
+      '@nx-mk/scenario':
+        specifier: workspace:*
+        version: link:../scenario
       better-sqlite3:
         specifier: ^11.10.0
         version: 11.10.0
