@@ -6,14 +6,24 @@
 
 ## 当前状态
 
-**Phase 3 分析完成** — policy-engine 全量（§21 优先级 + glob `*`/`**`/字面）、coverage analyzer §28 + 三指标 + 四态（§21.3）+ anti-cheat v0（hidden DOM suspicious / 空标记 weak）、id-space 对齐 normalizedPath、CoverageReport JSON 落盘、goal-loop 三指标摘要 stdout、`runs.terminated_by` 审计。
+**Phase 0-5 全部完成** —— 含 Phase 1.5（SDK Facade Codegen）、Phase 4.5（Dashboard 可操作化）、v1（插件配置写回链）。
+测试基线：**77 文件 / 588 测试全绿**，`pnpm -r typecheck` 14 包零报错。
 
-- demo 闭环：`pnpm demo:codegen` 一键跑 `demo:openapi` → `nx-mk run` → codegen → `app/src/generated-sdk.ts`。存量代码迁移：`npx nx-mk migrate`（静态 fetch 替换）+ `patchGlobalFetch()`（兜底）。
-- Phase 2 采集闭环：`nx-mk run` 驱动 headless chromium 扫 demo 前端 → field_hits / ui_evidence / request_traces 三表落库。
-- Phase 3 goal 闭环（手动验收，见下）：config `goal:` 段 + `coverage:` 段 → CLI `run` 驱动 Goal Loop → 期望 events.jsonl `goal:met` + `runs.terminated_by='goal-met'` + `coverage-report.json` 三指标互证。
+已完成能力一览：
 
-完整方案见 [`docx/plan/nx-mk-plan.md`](./docx/plan/nx-mk-plan.md)。
-本阶段 spec：Phase 2 [`docs/superpowers/specs/2026-09-16-nx-mk-phase2-collection-design.md`](./docs/superpowers/specs/2026-09-16-nx-mk-phase2-collection-design.md)，Phase 3 [`docs/superpowers/specs/2026-09-17-nx-mk-phase3-analysis-design.md`](./docs/superpowers/specs/2026-09-17-nx-mk-phase3-analysis-design.md)。
+- **Phase 3 分析**：policy-engine 全量（§21 优先级 + glob `*`/`**`/字面）、coverage analyzer §28 + 三指标 + 四态（§21.3）+ anti-cheat v0（hidden DOM suspicious / 空标记 weak）、id-space 对齐 normalizedPath、CoverageReport JSON 落盘、goal-loop 三指标摘要 stdout、`runs.terminated_by` 审计。
+- **Phase 2 采集闭环**：`nx-mk run` 驱动 headless chromium 扫 demo 前端 → field_hits / ui_evidence / request_traces 三表落库。
+- **Phase 3 goal 闭环**（手动验收，见下）：config `goal:` 段 + `coverage:` 段 → CLI `run` 驱动 Goal Loop → 期望 events.jsonl `goal:met` + `runs.terminated_by='goal-met'` + `coverage-report.json` 三指标互证。
+- **demo 闭环**：`pnpm demo:codegen` 一键跑 `demo:openapi` → `nx-mk run` → codegen → `app/src/generated-sdk.ts`。存量代码迁移：`nx-mk migrate`（静态 fetch 替换）+ `patchGlobalFetch()`（兜底）。
+
+**进行中：§26 Scenario DSL 运行器 + Replay Scenario** —— spec 已合入
+（[`2026-09-21-nx-mk-scenario-dsl-replay-design.md`](./docs/superpowers/specs/2026-09-21-nx-mk-scenario-dsl-replay-design.md)），
+实现未开始。范围为：新包 `@nx-mk/scenario`（dsl-schema / dsl-loader / runner / playwright-runner / scenario-replay）、
+config `scenarios:` 段、`nx-mk run` 套件执行模式、dashboard `GET /api/scenarios` + 单场景回放 + `/scenarios` 页。
+
+完整方案见 [`docx/plan/nx-mk-plan.md`](./docx/plan/nx-mk-plan.md)（§编号是各期 spec 的引用锚点）；
+各期 SDD 产物在 [`docs/superpowers/specs/`](./docs/superpowers/specs/) 与 [`docs/superpowers/plans/`](./docs/superpowers/plans/)；
+非阻塞遗留项台账 [`docs/hygiene-backlog.md`](./docs/hygiene-backlog.md)（15 项全部已修，2026-09-19 清零）。
 
 ### Phase 3 手动验收步骤（goal 闭环 + coverage 报告三点互证）
 
@@ -100,6 +110,7 @@ nx-mk run          # 验证 requiredCoverage 真实提升
 
 ```bash
 # 0. 全量构建（含 @nx-mk/agent —— 不构建则 CLI loop 测试/运行缺依赖）
+#    ⚠️ `pnpm -r build` 从干净状态会卡在 config 包，先单独构建 kernel，见「开发」节
 corepack pnpm install --frozen-lockfile && corepack pnpm -r build
 
 # 1. 起分析 + Dashboard（demo 目录内）
@@ -113,6 +124,23 @@ npx nx-mk start
 #    e. #/settings/plugins → 内置插件卡片 + Copy YAML。
 ```
 
+## v1：插件配置写回链（已合入）
+
+`nx-mk.config.yml` 的 `plugins:` 条目从 `string[]` 扩为联合类型（裸 string 等价于 `config: {}`），旧格式配置完全兼容。dashboard `/settings/plugins` 可就地编辑任一插件的 config，走两段式写回：
+
+```bash
+# ① 预览 diff（dryRun 缺省 true —— 不落盘；响应回传 yamlSha）
+curl -X PATCH "http://127.0.0.1:4317/api/plugins/plugin-playwright/config" \
+  -H 'content-type: application/json' -d '{"config":{...}}'
+# ② 落盘（显式 dryRun=false + 带上一步的 yamlSha；写前留单代 .bak，sha 失配 → 409）
+curl -X PATCH "http://127.0.0.1:4317/api/plugins/plugin-playwright/config?dryRun=false" \
+  -H 'content-type: application/json' -d '{"config":{...},"yamlSha":"<上一步返回>"}'
+```
+
+- 写回引擎在 `@nx-mk/config` 的 `writeback.ts`：yaml Document API round-trip **保注释** + tmp+rename 原子写 + 单代 `.bak` + sha 并发防护
+- 铁律：dashboard server 的 fs 写路径白名单仍恰 1 个文件（`server/replay.ts`）——`nx-mk.config.yml` 的唯一写者在 config 包
+- 改动下次 `nx-mk run` 生效；configSchema 的深度校验在 kernel 侧 fail-fast（`PLUGIN_CONFIG_INVALID`）
+
 ## 开发
 
 ```bash
@@ -121,14 +149,40 @@ pnpm build
 pnpm test
 ```
 
+**⚠️ 构建顺序注意**：`@nx-mk/config` 与 `@nx-mk/kernel` 互为 workspace 依赖（config 的 peerDep / kernel 的 devDep），
+pnpm 的拓扑排序会把 config 排在 kernel 之前，导致 config 的 dts 读不到 kernel 的类型声明（报 `Config.plugins` 类型不匹配）。
+首次或全量构建**先单独构建 kernel，再跑全量**：
+
+```bash
+cd packages/kernel && node ../../node_modules/tsup/dist/cli-default.js && cd ../..
+pnpm -r --workspace-concurrency=1 build
+```
+
 ## 包结构
+
+12 个包，全部 `@nx-mk/*` scope（业务集成契约 `@mk/client` 见 [方案 §5.3](./docx/plan/nx-mk-plan.md)）。
 
 ```
 packages/
-├── kernel/                # @mk/kernel — 微内核（插件 + 事件 + 生命周期）
-├── config/                # @mk/config — 配置 schema + loader
-├── manifest/              # @mk/manifest — OpenAPI → Manifest（占位）
-├── cli/                   # @mk/cli — npx mk 入口（占位）
-├── plugin-swagger/        # @mk/plugin-swagger — OpenAPI 适配插件（占位）
-└── agent/                 # @nx-mk/agent — Agent Loop（claude-code provider / api-ui-agent / review-agent / suggest-diff 落盘）
+├── kernel/                # @nx-mk/kernel — 微内核：插件生命周期 + 事件总线 + Goal Loop
+├── schema/                # @nx-mk/schema — standard-schema 适配器（插件 config 校验）
+├── config/                # @nx-mk/config — 配置 schema + YAML loader + 写回引擎（writeback.ts）
+├── manifest-schema/       # @nx-mk/manifest-schema — Manifest 定义：共享类型 + schema 工具（fieldId/normalizer）
+├── manifest/              # @nx-mk/manifest — OpenAPI → Manifest（Provider 角色）
+├── client/                # @nx-mk/client — SDK Facade：runtime proxy/collector + Codegen + migrate + patch
+├── coverage/              # @nx-mk/coverage — 覆盖率存储：§25 DDL + traces/evidence 落库 + analyzer + policy-engine
+├── plugin-swagger/        # @nx-mk/plugin-swagger — OpenAPI 解析插件（写 .nx-mk/manifest.json）
+├── plugin-playwright/     # @nx-mk/plugin-playwright — headless chromium 采集 + DOM 扫描 + Goal 收敛
+├── dashboard/             # @nx-mk/dashboard — 本地只读覆盖台（fastify server + React UI）
+├── agent/                 # @nx-mk/agent — Agent Loop（claude-code provider / review guard / suggest-diff 落盘）
+└── cli/                   # @nx-mk/cli — npx nx-mk 入口（init / doctor / run / start / loop / migrate）
 ```
+
+每个包都有独立 README，说明其职责、导出面与关键语义：
+
+[`kernel`](./packages/kernel/README.md) · [`schema`](./packages/schema/README.md) ·
+[`config`](./packages/config/README.md) · [`manifest-schema`](./packages/manifest-schema/README.md) ·
+[`manifest`](./packages/manifest/README.md) · [`client`](./packages/client/README.md) ·
+[`coverage`](./packages/coverage/README.md) · [`plugin-swagger`](./packages/plugin-swagger/README.md) ·
+[`plugin-playwright`](./packages/plugin-playwright/README.md) · [`dashboard`](./packages/dashboard/README.md) ·
+[`agent`](./packages/agent/README.md) · [`cli`](./packages/cli/README.md)
