@@ -88,6 +88,13 @@ export const AgentConfigSchema = z.object({
 })
 export type AgentConfig = z.infer<typeof AgentConfigSchema>
 
+// §26：可选 scenarios 段（spec S1/S10 —— include 非空激活套件模式；concurrency 默认 3 上限 10）
+export const ScenarioConfigSchema = z.object({
+  include: z.array(z.string().min(1)).optional(),
+  concurrency: z.number().int().min(1).max(10).optional(),
+})
+export type ScenarioConfig = z.infer<typeof ScenarioConfigSchema>
+
 // 顶层配置 schema：插件列表上限 20，输出目录必须是相对路径
 export const ConfigSchema = z
   .object({
@@ -109,5 +116,7 @@ export const ConfigSchema = z
     dashboard: DashboardConfigSchema.optional(),
     // Phase 5：可选 agent 段（spec §3.8 —— loop 命令消费 provider/loop 两小节）
     agent: AgentConfigSchema.optional(),
+    // §26：可选 scenarios 段（spec S6 —— 套件模式入口）
+    scenarios: ScenarioConfigSchema.optional(),
   })
   .passthrough()

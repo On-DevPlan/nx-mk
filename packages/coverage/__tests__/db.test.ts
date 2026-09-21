@@ -68,6 +68,32 @@ describe('insertRun / endRun / flush 读回', () => {
     } finally { db.close() }
   })
 
+  it('trace 带归因字段时落 scenario_id/dsl_step_id 两列（spec S6）', () => {
+    const db = openCoverageDb(dbPath)
+    try {
+      db.insertRun('run_s', '2026-09-21T00:00:00Z', 'running')
+      db.flushDrained({
+        runId: 'run_s',
+        hits: [],
+        traces: [
+          { requestId: 'r1', method: 'GET', url: '/a', scenarioId: 's1', dslStepId: 's1-step-0' },
+          { requestId: 'r2', method: 'GET', url: '/b' },
+        ],
+        evidence: [],
+      })
+      const tagged = db.prepare(
+        'SELECT scenario_id, dsl_step_id FROM request_traces WHERE trace_id=?',
+      ).get('r1') as { scenario_id: string; dsl_step_id: string }
+      expect(tagged.scenario_id).toBe('s1')
+      expect(tagged.dsl_step_id).toBe('s1-step-0')
+      const plain = db.prepare(
+        'SELECT scenario_id, dsl_step_id FROM request_traces WHERE trace_id=?',
+      ).get('r2') as { scenario_id: null; dsl_step_id: null }
+      expect(plain.scenario_id).toBeNull()
+      expect(plain.dsl_step_id).toBeNull()
+    } finally { db.close() }
+  })
+
   it('endRun 更新 status', () => {
     const db = openCoverageDb(dbPath)
     try {

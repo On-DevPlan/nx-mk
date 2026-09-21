@@ -23,6 +23,9 @@ export interface RequestTraceCore {
   durationMs?: number
   startedAt?: string
   endedAt?: string
+  /** §26 归因（S6）：套件模式 drain 时打标；legacy collect 恒缺席 */
+  scenarioId?: string
+  dslStepId?: string
 }
 
 export interface UiEvidenceCore {

@@ -133,9 +133,15 @@ interface BrowserShimWindow {
  * flush 输入端契约：hits 需带 count（drained 契约）—— 回捞侧补 count=1
  * （页内 shim 每次读取 push 1 条，聚合在共享 collector 侧按 normalizedPath 完成）。
  */
+export interface DrainTag {
+  scenarioId: string
+  dslStepId?: string
+}
+
 export async function drainBrowserCollector(
   evaluate: (fn: unknown) => Promise<unknown>,
   collector: Collector,
+  tag?: DrainTag,
 ): Promise<void> {
   // v0: 读与清空是两次独立 evaluate —— 中间窗口内页面新 push 的条目会丢。
   // v1 方向：单次 evaluate 内 read+clear（同 collector.ts drain 的同款权衡，hygiene-B7）
@@ -174,6 +180,8 @@ export async function drainBrowserCollector(
         durationMs: typeof trace.durationMs === 'number' ? trace.durationMs : undefined,
         startedAt: typeof trace.startedAt === 'string' ? trace.startedAt : undefined,
         endedAt: typeof trace.endedAt === 'string' ? trace.endedAt : undefined,
+        // §26 归因（S6）：tag 存在时该批 trace 打标；hits 不打标（FieldHitCore 无字段）
+        ...(tag ? { scenarioId: tag.scenarioId, ...(tag.dslStepId !== undefined ? { dslStepId: tag.dslStepId } : {}) } : {}),
       } satisfies RequestTraceCore)
     }
     // 清空页内缓冲 —— 必须在 snapshot（增量去重）消费这些数据之前完成

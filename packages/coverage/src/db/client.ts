@@ -79,11 +79,12 @@ export class CoverageDb {
       const insTrace = this.db.prepare(
         `INSERT OR REPLACE INTO request_traces
            (id, run_id, trace_id, scenario_id, dsl_step_id, endpoint_id, method, url, path, status, duration_ms, started_at, ended_at, replayable, replay_safety, replay_reason)
-         VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
       )
       for (const t of d.traces) {
         insTrace.run(
-          `rt_${d.runId}_${t.requestId}`, d.runId, t.requestId, t.endpointId ?? null,
+          `rt_${d.runId}_${t.requestId}`, d.runId, t.requestId, t.scenarioId ?? null, t.dslStepId ?? null,
+          t.endpointId ?? null,
           t.method, t.url, t.path ?? null, t.status ?? null, t.durationMs ?? null,
           t.startedAt ?? null, t.endedAt ?? null,
         )
