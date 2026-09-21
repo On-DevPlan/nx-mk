@@ -87,6 +87,10 @@ export interface CollectTarget {
   waitForSelector?: string
 }
 
+/** 去重（T3 审查 parked）：判断 plugins 条目是否为本插件对象条目 */
+const isOwnEntry = (e: string | PluginConfigEntry): e is PluginConfigEntry =>
+  typeof e === 'object' && e !== null && e.name === PLUGIN_NAME
+
 /**
  * W1d：per-plugin config 优先级链 —— plugins 列表中本插件对象条目的 config
  * → 顶层 collect: 段 → 工厂 opts（CLI 装配注入）。
@@ -99,9 +103,7 @@ export function resolveCollectTarget(
   config: Pick<ResolvedConfig, 'plugins'> & { collect?: CollectConfig },
   fallback: CollectTarget,
 ): CollectTarget {
-  const own = config.plugins.find(
-    (e): e is PluginConfigEntry => typeof e === 'object' && e !== null && e.name === PLUGIN_NAME,
-  )
+  const own = config.plugins.find(isOwnEntry)
   const cfg = (own?.config ?? {}) as { url?: string; waitForSelector?: string }
   return {
     url: cfg.url ?? config.collect?.url ?? fallback.url,
@@ -133,9 +135,7 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
     // 等价于已配置采集），不因顶层 collect: 段缺失而静默跳过。
     const config = ctx.config as ResolvedConfig
     const collect = (ctx.config as typeof ctx.config & { collect?: CollectConfig }).collect
-    const hasOwnEntry = config.plugins.some(
-      (e): e is PluginConfigEntry => typeof e === 'object' && e !== null && e.name === PLUGIN_NAME,
-    )
+    const hasOwnEntry = config.plugins.some((e) => isOwnEntry(e))
     if (!collect && !hasOwnEntry) {
       ctx.logger.info('plugin-playwright: collect not configured, skipping', { cmd })
       return

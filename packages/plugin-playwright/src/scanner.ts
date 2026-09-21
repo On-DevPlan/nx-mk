@@ -126,7 +126,8 @@ interface BrowserShimWindow {
 /**
  * drainBrowserCollector —— Node 侧回捞（Ruling 7）：
  * page.evaluate 读页内 shim 的 hits/traces（原始信任边界外数据）→ 防御性过滤
- * → collector.hit/trace 投进共享 collector → page.evaluate 清空页内缓冲。
+ * → collector.hit/trace 投进共享 collector。hygiene-sweep H8：读与清空在
+ * 同一次 evaluate 内原子完成，消除 read/clear 窗口丢条目。
  * 探针纪律：evaluate 或解析失败只静默空回捞（回捞缺失不阻断收集通路 —— DOM
  * evidence 通道不受影响；spec §4 的 trace/flush 失败语义不受此影响）。
  *
@@ -143,15 +144,13 @@ export async function drainBrowserCollector(
   collector: Collector,
   tag?: DrainTag,
 ): Promise<void> {
-  // v0: 读与清空是两次独立 evaluate —— 中间窗口内页面新 push 的条目会丢。
-  // v1 方向：单次 evaluate 内 read+clear（同 collector.ts drain 的同款权衡，hygiene-B7）
-  // 读回捞脚本：保留页数组引用（清空用原引用保序 —— 页面代码可能另持引用）
-  const READ_SHIM =
-    '(() => { const c = window.__MK_COLLECTOR__; if (!c) return null; return { hits: c.hits.slice(), traces: c.traces.slice() } })()'
-  const CLEAR_SHIM =
-    '(() => { const c = window.__MK_COLLECTOR__; if (!c) return; c.hits.length = 0; c.traces.length = 0 })()'
+  // hygiene-sweep H8：读与清空合并为单次 evaluate（原 v0 两次独立 evaluate 的
+  // 中间窗口内页面新 push 条目会丢 —— 现在同一脚本内先 slice 再清空，消除窗口）。
+  // 读回捞脚本：slice 后立即原引用清空（保序 —— 页面代码可能另持引用）。
+  const DRAIN_SHIM =
+    '(() => { const c = window.__MK_COLLECTOR__; if (!c) return null; const hits = c.hits.slice(); const traces = c.traces.slice(); c.hits.length = 0; c.traces.length = 0; return { hits, traces } })()'
   try {
-    const raw = (await evaluate(READ_SHIM)) as BrowserShimWindow['__MK_COLLECTOR__']
+    const raw = (await evaluate(DRAIN_SHIM)) as BrowserShimWindow['__MK_COLLECTOR__']
     if (!raw || !Array.isArray(raw.hits) || !Array.isArray(raw.traces)) return
     for (const h of raw.hits) {
       if (!h || typeof h !== 'object') continue
@@ -184,8 +183,7 @@ export async function drainBrowserCollector(
         ...(tag ? { scenarioId: tag.scenarioId, ...(tag.dslStepId !== undefined ? { dslStepId: tag.dslStepId } : {}) } : {}),
       } satisfies RequestTraceCore)
     }
-    // 清空页内缓冲 —— 必须在 snapshot（增量去重）消费这些数据之前完成
-    await evaluate(CLEAR_SHIM)
+    // 清空已在同一脚本内完成（先于 snapshot 增量去重消费）
   } catch {
     // 回捞失败 → 空（不阻断；DOM evidence 通道独立）
   }

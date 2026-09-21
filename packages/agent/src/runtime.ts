@@ -10,7 +10,7 @@ import { KernelError } from '@nx-mk/kernel'
 import { openCoverageDb, type CoverageDb, type CoverageReport } from '@nx-mk/coverage'
 import { sanitizeFieldSlug, toPosixRel, writePatchFile } from './patches.js'
 import type {
-  AgentConfig, AgentContext, AgentTask, CoverageAgentPlugin,
+  AgentConfig, AgentContext, AgentTask,
   LoopDeps, LoopOptions, LoopSummary, TaskApplyResult,
 } from './types.js'
 

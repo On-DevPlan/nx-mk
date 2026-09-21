@@ -16,8 +16,8 @@ import { buildPluginsManifest, writePluginsManifest } from './plugins-manifest.j
 import type { EventBus } from './event-bus'
 import type { Logger } from './logger'
 import type { CreateKernelOptions } from './kernel'
-import type { KernelAPI, Plugin, PluginContext } from './plugin'
-import type { Coverage, KernelState, MissingItem, Phase, PluginReport, PluginSignal, PluginWorkerState, ResolvedConfig } from './types'
+import type { Plugin, PluginContext } from './plugin'
+import type { Coverage, KernelState, Phase, PluginReport, PluginWorkerState, ResolvedConfig } from './types'
 import { assertNever, makePluginName } from './types'
 
 /** M14：Goal Loop 共享状态（mutable）。run 阶段触发 Goal Loop 时填充。
