@@ -23,6 +23,7 @@
     "@nx-mk/kernel": "workspace:*",
     "@nx-mk/client": "workspace:*",
     "@nx-mk/coverage": "workspace:*",
+    "@nx-mk/scenario": "workspace:*",
     "playwright-core": "^1.49.0"
   },
   "devDependencies": {

@@ -64,6 +64,9 @@ export type KernelEvent =
       message: string
       meta?: Record<string, unknown>
     }
+  // §26 套件模式（S9）：scenario 生命周期事件（plugin-playwright beforeRun 套件分支发布）
+  | { type: 'scenario:start'; scenarioId: string; timestamp: string }
+  | { type: 'scenario:done'; scenarioId: string; ok: boolean; timestamp: string }
 
 // 事件处理器签名：可同步可异步（异步返回的 Promise 不会被 emit 等待）
 type Handler<T extends KernelEvent> = (event: T) => void | Promise<void>

@@ -251,3 +251,35 @@ export interface ConfigWriteApplyResponse {
   bakPath: string
   yamlSha: string
 }
+
+// —— v1：scenario DSL 浏览页 + 回放（spec S3/S11/S12；§26/§27）——
+
+/** GET /api/scenarios（spec S11 —— 无 scenarios 段诚实降级） */
+export interface ScenarioView {
+  id: string
+  name: string
+  route?: string
+  stepCount: number
+  file: string
+}
+export interface ScenariosResponse {
+  enabled: boolean
+  scenarios: ScenarioView[]
+}
+
+/** POST /api/runs/:runId/replay/scenario/:scenarioId（spec S3/S12） */
+export interface StepResultView {
+  stepId: string
+  type: string
+  ok: boolean
+  durationMs: number
+  error?: string
+}
+export interface ScenarioReplayResponse {
+  replayId: string
+  scenarioId: string
+  ok: boolean
+  steps: StepResultView[]
+  createdAt: string
+  trailWritten: boolean
+}
