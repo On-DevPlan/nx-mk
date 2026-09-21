@@ -129,3 +129,56 @@ POST /api/runs/:runId/replay/request/:requestId              # 既有（4.5）�
 3. 铁律 grep：dashboard server fs 写白名单仍恰 `replay.ts` 1 文件（scenario trail 写者在 @nx-mk/scenario）
 4. 向后兼容：无 scenarios 段 config → legacy collect 行为分毫不差（既有全绿即证）；scenario_id/dsl_step_id 列缺省 NULL 不破旧 run 查询
 5. D2：零新增外部依赖（glob 复用 coverage 匹配器、yaml/playwright-core 均 lockfile 既有，经 workspace 链解析）
+
+## 6. 实现裁定记录（SDD 执行期，2026-09-21）
+
+- **SP1**（修订 §2.2）：文件路径 glob 由 scenario 包自实现 `globToRegExp`（`**` 跨段、`*` 单段、其余字面转义、`/` 与 `\` 分隔符等价）——coverage 的 `matchGlob` 是点段（字段路径）语义，不同源不共用。
+- **SP2**：step `id` optional，缺省 `${scenarioId}-step-${index}`（0 基）。
+- **SP3**：套件 turn = `ctx.getTurn()` 取一次，逐场景 `collector.snapshot(turn)` 增量幂等 flush；goal-loop 机制零改动。
+- **SP4**：浏览器生命周期全封装 scenario 包（`replayLaunch` seam 缺省真实现）；dashboard 永不 import playwright-core。实际依赖面：dashboard 新增 workspace 依赖 `@nx-mk/scenario` + `@nx-mk/kernel`（LoadConfigInput 需 runId: RunId）。
+- **SP5/SP7**：waitForRequest 步 drain 带精确 dslStepId；失败步 drain 不带（失败时刻无法确认归因）；谓词 = URL 子串包含。
+- **SP6 + 接口演进**：`SuiteObservers.afterStep` 执行期扩为三参 `(scenarioId, tag, page)`——plugin 需要 page 做 drain evaluate；scenario 包测试同步更新（2 参 mock 回调仍可赋值）。
+- **S9**：kernel 事件 `scenario:start/done` 入 union，SSE event-tail 不映射（default 臂吸收，前瞻兼容已核验）；legacy collect 路径机械抽取为 `legacyCollect` 字节级等价（14 既有测试零改动全绿）。
+- **S8/E8**：场景失败不 fail run——warn 汇总失败 id 清单，退出码 0；`--strict` 推 v2。
+- **S11**：GET /api/scenarios 三重诚实降级（configPath 缺 / 无 scenarios 段 / loadConfig 抛）→ 200 `{enabled:false, scenarios:[]}`。
+- **S12**：5 种 step 全 read-only → replay 恒 safe 无 confirm 门；temperature 0 写型 step 未来随安全分级引入。
+- 执行期实测：`%2F` 编码 scenarioId 路径参数正常匹配；loader 对畸形 YAML 文件跳过 + warn（E1）；kebab 场景 id 门天然防 path traversal。
+- 终态：**635/635 测试（588 + 47）+ typecheck 15 包全绿**；铁律 grep：dashboard server 写白名单恰 `replay.ts` 1 文件。
+
+### demo 手动验收物料（SP9，用户手动步骤，不改 examples/ 仓库文件）
+
+**1. 场景文件** `mk/scenarios/user-profile.yml`（demo 项目根）：
+
+```yaml
+version: 1
+scenarios:
+  - id: user-profile-basic
+    name: 用户详情页基础覆盖
+    route: /users/1
+    steps:
+      - id: open-user-profile
+        type: goto
+        url: http://localhost:5173/users/1
+      - id: wait-profile
+        type: waitFor
+        selector: "[data-page='user-profile']"
+      - id: assert-user-name
+        type: assertFieldVisible
+        field: user.profile.name
+      - id: assert-user-email
+        type: assertFieldVisible
+        field: user.profile.email
+      - id: shot
+        type: screenshot
+```
+
+**2. demo config**（nx-mk.config.yml）追加段：
+
+```yaml
+scenarios:
+  include:
+    - "mk/scenarios/**/*.yml"
+  concurrency: 3
+```
+
+**3. 动作序列**：`pnpm demo:codegen`（或起 demo app + `nx-mk run`）→ 确认 events.jsonl 见 `scenario:start/done`、run 尾部无异常 warn → dashboard `/scenarios` 列出 user-profile-basic → 点 Replay → 步骤表 5 行全 pass + 「trail written」→ 核对 `.nx-mk/replays/scenarios/user-profile-basic/<replayId>.json` 落盘 → `request_traces` 表 `scenario_id/dsl_step_id` 非空。
