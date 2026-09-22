@@ -56,9 +56,12 @@ export function renderManifestSummary(report: CoverageReport): string {
 }
 
 export function renderPolicySummary(report: CoverageReport): string {
+  // v1 质量杠杆（4.5 备忘）：ignored ids 进 policySummary 消费 —— 枚举本 run 观测到的
+  // ignored 字段路径（R8：仍只从 CoverageReport 派生，不读 manifest.json）
+  const knownIgnored = [...new Set(report.ignoredReturnedFields.map((f) => f.fieldPath))]
   return [
     `Policy summary: requiredCoverage=${report.metrics.requiredCoverage}, missingRequired=${report.metrics.missingRequiredFields}, ignoredReturned=${report.metrics.ignoredReturnedFields}.`,
-    'Never render fields from the ignored set.',
+    `Ignored field paths observed this run (never render any of them): ${knownIgnored.length > 0 ? knownIgnored.join(', ') : '(none)'}.`,
   ].join('\n')
 }
 

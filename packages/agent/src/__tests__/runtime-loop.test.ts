@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { openCoverageDb } from '@nx-mk/coverage'
-import { runAgentLoop } from '../runtime.js'
+import { runAgentLoop, renderPolicySummary } from '../runtime.js'
 import { createApiUiAgent } from '../agents/api-ui.js'
 import type { AgentProvider, AgentTask, AgentVerifyResult, CoverageAgentPlugin, CoverageReport } from '../types.js'
 
@@ -126,5 +126,17 @@ describe('runAgentLoop — retry machine (R6, PLN-5)', () => {
     expect(rows.filter((r) => String(r.summary).startsWith('field_0'))).toHaveLength(2)
     expect(rows.filter((r) => r.status === 'produced')).toHaveLength(2)
     expect(rows).toHaveLength(4)
+  })
+})
+
+describe('renderPolicySummary — ignored ids 枚举（4.5 备忘 v1 杠杆）', () => {
+  it('enumerates deduped ignored field paths from the report (R8: report-derived only)', () => {
+    const s = renderPolicySummary(makeReport(2, ['data.a.b', 'data.a.b', 'data.x']))
+    expect(s).toContain('Ignored field paths observed this run (never render any of them): data.a.b, data.x.')
+  })
+
+  it('falls back to (none) when no ignored fields were observed', () => {
+    const s = renderPolicySummary(makeReport(1))
+    expect(s).toContain('Ignored field paths observed this run (never render any of them): (none).')
   })
 })
