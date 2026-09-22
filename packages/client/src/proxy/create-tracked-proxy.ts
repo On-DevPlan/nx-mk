@@ -24,7 +24,12 @@ export interface TrackedProxyOptions {
   collector: ProxyCollector
 }
 
-/** Promise/JSON 序列化触发的伪字段名（anti-cheat #3，spec §3.4）—— 恒透传不 hit 不包裹 */
+/**
+ * Promise/JSON 序列化触发的伪字段名（anti-cheat #3，spec §3.4）—— 恒透传不 hit 不包裹。
+ * B4 守则（4.5 备忘落码）：本名单按 prop 名字符串判定，不问 own-property —— 原型链上的
+ * 同名方法（如自定义 toString）同样被拦。若未来收窄为 own-property 判定，必须先重跑
+ * anti-cheat noise-guard 三测试（packages/coverage/__tests__/anti-cheat.test.ts B3）。
+ */
 export const METHOD_NAME_BLOCKLIST: ReadonlySet<string> = new Set([
   'then', 'catch', 'finally', 'toJSON', 'valueOf', 'toString', 'hasOwnProperty',
   'join', 'map', 'filter', 'reduce', 'forEach', 'keys', 'values', 'entries', 'size',
