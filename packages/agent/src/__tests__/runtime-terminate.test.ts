@@ -11,7 +11,8 @@ import { runAgentLoop } from '../runtime.js'
 import { createApiUiAgent } from '../agents/api-ui.js'
 import { classifyClaudeSpawnError } from '../provider/claude-code.js'
 import type { AgentProvider } from '../types.js'
-import { makeReport, OK_PROVIDER, scriptedReview } from './runtime-loop.test.js'
+// 共享替身走 fixtures.ts（测试文件互 import 会致 vitest 重复注册用例 —— 见 fixtures.ts 头注）
+import { makeReport, OK_PROVIDER, scriptedReview } from './fixtures.js'
 
 function makeProject(): string {
   return mkdtempSync(join(tmpdir(), 'nx-mk-terminate-'))
