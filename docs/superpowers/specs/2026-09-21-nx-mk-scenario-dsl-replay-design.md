@@ -138,6 +138,7 @@ POST /api/runs/:runId/replay/request/:requestId              # 既有（4.5）�
 - **SP4**：浏览器生命周期全封装 scenario 包（`replayLaunch` seam 缺省真实现）；dashboard 永不 import playwright-core。实际依赖面：dashboard 新增 workspace 依赖 `@nx-mk/scenario` + `@nx-mk/kernel`（LoadConfigInput 需 runId: RunId）。
 - **SP5/SP7**：waitForRequest 步 drain 带精确 dslStepId；失败步 drain 不带（失败时刻无法确认归因）；谓词 = URL 子串包含。
 - **SP6 + 接口演进**：`SuiteObservers.afterStep` 执行期扩为三参 `(scenarioId, tag, page)`——plugin 需要 page 做 drain evaluate；scenario 包测试同步更新（2 参 mock 回调仍可赋值）。
+- **SP8**：replay 的 runId 仅用于路由一致性（POST `unknown run` 404 门，UI 取 `/api/runs` 最新 runId 回填）；trail 实际落 `replays/scenarios/<scenarioId>/<replayId>.json`，场景与 run 无强绑定（§2.1 落盘路径原文维持）。
 - **S9**：kernel 事件 `scenario:start/done` 入 union，SSE event-tail 不映射（default 臂吸收，前瞻兼容已核验）；legacy collect 路径机械抽取为 `legacyCollect` 字节级等价（14 既有测试零改动全绿）。
 - **S8/E8**：场景失败不 fail run——warn 汇总失败 id 清单，退出码 0；`--strict` 推 v2。
 - **S11**：GET /api/scenarios 三重诚实降级（configPath 缺 / 无 scenarios 段 / loadConfig 抛）→ 200 `{enabled:false, scenarios:[]}`。
