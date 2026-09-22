@@ -61,6 +61,8 @@ describe('buildPrompt', () => {
     expect(p).toContain('Never dump a response object with JSON.stringify')
     expect(p).toContain('Never add console.log probes')
     expect(p).toContain(ctx.manifestSummary)
+    // v1 质量杠杆：policySummary 进入 prompt（ignored ids 的具体枚举随 ctx 传入）
+    expect(p).toContain(ctx.policySummary)
     expect(p).toContain('unified diff')
   })
 })

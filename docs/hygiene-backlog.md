@@ -58,9 +58,11 @@
 
 **\*1** 挂靠主 commit 的审查 Minor 补充项（同分支追加 commit）。
 
-## 4.5 备忘（遗留至 Phase 4.5 / 后续）
+## 4.5 备忘（~~遗留至 Phase 4.5 / 后续~~ → 2026-09-22 全部清零，PR #26）
 
-- B4：`METHOD_NAME_BLOCKLIST` 若未来收窄为 own-property 判定，需重跑 anti-cheat noise-guard 三测试。
-- B7：`drainBrowserCollector` READ+CLEAR 原子化留 4.5 collector 重写。
-- B1 审查 Minor：`CoverageDb.transaction?: () => void`（当前 `transaction?(fn)`）类型精度问题，可选项。
-- v1 质量杠杆：manifest ignored ids 进 prompt / policySummary 消费（原 v0 范围外）。
+- ☑ B4：`METHOD_NAME_BLOCKLIST` own-property 守则已落码（`create-tracked-proxy.ts` 名单注释：收窄前必重跑 anti-cheat B3 noise-guard 三测试）。
+- ☑ B7：`drainBrowserCollector` READ+CLEAR 原子化已由 hygiene-sweep H8 落地（PR #25：DRAIN_SHIM 单次 evaluate 读+清，两 drain 测试零改动通过）。
+- ☑ B1 审查 Minor：`AnalyzerDb.transaction?` 方法语法 → 属性函数类型 `transaction?: (fn: () => void) => () => void`（严格变型检查，结构形状不变，替身兼容）。
+- ☑ v1 质量杠杆：ignored ids 进 prompt / policySummary 消费 —— `renderPolicySummary` 枚举 report 观测到的 ignored 字段路径（R8 约束保持：不读 manifest.json）；`buildPrompt` 接入 `ctx.policySummary`（原 v0 渲染后未消费）。
+
+**至此本文档全部条目（A 组 7 + B 组 8 + 4.5 备忘 4）清零，backlog 归档。**

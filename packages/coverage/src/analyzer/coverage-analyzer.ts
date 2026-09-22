@@ -20,8 +20,10 @@ export interface AnalyzerDb {
    * B1（hygiene）：批量写事务 —— 真实 CoverageDb（better-sqlite3 db 底座）提供；
    * 任一行失败则全部回滚。可选以保持测试替身兼容（无 transaction 时逐条执行，行为同前）。
    * 形状对齐 better-sqlite3：transaction(fn) 返回包装后的可调用，需要再调用一次执行。
+   * 类型精度（4.5 备忘 B1-minor）：用属性函数类型而非方法语法 —— 严格变型检查，
+   * 与 CoverageDb 的结构化赋值判定一致。
    */
-  transaction?(fn: () => void): () => void
+  transaction?: (fn: () => void) => () => void
 }
 
 export interface AnalyzeDrained {

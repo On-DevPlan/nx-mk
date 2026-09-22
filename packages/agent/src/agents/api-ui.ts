@@ -28,7 +28,8 @@ export async function planTasks(ctx: AgentContext): Promise<AgentPlan> {
   }
 }
 
-// prompt 组装（spec §3.5）：§44.4 硬约束 + 字段上下文 + manifestSummary + 输出格式指令
+// prompt 组装（spec §3.5）：§44.4 硬约束 + 字段上下文 + manifestSummary + policySummary + 输出格式指令
+// v1 质量杠杆（4.5 备忘）：policySummary 进入 prompt —— 具体枚举 ignored 字段路径（原 v0 只给泛化规则）
 export function buildPrompt(task: AgentTask, ctx: AgentContext): string {
   const endpoint = task.endpointId ?? 'unknown endpoint'
   return [
@@ -42,6 +43,8 @@ export function buildPrompt(task: AgentTask, ctx: AgentContext): string {
     `- Add data-mk-field="${task.fieldId}" to the element(s) that render the field, so evidence collection can observe it.`,
     '',
     ctx.manifestSummary,
+    '',
+    ctx.policySummary,
     '',
     'Output exactly one fenced ```diff code block containing a unified diff (git format). No explanations outside the block.',
   ].join('\n')
