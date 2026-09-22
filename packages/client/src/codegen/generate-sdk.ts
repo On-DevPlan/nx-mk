@@ -58,7 +58,6 @@ export function generateSdk(
     items.sort((a, b) => a.sig.name.localeCompare(b.sig.name))
     apiLines.push(`  ${ns}: {`)
     for (const { sig } of items) {
-      const fetchCall = buildFetchCall(sig, baseUrl)
       // 调用体：`getUser: (params: { id: unknown }): Promise<User> => { ... }`
       apiLines.push(`    ${sig.signature}`)
       apiLines.push(`      return userClient.fetch('${sig.httpMethod}', \`${sig.fetchTemplate}\`, params)`)
@@ -89,10 +88,3 @@ const ${factoryName} = createFetchClient({ baseUrl: ${JSON.stringify(baseUrl)} }
   ].join('')
 }
 
-function buildFetchCall(sig: MethodSignature, _baseUrl: string): string {
-  // buildFetchCall 是占位——emit-endpoint 已经把 fetch 模板填到 fetchTemplate
-  // 这里只做"逻辑校验"
-  void sig
-  void _baseUrl
-  return ''
-}

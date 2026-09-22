@@ -50,7 +50,7 @@ export interface LoadScenariosResult {
 /** glob 前缀（首个通配符前）→ 递归枚举该目录 → 相对路径匹配 */
 function collectFiles(baseDir: string, re: RegExp, absRoot: string, out: string[]): void {
   if (!existsSync(baseDir)) return
-  for (const name of readdirSync(baseDir)) {
+  for (const name of readdirSync(baseDir).sort()) {
     const full = join(baseDir, name)
     const st = statSync(full)
     if (st.isDirectory()) {
