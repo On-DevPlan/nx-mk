@@ -10,44 +10,7 @@ import { describe, it, expect } from 'vitest'
 import { openCoverageDb } from '@nx-mk/coverage'
 import { runAgentLoop, renderPolicySummary } from '../runtime.js'
 import { createApiUiAgent } from '../agents/api-ui.js'
-import type { AgentProvider, AgentTask, AgentVerifyResult, CoverageAgentPlugin, CoverageReport } from '../types.js'
-
-export function makeReport(missing: number, ignoredIds: string[] = []): CoverageReport {
-  return {
-    runId: 'run_base',
-    metrics: {
-      requiredCoverage: 0.4, effectiveCoverage: 0.4, rawBackendFieldCoverage: 0.4,
-      endpointsTotal: 1, endpointsCalled: 1, fieldsTotal: missing, fieldsReturned: missing,
-      requiredFields: missing, missingRequiredFields: missing,
-      ignoredReturnedFields: ignoredIds.length, suspiciousFields: 0,
-    },
-    missingRequiredFields: Array.from({ length: missing }, (_, i) => ({
-      fieldId: `field_${i}`, fieldPath: `data.f${i}`, endpointId: 'getUsers',
-      state: 'missing' as const, policyStatus: 'required' as const,
-    })),
-    weakEvidenceFields: [],
-    ignoredReturnedFields: ignoredIds.map((id) => ({ fieldId: id, fieldPath: id, state: 'ignored' as const, policyStatus: 'ignored' as const })),
-    suspiciousCoverage: [],
-    endpoints: [{ endpointId: 'getUsers', method: 'GET', path: '/users', called: true, fieldsTotal: missing, fieldsCovered: 0 }],
-    requests: [],
-  }
-}
-
-export const OK_PROVIDER: AgentProvider = { name: 'fake', edit: async () => ({ diffText: '--- a\n+++ b\n@@ -1 +1 @@\n-a\n+b' }) }
-
-// 可编程 verdict 的 review-agent 替身：按 fieldId 前缀决定 pass/reject
-export function scriptedReview(rule: (task: AgentTask) => 'pass' | 'reject'): CoverageAgentPlugin {
-  return {
-    name: 'scripted-review', version: '0.0.1', capabilities: ['verify'],
-    plan: async () => ({ tasks: [] }),
-    apply: async () => ({ results: [] }),
-    verify: async (_ctx, result): Promise<AgentVerifyResult> => {
-      const r = result.results[0]
-      const verdict = r && rule(r.task) === 'reject' ? 'reject' : 'pass'
-      return { verdict, checks: [{ name: 'scripted', outcome: verdict === 'pass' ? 'pass' : 'reject' }] }
-    },
-  }
-}
+import { makeReport, OK_PROVIDER, scriptedReview } from './fixtures.js'
 
 function makeProject(): string {
   return mkdtempSync(join(tmpdir(), 'nx-mk-runtime-'))
