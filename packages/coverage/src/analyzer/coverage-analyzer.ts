@@ -189,6 +189,7 @@ export function analyzeCoverage(input: AnalyzeInput): CoverageReport {
     durationMs: t.durationMs,
     startedAt: t.startedAt,
     endedAt: t.endedAt,
+    responsePreview: t.responsePreview,
   }))
 
   return {

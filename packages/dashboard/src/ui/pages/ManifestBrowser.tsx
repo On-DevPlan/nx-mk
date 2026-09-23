@@ -13,6 +13,7 @@
 import { useState } from 'react'
 import { ApiError } from '../api'
 import { usePolling } from '../hooks'
+import { useT } from '../i18n'
 import type {
   ManifestResponse,
   FieldsListResponse,
@@ -20,6 +21,7 @@ import type {
 } from '../../shared/api-types'
 
 export function ManifestBrowserPage({ runId }: { runId: string }) {
+  const T = useT()
   const manifest = usePolling<ManifestResponse>(`/api/runs/${runId}/manifest`)
   const fields = usePolling<FieldsListResponse>(`/api/runs/${runId}/fields`)
   const requests = usePolling<RequestsListResponse>(`/api/runs/${runId}/requests`)
@@ -35,11 +37,11 @@ export function ManifestBrowserPage({ runId }: { runId: string }) {
   if (manifest.error instanceof ApiError) {
     return (
       <p className="error">
-        error {manifest.error.status}: {manifest.error.detailMessage}
+        {T('error {code}: {detail}', { code: manifest.error.status, detail: manifest.error.detailMessage })}
       </p>
     )
   }
-  if (!manifest.data) return <p>loading…</p>
+  if (!manifest.data) return <p>{T('loading…')}</p>
 
   const m = manifest.data
   // policyStatus 映射：fieldPath → policyStatus（fields 路由失败时徽章显 —）
@@ -60,22 +62,22 @@ export function ManifestBrowserPage({ runId }: { runId: string }) {
 
   return (
     <section>
-      <h1>Manifest</h1>
+      <h1>{T('Manifest')}</h1>
       <p>
-        <a href={`#/runs/${runId}`}>← Run</a>
+        <a href={`#/runs/${runId}`}>{T('← Run')}</a>
       </p>
       <p>
-        {m.version} · {m.source.type} · {m.endpoints.length} endpoints · {m.fields.length} fields
+        {m.version} · {m.source.type} · {T('{n} endpoints · {m} fields', { n: m.endpoints.length, m: m.fields.length })}
       </p>
       <div className="section">
-        <h2>Endpoints</h2>
+        <h2>{T('Endpoints')}</h2>
         <table>
           <thead>
             <tr>
-              <th>method</th>
-              <th>path</th>
-              <th>called</th>
-              <th>fields</th>
+              <th>{T('method')}</th>
+              <th>{T('path')}</th>
+              <th>{T('called')}</th>
+              <th>{T('fields')}</th>
             </tr>
           </thead>
           <tbody>
@@ -105,15 +107,15 @@ export function ManifestBrowserPage({ runId }: { runId: string }) {
             Schema — <span className="badge">{current.method}</span> {current.path}
           </h2>
           {currentFields.length === 0 ? (
-            <p className="empty">no fields</p>
+            <p className="empty">{T('no fields')}</p>
           ) : (
             <table>
               <thead>
                 <tr>
-                  <th>field</th>
-                  <th>type</th>
-                  <th>required</th>
-                  <th>policy</th>
+                  <th>{T('field')}</th>
+                  <th>{T('type')}</th>
+                  <th>{T('required')}</th>
+                  <th>{T('policy')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -123,7 +125,7 @@ export function ManifestBrowserPage({ runId }: { runId: string }) {
                       <a href={`#/runs/${runId}/fields`}>{f.normalizedPath}</a>
                     </td>
                     <td>{f.type}</td>
-                    <td>{f.required === true ? 'required' : '—'}</td>
+                    <td>{f.required === true ? '✓' : '—'}</td>
                     <td>
                       <span className="badge">{policyByPath.get(f.normalizedPath) ?? '—'}</span>
                     </td>

@@ -1,43 +1,54 @@
 /**
  * /runs/:runId/requests/:requestId —— 请求详情三段（spec §3.4）：
  * trace / 关联 hits / 关联 evidence；空关联显示 "not associated"（v0 数据现实）。
+ * 「响应值」区展示 trace.responsePreview（≤500 字符，采集侧截断；未记录显占位）。
  */
 import { useState } from 'react'
 import { ApiError, postJson } from '../api'
 import { usePolling } from '../hooks'
+import { useT } from '../i18n'
 import type { ReplayResponse, RequestDetailResponse } from '../../shared/api-types'
 
 export function RequestDetailPage({ runId, requestId }: { runId: string; requestId: string }) {
+  const T = useT()
   const { data, error } = usePolling<RequestDetailResponse>(`/api/runs/${runId}/requests/${requestId}`)
   if (error instanceof ApiError && error.status === 404) {
-    return <p className="empty">Request not found: {requestId}</p>
+    return <p className="empty">{T('Request not found: {id}', { id: requestId })}</p>
   }
-  if (error instanceof ApiError) return <p className="error">error {error.status}: {error.detailMessage}</p>
-  if (!data) return <p>loading…</p>
+  if (error instanceof ApiError) {
+    return <p className="error">{T('error {code}: {detail}', { code: error.status, detail: error.detailMessage })}</p>
+  }
+  if (!data) return <p>{T('loading…')}</p>
   const t = data.trace
   return (
     <section>
       <h1>{t.method} {t.path ?? t.url}</h1>
       <p>
-        <a href={`#/runs/${runId}/requests`}>← Requests</a>
+        <a href={`#/runs/${runId}/requests`}>{T('← Requests')}</a>
       </p>
       <table>
         <tbody>
-          <tr><th>url</th><td>{t.url}</td></tr>
-          <tr><th>status</th><td>{t.status ?? '—'}</td></tr>
-          <tr><th>duration</th><td>{t.durationMs != null ? `${t.durationMs}ms` : '—'}</td></tr>
-          <tr><th>endpoint</th><td>{t.endpointId ?? '—'}</td></tr>
-          <tr><th>started</th><td>{t.startedAt ?? '—'}</td></tr>
+          <tr><th>{T('url')}</th><td>{t.url}</td></tr>
+          <tr><th>{T('status')}</th><td>{t.status ?? '—'}</td></tr>
+          <tr><th>{T('duration')}</th><td>{t.durationMs != null ? `${t.durationMs}ms` : '—'}</td></tr>
+          <tr><th>{T('endpoint')}</th><td>{t.endpointId ?? '—'}</td></tr>
+          <tr><th>{T('started')}</th><td>{t.startedAt ?? '—'}</td></tr>
         </tbody>
       </table>
+      <div className="section">
+        <h2>{T('Response body')}</h2>
+        {t.responsePreview != null
+          ? <pre>{t.responsePreview}</pre>
+          : <p className="empty">{T('not recorded')}</p>}
+      </div>
       <ReplaySection runId={runId} requestId={requestId} />
       <div className="section">
-        <h2>Field hits</h2>
+        <h2>{T('Field hits')}</h2>
         {data.hits.length === 0 ? (
-          <p className="empty">not associated</p>
+          <p className="empty">{T('not associated')}</p>
         ) : (
           <table>
-            <thead><tr><th>field</th><th>count</th><th>source</th><th>last hit</th></tr></thead>
+            <thead><tr><th>{T('field')}</th><th>{T('count')}</th><th>{T('source')}</th><th>{T('last hit')}</th></tr></thead>
             <tbody>
               {data.hits.map((h) => (
                 <tr key={h.id}>
@@ -52,17 +63,17 @@ export function RequestDetailPage({ runId, requestId }: { runId: string; request
         )}
       </div>
       <div className="section">
-        <h2>UI evidence</h2>
+        <h2>{T('UI evidence')}</h2>
         {data.evidence.length === 0 ? (
-          <p className="empty">not associated</p>
+          <p className="empty">{T('not associated')}</p>
         ) : (
           <table>
-            <thead><tr><th>field</th><th>visible</th><th>text sample</th><th>selector</th></tr></thead>
+            <thead><tr><th>{T('field')}</th><th>{T('visible')}</th><th>{T('text sample')}</th><th>{T('selector')}</th></tr></thead>
             <tbody>
               {data.evidence.map((e) => (
                 <tr key={e.id}>
                   <td>{e.fieldPath}</td>
-                  <td>{e.visible === 1 ? 'yes' : 'no'}</td>
+                  <td>{e.visible === 1 ? T('yes') : T('no')}</td>
                   <td>{e.textSample != null ? <pre>{e.textSample}</pre> : '—'}</td>
                   <td>{e.selector ?? '—'}</td>
                 </tr>
@@ -81,6 +92,7 @@ export function RequestDetailPage({ runId, requestId }: { runId: string; request
  * 交互流程由路由测试覆盖（node 渲染环境无事件模拟）；此处 UI 只渲染状态机输出。
  */
 function ReplaySection({ runId, requestId }: { runId: string; requestId: string }) {
+  const T = useT()
   const [result, setResult] = useState<ReplayResponse | null>(null)
   const [needsConfirm, setNeedsConfirm] = useState(false)
   const [errorText, setErrorText] = useState<string | null>(null)
@@ -99,7 +111,7 @@ function ReplaySection({ runId, requestId }: { runId: string; requestId: string 
       } else if (err instanceof ApiError) {
         setErrorText(err.detailMessage)
       } else {
-        setErrorText('replay request failed')
+        setErrorText(T('replay request failed'))
       }
     } finally {
       setBusy(false)
@@ -108,17 +120,17 @@ function ReplaySection({ runId, requestId }: { runId: string; requestId: string 
 
   return (
     <div className="section">
-      <h2>Replay</h2>
+      <h2>{T('Replay')}</h2>
       {result === null && !needsConfirm && (
         <button onClick={() => void send(false)} disabled={busy}>
-          Replay request
+          {T('Replay request')}
         </button>
       )}
       {needsConfirm && (
         <p className="error">
-          unsafe/idempotent method requires confirmation{' '}
+          {T('unsafe/idempotent method requires confirmation')}{' '}
           <button onClick={() => void send(true)} disabled={busy}>
-            Confirm replay
+            {T('Confirm replay')}
           </button>
         </p>
       )}
@@ -127,7 +139,7 @@ function ReplaySection({ runId, requestId }: { runId: string; requestId: string 
         <p>
           <span className="badge">{result.verdict}</span>{' '}
           {result.status === 'replay-error' ? (
-            <span className="error">replay-error: {result.error ?? 'network failure'}</span>
+            <span className="error">{T('replay-error: {err}', { err: result.error ?? 'network failure' })}</span>
           ) : (
             <>
               ok={String(result.ok)} status={result.status ?? '—'}

@@ -44,6 +44,7 @@ function mapTraceRow(r: Row): TraceRow {
     replayable: int(r.replayable),
     replaySafety: str(r.replay_safety),
     replayReason: str(r.replay_reason),
+    responsePreview: str(r.response_preview),
   }
 }
 

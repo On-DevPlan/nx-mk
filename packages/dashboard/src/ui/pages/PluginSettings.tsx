@@ -6,29 +6,35 @@
 import { useState } from 'react'
 import { ApiError, patchJson } from '../api'
 import { usePolling } from '../hooks'
+import { useT } from '../i18n'
 import { yamlSnippet } from '../yaml-snippet'
 import type { PluginEntryView, PluginsResponse } from '../../shared/api-types'
 import type { ConfigWritePreviewResponse, ConfigWriteApplyResponse } from '../../shared/api-types'
 
 export function PluginSettingsPage() {
+  const T = useT()
   const { data, error } = usePolling<PluginsResponse>('/api/plugins')
   if (error instanceof ApiError && error.status === 404) {
-    return <p className="empty">Plugins endpoint not found.</p>
+    return <p className="empty">{T('Plugins endpoint not found.')}</p>
   }
-  if (error instanceof ApiError) return <p className="error">error {error.status}: {error.detailMessage}</p>
-  if (!data) return <p>loading…</p>
+  if (error instanceof ApiError) {
+    return <p className="error">{T('error {code}: {detail}', { code: error.status, detail: error.detailMessage })}</p>
+  }
+  if (!data) return <p>{T('loading…')}</p>
   if (data.stale) {
     return (
       <section>
-        <h1>Plugins</h1>
-        <p className="empty">kernel has not produced plugins-manifest.json yet — run once first.</p>
+        <h1>{T('Plugins')}</h1>
+        <p className="empty">{T('kernel has not produced plugins-manifest.json yet — run once first.')}</p>
       </section>
     )
   }
   return (
     <section>
-      <h1>Plugins</h1>
-      <p className="empty">Edit per-plugin config — Preview shows the YAML diff; Apply writes nx-mk.config.yml (a .bak backup is kept). Takes effect on the next run.</p>
+      <h1>{T('Plugins')}</h1>
+      <p className="empty">
+        {T('Edit per-plugin config — Preview shows the YAML diff; Apply writes nx-mk.config.yml (a .bak backup is kept). Takes effect on the next run.')}
+      </p>
       {data.plugins.map((p) => (
         <PluginCard key={p.name} entry={p} />
       ))}
@@ -37,6 +43,7 @@ export function PluginSettingsPage() {
 }
 
 function PluginCard({ entry }: { entry: PluginEntryView }) {
+  const T = useT()
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
   const snippet = yamlSnippet(entry)
@@ -46,16 +53,16 @@ function PluginCard({ entry }: { entry: PluginEntryView }) {
         {entry.name} <span className="badge">v{entry.version}</span>{' '}
         {entry.enabled ? <span className="badge">enabled</span> : null}
       </h2>
-      {entry.configSchema === null ? <p className="empty">No schema exposed</p> : null}
+      {entry.configSchema === null ? <p className="empty">{T('No schema exposed')}</p> : null}
       <pre>{snippet}</pre>
       <button
         onClick={() => {
           void navigator.clipboard?.writeText(snippet).then(() => setCopied(true))
         }}
       >
-        {copied ? 'Copied!' : 'Copy YAML'}
+        {copied ? T('Copied!') : T('Copy YAML')}
       </button>{' '}
-      <button onClick={() => setEditing(!editing)}>Edit config</button>
+      <button onClick={() => setEditing(!editing)}>{T('Edit config')}</button>
       {editing ? <ConfigEditor name={entry.name} initial={entry.config} /> : null}
     </div>
   )
@@ -63,6 +70,7 @@ function PluginCard({ entry }: { entry: PluginEntryView }) {
 
 /** v1 编辑器（WP3）：JSON ⊂ YAML，textarea 以 JSON 编辑 per-plugin config；两段式 Preview→Apply（W2）。 */
 export function ConfigEditor({ name, initial }: { name: string; initial: unknown }) {
+  const T = useT()
   const [text, setText] = useState(() => {
     try {
       return JSON.stringify(initial ?? {}, null, 2)
@@ -78,10 +86,10 @@ export function ConfigEditor({ name, initial }: { name: string; initial: unknown
     try {
       const v = JSON.parse(text) as unknown
       if (typeof v === 'object' && v !== null && !Array.isArray(v)) return v as Record<string, unknown>
-      setErr('config must be a JSON object')
+      setErr(T('config must be a JSON object'))
       return null
     } catch (e) {
-      setErr(`invalid JSON: ${(e as Error).message}`)
+      setErr(T('invalid JSON: {msg}', { msg: (e as Error).message }))
       return null
     }
   }
@@ -93,7 +101,7 @@ export function ConfigEditor({ name, initial }: { name: string; initial: unknown
     try {
       setPreview(await patchJson<ConfigWritePreviewResponse>(`/api/plugins/${encodeURIComponent(name)}/config?dryRun=true`, { config: cfg }))
     } catch (e) {
-      setErr(e instanceof ApiError ? `preview failed: ${e.detailMessage}` : String(e))
+      setErr(e instanceof ApiError ? T('preview failed: {msg}', { msg: e.detailMessage }) : String(e))
     }
   }
 
@@ -107,16 +115,16 @@ export function ConfigEditor({ name, initial }: { name: string; initial: unknown
         { config: cfg, yamlSha: preview.yamlSha },
       )
       setPreview(null)
-      setApplied(`applied — takes effect on the next nx-mk run (backup: ${r.bakPath})`)
+      setApplied(T('applied — takes effect on the next nx-mk run (backup: {path})', { path: r.bakPath }))
     } catch (e) {
       // E5 常见态：提示重新 preview
-      setErr(e instanceof ApiError ? `apply failed: ${e.detailMessage} — re-preview and retry` : String(e))
+      setErr(e instanceof ApiError ? T('apply failed: {msg} — re-preview and retry', { msg: e.detailMessage }) : String(e))
     }
   }
 
   return (
     <div className="section">
-      <p className="empty">config is JSON (valid YAML) for plugin {name}</p>
+      <p className="empty">{T('config is JSON (valid YAML) for plugin {name}', { name })}</p>
       <textarea
         rows={8} cols={60} value={text}
         onChange={(e) => {
@@ -126,13 +134,13 @@ export function ConfigEditor({ name, initial }: { name: string; initial: unknown
         }}
       />
       <div>
-        <button onClick={() => void doPreview()}>Preview</button>{' '}
-        <button onClick={() => void doApply()} disabled={preview === null}>Apply</button>
+        <button onClick={() => void doPreview()}>{T('Preview')}</button>{' '}
+        <button onClick={() => void doApply()} disabled={preview === null}>{T('Apply')}</button>
       </div>
       {err ? <p className="error">{err}</p> : null}
       {preview ? (
         <div>
-          <p className="empty">preview diff (not written yet):</p>
+          <p className="empty">{T('preview diff (not written yet):')}</p>
           <pre>{preview.diff}</pre>
         </div>
       ) : null}

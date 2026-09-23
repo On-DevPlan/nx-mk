@@ -152,4 +152,26 @@ describe('schema 演进（spec §3.1：ensureColumn 幂等加列，§25 DDL 冻�
       expect(row.text_sample).toBe('HZ')
     } finally { db.close() }
   })
+
+  it('request_traces 幂等加列 response_preview 且 flushDrained 写入（响应值通道）', () => {
+    const db = openCoverageDb(dbPath)
+    try {
+      const cols = (db.pragma('table_info(request_traces)') as { name: string }[]).map((c) => c.name)
+      expect(cols).toContain('response_preview')
+      db.insertRun('run_r', '2026-09-23T00:00:00Z', 'running')
+      db.flushDrained({
+        runId: 'run_r',
+        hits: [],
+        traces: [
+          { requestId: 'r1', method: 'GET', url: '/a', responsePreview: '{"id":"u1"}' },
+          { requestId: 'r2', method: 'GET', url: '/b' },
+        ],
+        evidence: [],
+      })
+      const withPreview = db.prepare('SELECT response_preview FROM request_traces WHERE trace_id=?').get('r1') as { response_preview: string }
+      expect(withPreview.response_preview).toBe('{"id":"u1"}')
+      const without = db.prepare('SELECT response_preview FROM request_traces WHERE trace_id=?').get('r2') as { response_preview: null }
+      expect(without.response_preview).toBeNull()
+    } finally { db.close() }
+  })
 })

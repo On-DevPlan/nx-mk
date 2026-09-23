@@ -40,6 +40,8 @@ export interface TraceRow {
   replayable: number | null
   replaySafety: string | null
   replayReason: string | null
+  /** 响应值预览（§3.1 演进列 response_preview，≤500 字符；无则 null） */
+  responsePreview: string | null
 }
 
 /** §25.6 field_hits 行投影 */

@@ -74,6 +74,7 @@ export function registerRequestRoutes(app: FastifyInstance, ctx: RouteContext): 
             status: summary.status ?? null, durationMs: summary.durationMs ?? null,
             startedAt: summary.startedAt ?? null, endedAt: summary.endedAt ?? null,
             replayable: null, replaySafety: null, replayReason: null,
+            responsePreview: summary.responsePreview ?? null,
           }
         }
         const res: RequestDetailResponse = {
