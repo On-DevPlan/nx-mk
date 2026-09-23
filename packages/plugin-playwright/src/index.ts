@@ -62,7 +62,7 @@ import {
   type SuiteObservers,
 } from '@nx-mk/scenario'
 import { launchCollect, hasChromium } from './runner.js'
-import { scanPage, drainBrowserCollector } from './scanner.js'
+import { scanPage, drainBrowserCollector, COLLECTOR_SHIM_SCRIPT } from './scanner.js'
 
 const PLUGIN_NAME = '@nx-mk/plugin-playwright'
 
@@ -78,7 +78,12 @@ export interface PlaywrightPluginOptions {
   /** 测试注入缝（SP4）：套件执行器；缺省 = runScenarioSuiteInBrowser 真实现 */
   suiteRunner?: (
     scenarios: ReadonlyArray<Scenario>,
-    opts: { concurrency: number; observers: SuiteObservers },
+    opts: {
+      concurrency: number
+      observers: SuiteObservers
+      /** SP10：逐 context addInitScript 注入（套件页 collector shim 通道） */
+      initScripts: ReadonlyArray<string>
+    },
   ) => Promise<ScenarioRunResult[]>
 }
 
@@ -251,7 +256,13 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
     const runner = opts.suiteRunner ?? runScenarioSuiteInBrowser
     const results = await runner(
       scenarios.map((s) => s.scenario),
-      { concurrency: cfg.concurrency ?? 3, observers },
+      {
+        concurrency: cfg.concurrency ?? 3,
+        observers,
+        // SP10：套件 context 注入 collector shim —— legacy collect 同一通道
+        // （Ruling 7 addInitScript），否则页内 analysis trace 无投递口、drain 恒空
+        initScripts: [COLLECTOR_SHIM_SCRIPT],
+      },
     )
     // SP3：turn 取一次；snapshot 增量幂等 —— 逐结果 flush 执行期累积的新增量
     const turn = ctx.getTurn()
