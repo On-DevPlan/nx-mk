@@ -149,7 +149,7 @@ POST /api/runs/:runId/replay/request/:requestId              # 既有（4.5）�
 
 ### demo 手动验收物料（SP9，用户手动步骤，不改 examples/ 仓库文件）
 
-**1. 场景文件** `mk/scenarios/user-profile.yml`（demo 项目根）：
+**1. 场景文件** `mk/scenarios/user-profile.yml`（demo 项目根）。字段路径以 demo app 实际渲染为准 —— `UserProfile.tsx` 用 `<Field field="data.name">` 等标记（响应体根键 `data`），示例写 `data.name`/`data.email` 而非 `user.profile.*`：
 
 ```yaml
 version: 1
@@ -166,10 +166,10 @@ scenarios:
         selector: "[data-page='user-profile']"
       - id: assert-user-name
         type: assertFieldVisible
-        field: user.profile.name
+        field: data.name
       - id: assert-user-email
         type: assertFieldVisible
-        field: user.profile.email
+        field: data.email
       - id: shot
         type: screenshot
 ```
