@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import type { Page } from 'playwright-core'
 import { createCollector } from '@nx-mk/client/collector'
 import { createPlaywrightPlugin, type PlaywrightPluginOptions } from '../index.js'
+import { COLLECTOR_SHIM_SCRIPT } from '../scanner.js'
 import type { SuiteObservers, ScenarioRunResult, Scenario } from '@nx-mk/scenario'
 
 const SCEN_YAML = `version: 1
@@ -92,12 +93,15 @@ describe('beforeRun 套件模式', () => {
     expect(suiteRunner).toHaveBeenCalledOnce()
     const [scens, runOpts] = suiteRunner.mock.calls[0] as unknown as [
       Scenario[],
-      { concurrency: number; observers: SuiteObservers },
+      { concurrency: number; observers: SuiteObservers; initScripts: ReadonlyArray<string> },
     ]
     expect(scens.map((s) => s.id)).toEqual(['s-ok', 's-bad'])
     expect(runOpts.concurrency).toBe(3)
     expect(typeof runOpts.observers.afterGoto).toBe('function')
     expect(typeof runOpts.observers.afterStep).toBe('function')
+    // SP10：套件页必注入 collector shim（legacy Ruling 7 同通道）—— 否则
+    // 页内 analysis trace 无投递口、S6 归因列在真实 run 中恒 NULL
+    expect(runOpts.initScripts).toEqual([COLLECTOR_SHIM_SCRIPT])
     // start 两个场景均在 runner 调用前 emit（批次语义：start 全部 → 执行）
     expect(emittedAtRunnerCall).toBe(2)
     const starts = emitted.filter((e) => e.type === 'scenario:start')

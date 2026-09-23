@@ -1,11 +1,46 @@
 /**
  * playwright StepDriver 映射 + runScenarioWithPage observers 接线（SP5/SP6）。
  * mock page 只验证驱动调用形状；真浏览器链路由 T6/T7 的套件/回放集成覆盖。
+ * runScenarioSuiteInBrowser 的 context 装配（SP10 initScripts 注入时序）用
+ * mock chromium 验证 —— 不起真浏览器，只验 context 生命周期调用形状。
  */
-import { describe, it, expect } from 'vitest'
-import { createPlaywrightDriver, runScenarioWithPage, type SuiteObservers } from '../playwright-runner'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
+import { createPlaywrightDriver, runScenarioWithPage, runScenarioSuiteInBrowser, type SuiteObservers } from '../playwright-runner'
 import type { Scenario } from '../dsl-schema'
 import type { Page } from 'playwright-core'
+
+// —— mock chromium：context 记录 initScripts 与 newPage 调用序（SP10） ——
+interface FakeSuitePage {
+  goto: Mock<[], Promise<void>>
+}
+interface FakeSuiteCtx {
+  initCalls: string[]
+  addInitScript: Mock<[string], Promise<void>>
+  newPage: Mock<[], Promise<FakeSuitePage>>
+  close: Mock<[], Promise<void>>
+}
+vi.mock('playwright-core', () => {
+  const registry: { contexts: FakeSuiteCtx[] } = { contexts: [] }
+  const browser = {
+    newContext: vi.fn(async () => {
+      const ctx: FakeSuiteCtx = {
+        initCalls: [],
+        addInitScript: vi.fn(async (s: string) => { ctx.initCalls.push(s) }),
+        newPage: vi.fn(async () => ({ goto: vi.fn(async () => {}) })),
+        close: vi.fn(async () => {}),
+      }
+      registry.contexts.push(ctx)
+      return ctx
+    }),
+    close: vi.fn(async () => {}),
+  }
+  return { chromium: { launch: vi.fn(async () => browser) }, __suiteRegistry: registry }
+})
+
+async function suiteRegistry(): Promise<{ contexts: FakeSuiteCtx[] }> {
+  const pw = (await import('playwright-core')) as unknown as { __suiteRegistry: { contexts: FakeSuiteCtx[] } }
+  return pw.__suiteRegistry
+}
 
 function fakePage() {
   const calls: Array<{ op: string; args: unknown[] }> = []
@@ -86,5 +121,38 @@ describe('runScenarioWithPage（SP6 observers 接线）', () => {
     const scen: Scenario = { id: 's', name: 'n', steps: [{ type: 'goto', url: '/a' }, { type: 'screenshot' }] }
     const r = await runScenarioWithPage(scen, page)
     expect(r.ok).toBe(true)
+  })
+})
+
+describe('runScenarioSuiteInBrowser — context 装配（SP10 initScripts）', () => {
+  const scen = (id: string): Scenario => ({ id, name: id, steps: [{ type: 'goto', url: '/a' }] })
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    const { contexts } = await suiteRegistry()
+    contexts.length = 0
+  })
+
+  it('initScripts 逐 context 全量注入，且先于 newPage（addInitScript 只对之后的页面生效）', async () => {
+    const results = await runScenarioSuiteInBrowser([scen('s1'), scen('s2')], {
+      concurrency: 1,
+      initScripts: ['scriptA', 'scriptB'],
+    })
+    expect(results.map((r) => r.ok)).toEqual([true, true])
+    const { contexts } = await suiteRegistry()
+    expect(contexts).toHaveLength(2)
+    for (const ctx of contexts) {
+      expect(ctx.initCalls).toEqual(['scriptA', 'scriptB'])
+      // 时序：init 全部落位后才 newPage
+      expect(ctx.addInitScript.mock.invocationCallOrder[0]).toBeLessThan(ctx.newPage.mock.invocationCallOrder[0]!)
+    }
+  })
+
+  it('initScripts 缺省 → 不触碰 addInitScript（既有路径零回归）', async () => {
+    const results = await runScenarioSuiteInBrowser([scen('s1')], { concurrency: 1 })
+    expect(results.map((r) => r.ok)).toEqual([true])
+    const { contexts } = await suiteRegistry()
+    expect(contexts).toHaveLength(1)
+    expect(contexts[0]!.addInitScript).not.toHaveBeenCalled()
   })
 })

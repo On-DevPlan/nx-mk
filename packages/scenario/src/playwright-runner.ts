@@ -69,7 +69,18 @@ export async function runScenarioWithPage(scenario: Scenario, page: Page, observ
 
 export async function runScenarioSuiteInBrowser(
   scenarios: ReadonlyArray<Scenario>,
-  opts: { concurrency: number; observers?: SuiteObservers },
+  opts: {
+    concurrency: number
+    observers?: SuiteObservers
+    /**
+     * SP10（demo 验收补丁）：逐 context addInitScript 注入的页内脚本。
+     * 套件页必须有 collector shim 通道（window.__MK_COLLECTOR__），app 侧
+     * analysis 分支才有投递口、每步 drain 才回捞得到 trace —— 否则 drain 恒空、
+     * S6 归因列在真实 run 中永远 NULL。脚本体归调用方（plugin 持有 shim 字面量），
+     * 本包保持不知道 shim 内容。
+     */
+    initScripts?: ReadonlyArray<string>
+  },
 ): Promise<ScenarioRunResult[]> {
   const browser: Browser = await chromium.launch()
   try {
@@ -80,6 +91,8 @@ export async function runScenarioSuiteInBrowser(
         worker: async (item) => {
           const context = await browser.newContext()
           try {
+            // SP10：注入必须先于 newPage —— addInitScript 只对之后创建的页面生效
+            for (const script of opts.initScripts ?? []) await context.addInitScript(script)
             const page = await context.newPage()
             return await runScenarioWithPage(item.scenario, page, opts.observers)
           } finally {
