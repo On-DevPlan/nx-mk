@@ -23,6 +23,8 @@ export interface RequestTraceCore {
   durationMs?: number
   startedAt?: string
   endedAt?: string
+  /** 响应值预览（≤500 字符，生产者负责截断）—— dashboard RequestDetail「响应值」区展示 */
+  responsePreview?: string
   /** §26 归因（S6）：套件模式 drain 时打标；legacy collect 恒缺席 */
   scenarioId?: string
   dslStepId?: string

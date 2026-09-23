@@ -145,11 +145,16 @@ describe('Ruling 7 浏览器 shim + Node 侧回捞（scanner 纯函数，playwri
 
   it('drainBrowserCollector：回捞 hits/traces → 共享 collector 投递 + 页内缓冲清空', async () => {
     // 页内 shim 镜像（globalThis 在浏览器即 window）
+    const longPreview = 'x'.repeat(600)
     const shim = {
       hits: [
         { requestId: 'r_b', endpointId: 'ep1', fieldPath: 'data.id', normalizedPath: 'data.id', type: 'get', timestamp: 1 },
       ],
-      traces: [{ requestId: 'r_b', endpointId: 'ep1', method: 'GET', url: 'http://x/api/users/u1', path: '/users/u1', status: 200 }],
+      traces: [
+        { requestId: 'r_b', endpointId: 'ep1', method: 'GET', url: 'http://x/api/users/u1', path: '/users/u1', status: 200, responsePreview: '{"id":"u1"}' },
+        // 响应值预览超长 → 回捞侧兜底截断 500（不信任生产者截断）
+        { requestId: 'r_c', method: 'GET', url: 'http://x/api/users/u2', status: 200, responsePreview: longPreview },
+      ],
       hit() {},
       trace() {},
     }
@@ -162,6 +167,11 @@ describe('Ruling 7 浏览器 shim + Node 侧回捞（scanner 纯函数，playwri
       const drained = collector.drain()
       expect(drained.hits.some((h) => h.normalizedPath === 'data.id')).toBe(true)
       expect(drained.traces.some((t) => t.requestId === 'r_b')).toBe(true)
+      // 响应值预览透传 + 超长截断 500
+      const withPreview = drained.traces.find((t) => t.requestId === 'r_b')
+      expect(withPreview?.responsePreview).toBe('{"id":"u1"}')
+      const truncated = drained.traces.find((t) => t.requestId === 'r_c')
+      expect(truncated?.responsePreview).toHaveLength(500)
       // 回捞后页内缓冲已清空（重复回捞不重复计数）
       expect(shim.hits).toHaveLength(0)
       expect(shim.traces).toHaveLength(0)

@@ -179,6 +179,8 @@ export async function drainBrowserCollector(
         durationMs: typeof trace.durationMs === 'number' ? trace.durationMs : undefined,
         startedAt: typeof trace.startedAt === 'string' ? trace.startedAt : undefined,
         endedAt: typeof trace.endedAt === 'string' ? trace.endedAt : undefined,
+        // 响应值预览透传（≤500 字符在此兜底截断 —— 信任边界外数据不信任生产者的截断）
+        ...(typeof trace.responsePreview === 'string' ? { responsePreview: trace.responsePreview.slice(0, 500) } : {}),
         // §26 归因（S6）：tag 存在时该批 trace 打标；hits 不打标（FieldHitCore 无字段）
         ...(tag ? { scenarioId: tag.scenarioId, ...(tag.dslStepId !== undefined ? { dslStepId: tag.dslStepId } : {}) } : {}),
       } satisfies RequestTraceCore)

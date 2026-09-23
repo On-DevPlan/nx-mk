@@ -31,6 +31,8 @@ export interface RequestTraceSummary {
   durationMs?: number
   startedAt?: string
   endedAt?: string
+  /** 响应值预览（≤500 字符；dashboard RequestDetail 回落路径的数据来源） */
+  responsePreview?: string
 }
 export interface CoverageReportMetrics {
   requiredCoverage: number

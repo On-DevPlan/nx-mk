@@ -172,6 +172,7 @@ export function createFetchClient(options: FetchClientOptions): FetchClient {
           durationMs,
           startedAt: new Date(start).toISOString(),
           endedAt: new Date().toISOString(),
+          responsePreview: previewOf(data),
         })
         if (data !== null && typeof data === 'object') {
           return createTrackedProxy(data as object, {
@@ -194,6 +195,20 @@ export function createFetchClient(options: FetchClientOptions): FetchClient {
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+/**
+ * previewOf —— 响应值预览（RequestTraceCore.responsePreview）：
+ * 字符串原样截断；对象/数组 JSON 序列化后截断；≤500 字符由本函数统一保证。
+ * 序列化失败（应不发生 —— data 来自 res.json()）返回空串，探针不抛。
+ */
+function previewOf(data: unknown): string {
+  try {
+    const raw = typeof data === 'string' ? data : (JSON.stringify(data) ?? String(data))
+    return raw.slice(0, 500)
+  } catch {
+    return ''
+  }
 }
 
 function buildUrl(base: string, path: string, params: Record<string, unknown>): string {

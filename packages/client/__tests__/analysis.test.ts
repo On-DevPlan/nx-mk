@@ -25,6 +25,8 @@ describe('analysis mode', () => {
     const drained = collector.drain()
     expect(drained.hits.some((h) => h.normalizedPath === 'data.id')).toBe(true)
     expect(drained.traces.some((t) => t.status === 200 && t.method === 'GET')).toBe(true)
+    // 响应值预览随 trace 采集（≤500 字符；UI RequestDetail「响应值」数据通道）
+    expect(drained.traces.some((t) => t.responsePreview === '{"id":"u1","name":"x"}')).toBe(true)
   })
 
   it('collector 缺省时用 noop（drain 恒空，请求成功）', async () => {

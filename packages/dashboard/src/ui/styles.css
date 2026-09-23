@@ -1,26 +1,47 @@
-/* nx-mk dashboard —— 单份手写样式（spec §2.1）；本地分析台，浅色为主 */
+/* nx-mk dashboard —— 单份手写样式（spec §2.1）；本地分析台，浅色为主。
+   度量规约（UI 优化定版）：表格 12px 字体 / 表头行高 30px / 数据行高 35px / 按钮统一 28px 高 12px 字体。 */
 :root {
-  --border: #ddd;
-  --muted: #777;
+  --border: #e2e5e9;
+  --muted: #6b7280;
   --warn: #b45309;
   --bad: #b91c1c;
   --ok: #15803d;
+  --accent: #1d4ed8;
+  --bg: #f6f7f9;
+  --panel: #fff;
+  --th-h: 30px;
+  --row-h: 35px;
+  --btn-h: 28px;
+  --fs-table: 12px;
+  --radius: 6px;
 }
 * { box-sizing: border-box; }
-body { margin: 0; font: 14px/1.5 system-ui, sans-serif; color: #111; background: #fafafa; }
-nav { display: flex; gap: 16px; padding: 10px 20px; border-bottom: 1px solid var(--border); background: #fff; }
-nav a { color: #1d4ed8; text-decoration: none; font-weight: 600; }
+body { margin: 0; font: 14px/1.5 system-ui, sans-serif; color: #111; background: var(--bg); }
+nav { display: flex; align-items: center; gap: 16px; padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 10; }
+nav .brand { font-weight: 700; letter-spacing: 0.5px; }
+nav a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 13px; }
+nav a:hover { text-decoration: underline; }
+nav .lang-toggle { margin-left: auto; }
 main { padding: 20px; max-width: 1100px; margin: 0 auto; }
 h1 { font-size: 20px; margin: 0 0 12px; }
-table { border-collapse: collapse; width: 100%; background: #fff; }
-th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
-th { background: #f3f4f6; }
-td a { color: #1d4ed8; }
+h2 { font-size: 15px; margin: 0 0 8px; }
+table { border-collapse: collapse; width: 100%; background: var(--panel); font-size: var(--fs-table); }
+th, td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; vertical-align: middle; }
+/* 表头 30px / 数据行 35px（height 在表格单元上是最小高：单行文本即精确命中，多行/pre 内容自然撑开） */
+th { height: var(--th-h); background: #f3f4f6; font-weight: 600; white-space: nowrap; }
+td { height: var(--row-h); }
+tbody tr:hover { background: #f8fafc; }
+td a { color: var(--accent); }
+/* 按钮统一 28px 高、12px 字体 */
+button { height: var(--btn-h); padding: 0 12px; font-size: var(--fs-table); line-height: 1; border: 1px solid #cfd4da; border-radius: var(--radius); background: var(--panel); color: #111; cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .cards { display: flex; gap: 16px; margin: 16px 0; flex-wrap: wrap; }
-.card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 16px 24px; min-width: 160px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 24px; min-width: 160px; }
 .card .num { font-size: 32px; font-weight: 700; }
 .card .label { color: var(--muted); }
-.badge { display: inline-block; border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; margin: 0 8px 8px 0; background: #fff; }
+.badge { display: inline-block; border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; margin: 0 8px 8px 0; background: var(--panel); font-size: var(--fs-table); }
 .badge.warn { color: var(--warn); border-color: var(--warn); }
 .badge.bad { color: var(--bad); border-color: var(--bad); }
 .badge.ok { color: var(--ok); border-color: var(--ok); }
@@ -29,6 +50,6 @@ td a { color: #1d4ed8; }
 .error { color: var(--bad); }
 details { margin: 2px 0; }
 summary { cursor: pointer; }
-pre { background: #f3f4f6; padding: 8px; overflow-x: auto; max-width: 100%; }
+pre { background: #f3f4f6; padding: 8px; overflow-x: auto; max-width: 100%; font-size: var(--fs-table); margin: 0; }
 .counts { margin: 12px 0; }
 .section { margin-top: 24px; }

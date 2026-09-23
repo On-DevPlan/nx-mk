@@ -26,6 +26,8 @@ export class CoverageDb {
     // schema 演进（spec §3.1/§3.4）：§25 DDL 冻结，新列幂等 ALTER 落地
     ensureColumn(this.db, 'runs', 'terminated_by', 'TEXT')
     ensureColumn(this.db, 'ui_evidence', 'text_sample', 'TEXT')
+    // 响应值预览（UI「响应值」数据通道）：drained trace 的 responsePreview 落列
+    ensureColumn(this.db, 'request_traces', 'response_preview', 'TEXT')
   }
 
   get journalMode(): string {
@@ -76,10 +78,11 @@ export class CoverageDb {
         )
       }
       // request_traces：§25.4 列（scenario_id/dsl_step_id/replayable/replay_safety/replay_reason Phase 2 无数据 → NULL/默认）
+      // response_preview 为 §3.1 演进列（响应值预览，≤500 字符）
       const insTrace = this.db.prepare(
         `INSERT OR REPLACE INTO request_traces
-           (id, run_id, trace_id, scenario_id, dsl_step_id, endpoint_id, method, url, path, status, duration_ms, started_at, ended_at, replayable, replay_safety, replay_reason)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
+           (id, run_id, trace_id, scenario_id, dsl_step_id, endpoint_id, method, url, path, status, duration_ms, started_at, ended_at, response_preview, replayable, replay_safety, replay_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
       )
       for (const t of d.traces) {
         insTrace.run(
@@ -87,6 +90,7 @@ export class CoverageDb {
           t.endpointId ?? null,
           t.method, t.url, t.path ?? null, t.status ?? null, t.durationMs ?? null,
           t.startedAt ?? null, t.endedAt ?? null,
+          t.responsePreview ?? null,
         )
       }
       // ui_evidence：§25.7 列 + text_sample（§3.4 evidence 文本通道；evidence_type v0=text；screenshot_path 不采 → NULL）
