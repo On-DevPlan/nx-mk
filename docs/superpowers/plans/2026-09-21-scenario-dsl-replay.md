@@ -1769,6 +1769,7 @@ Expected: 恰 `packages/dashboard/src/server/replay.ts` 一文件
 
 ```yaml
 # examples/react-vite-demo 侧（用户手动）mk/scenarios/user-profile.yml
+# 字段路径按 demo app 实际渲染落码（UserProfile.tsx <Field field="data.*">）
 version: 1
 scenarios:
   - id: user-profile-basic
@@ -1783,10 +1784,10 @@ scenarios:
         selector: "[data-page='user-profile']"
       - id: assert-user-name
         type: assertFieldVisible
-        field: user.profile.name
+        field: data.name
       - id: assert-user-email
         type: assertFieldVisible
-        field: user.profile.email
+        field: data.email
       - id: shot
         type: screenshot
 ```
