@@ -89,3 +89,10 @@
 | C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | 部分落地：**Copy curl ☑ F6**（RequestDetail，method+url，V3 不臆造 body）；Request DSL/Export DSL ☐ 待独立 SDD |
 | C10 | Watch 模式 / TUI 实时进度（Plan 自标后置，低优） | §39 | ☑ 裁定延期（Plan §47.6 归属确认，非缺口） |
 | C11 | 采集上限 500 字符 → 截断残片致结构化脱敏退化为正则兜底（与 C1 合并评估） | §24 | ☑ 随 F1 消解（字段级散列在浏览器内对完整值计算，不经截断） |
+
+> **2026-09-25 插件 IO 对齐批注**（feat/plan-align-batch2）：CollectReport 改判别联合
+> （method/path 恒在，'GET (unknown)' 伪影消解）；原 Ruling 8 落地（manifest normalizedPath
+> 校验 + `__MK_MANIFEST__` 注入，endpointId 不再 'unknown'）；emitSignal 接线（done 声明
+> → goal-loop `all-done` 早停）。已知残余：插件 `configSchema` 校验仅覆盖 config 声明路径
+> （plugin-registry loadPlugins），CLI `extraPlugins` 代码装配不经此门 —— 属装配语义而非
+> 缺口，随未来 per-plugin config 收敛一并评估。

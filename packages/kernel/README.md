@@ -101,6 +101,9 @@ const result = await runGoalLoop({
   plugins,
   goal: { targetRatio: 1.0, maxTurns: 100, idleTurnsLimit: 3, absoluteTimeoutMs: 600_000 },
   initialCoverage: { total: 20, covered: 0, ratio: 0, missing: [...] },
+  getReports: () => reports,
+  getSignals: () => signals,
+  onTurn: (t) => { turn = t },
   ctx,
   signal: abortController.signal,
 })
@@ -108,7 +111,7 @@ const result = await runGoalLoop({
 // result.kind: 'met' | 'unmet' | 'aborted'
 // result.coverage: { total, covered, ratio, missing }
 // result.turns: number
-// result.terminatedBy: 'goal-met' | 'max-turns' | 'idle' | 'timeout' | 'aborted' | 'all-failed'
+// result.terminatedBy: 'goal-met' | 'max-turns' | 'idle' | 'timeout' | 'aborted' | 'all-failed' | 'all-done'
 ```
 
 ### 插件 API（M14）
@@ -131,10 +134,17 @@ export default createPlugin((ctx) => ({
 
 1. `signal.aborted` → `aborted`
 2. `coverage.ratio >= targetRatio` → `met`
-3. `turn >= maxTurns` → `unmet: max-turns`
-4. `idleTurns >= idleTurnsLimit` → `unmet: idle`
-5. `now - start >= absoluteTimeoutMs` → `unmet: timeout`
-6. 所有 active 插件 failed → `unmet: all-failed`
+3. 所有参与插件终态且 ≥1 done → `unmet: all-done`（信号终态在折算当轮 coverage 后判定）
+4. 全部参与者 failed → `unmet: all-failed`
+5. `turn >= maxTurns` → `unmet: max-turns`
+6. `idleTurns >= idleTurnsLimit` → `unmet: idle`
+7. `now - start >= absoluteTimeoutMs` → `unmet: timeout`
+
+**信号语义（M14 v1.1）**：`emitSignal` 进 `loopState.signals` 并发布 `plugin:signal`
+事件（events.jsonl 审计链）；`signal.plugin` 由内核 hook 运行器归因。终止判定按
+**参与者**（发过 ≥1 信号的插件去重集）聚合 —— 沉默插件（如 plugin-swagger）不阻塞
+all-done；`idle` 信号不算终态；未归因信号落 `''` 匿名桶按单参与者计。goal loop
+从不重调插件 —— 生产者完成声明（done）使循环立即诚实终止而非烧满 max-turns。
 
 ### 当前状态（M14 已完整集成）
 

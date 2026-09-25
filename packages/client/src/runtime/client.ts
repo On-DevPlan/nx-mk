@@ -126,7 +126,8 @@ export function createFetchClient(options: FetchClientOptions): FetchClient {
   //   production 分支消费 DetectMode 前的常规解构 —— zero-overhead 语义保持。
   // - analysis 下 collector 缺省 → window.__MK_COLLECTOR__ shim（浏览器）；无 shim → noop
   //   （generated-sdk 产物 createFetchClient({baseUrl}) 零参也能在 demo 采集闭环中工作）。
-  // - manifest 缺省 → __MK_MANIFEST__（Ruling 8 编译期注入；缺省 undefined → endpointId 'unknown'）。
+  // - manifest 缺省 → __MK_MANIFEST__（原 Ruling 8，已落地：plugin-playwright 经
+  //   addInitScript 运行时注入；缺省 undefined → endpointId 'unknown' fallback）。
   const { baseUrl, headers: baseHeaders = {}, onRequest, onResponse } = options
   const mode = options.mode ?? detectMode()
   const isAnalysis = mode === 'analysis'

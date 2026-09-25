@@ -1,6 +1,6 @@
 ---
 name: nx-mk-plugins
-description: Use when writing a new nx-mk plugin or working on packages/plugin-playwright (chromium 采集驱动） / packages/plugin-swagger —— 插件契约、addInitScript 注入、scanner/runner、endpointId unknown fallback. Progressive disclosure with refs to plan sections and code map.
+description: Use when writing a new nx-mk plugin or working on packages/plugin-playwright (chromium 采集驱动） / packages/plugin-swagger —— 插件契约、addInitScript 注入（collector + manifest shim）、scanner/runner、emitSignal 终态上报. Progressive disclosure with refs to plan sections and code map.
 ---
 
 # nx-mk plugins
@@ -9,13 +9,14 @@ description: Use when writing a new nx-mk plugin or working on packages/plugin-p
 
 ## 板块边界
 
-`packages/plugin-playwright/src/`（index/runner/scanner）+ `packages/plugin-swagger/src/`（index）+ kernel 插件契约侧（契约本身见 [[nx-mk-kernel-core]]）。插件本质：实现 kernel hooks（§14 契约）并在 plugins-manifest 登记可装配面。
+`packages/plugin-playwright/src/`（index/runner/scanner/manifest）+ `packages/plugin-swagger/src/`（index）+ kernel 插件契约侧（契约本身见 [[nx-mk-kernel-core]]）。插件本质：实现 kernel hooks（§14 契约）并在 plugins-manifest 登记可装配面。
 
 ## 插件铁律（勿改）
 
 - 插件只经 kernel plugin-registry 装配，禁止 kernel 直接 import 插件（§14 裁决双向成立）
 - 新插件五件套：实现 kernel 契约 → plugins-manifest 登记 → plugin-schema 测试 → per-run manifest 读路径（dashboard plugins-reader）→ demo 装配验证
-- Ruling 8（plugin-playwright/src/index.ts 头注释）：endpointId 落 'unknown' fallback 是 v0 已知限制，修它是 plan 层决策
+- 原 Ruling 8 已落地（2026-09-25，feat/plan-align-batch2）：plugin-playwright beforeRun 读 `.nx-mk/manifest.json` —— DOM dataMkField 过 normalizedPath 校验集（与 Goal Loop missing 键域同域）+ 注入 `window.__MK_MANIFEST__`（endpointId 不再 'unknown'）；manifest 缺席降级 warn 一次
+- 采集完成须 `emitSignal({kind:'done'})`：kernel goal-loop 据此 all-done 早停（信号由 hook 运行器归因 plugin 名，插件不填）
 
 ## 引用索引（按需加载）
 

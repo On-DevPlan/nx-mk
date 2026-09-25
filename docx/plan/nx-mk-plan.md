@@ -2990,3 +2990,31 @@ Dashboard
 | Watch 模式 / TUI 实时进度 | §39 | Plan 自标后置；与 C6（openapi.watch/app: 段）合并待独立 SDD |
 | Agent 权限四档（read-only/workspace-write/auto-apply）与 rollback 执行 | §36/§38 | D1 决策明示「MVP 默认 suggest-diff，不实现 workspace-write/auto-apply（Phase 5+）」；rollbackOnRegression 依赖 workspace-write 语义，随之 Phase 5+ |
 | api-client-agent / dsl-agent / policy-agent 插件 | §35.2/35.3/35.4 | 待独立 SDD（dsl-agent 依赖 Request DSL C9；policy-agent 依赖 §33 协议面） |
+
+### 47.7 插件 IO 对齐落地记录（2026-09-25，feat/plan-align-batch2；对齐 dsh/ReactLoopAgent IO 惯例）
+
+- **G1**：client `CollectReport` 改判别联合 —— `field-hit{fieldId}` / `endpoint-called{method,path}`
+  全字段必填；删除 snapshot() hit 侧 bare endpoint-called 兜底（无 method/path 的报告会被
+  toReport 伪造成 `'GET (unknown)'` 污染 Goal Loop 键空间）。dsh 惯例：canonical 空可选字段
+  缺席优于伪造。
+- **G2（原 Ruling 8 落地）**：plugin-playwright beforeRun 读 `.nx-mk/manifest.json`（与
+  initial-coverage 同路径语义）—— ① DOM dataMkField 直报过 `normalizedPath` 校验集
+  （spec §3.1 id-space 对齐后 Goal Loop missing 键域即 normalizedPath，垃圾 fieldId 不进
+  Goal Loop）；② `__MK_MANIFEST__` 注入（legacy initScripts + 套件 initScripts 双路径），
+  demo SDK 浏览器侧 matchEndpoint 解析真实 endpointId，`request_traces.endpoint_id` 不再
+  NULL。manifest 缺席降级 warn 一次 + 不校验直报。
+- **G3（M14 v1.1 emitSignal 接线）**：`emitSignal` 由 no-op 改为 loopState.signals +
+  `plugin:signal` 事件（events.jsonl 审计链）；hook 运行器 per-plugin 浅包装归因
+  `signal.plugin`；goal-loop `getSignals` + `classifySignals`：all-done（每参与者终态且
+  ≥1 done）/ all-failed（全 failed）在折算当轮 coverage 后判定，`goal-met` 优先序不被
+  时序差打破；`terminatedBy` 增 `'all-done'`。goal loop 从不重调插件 —— done 声明使循环
+  第 1 轮诚实终止而非烧满 max-turns。
+- **G4**：plugin-playwright 声明 `configSchema`（`{url?, waitForSelector?}`，zod 原生
+  StandardSchemaV1）；仅 config 声明路径生效（extraPlugins 代码装配不经 loadPlugins，
+  已记 hygiene-backlog 批注）。
+- **有意偏离（冻结面，非缺口）**：事件时间戳保持 ISO 8601（dsh 用 epoch ms；SQLite §25
+  DDL TEXT 冻结）；事件名保持 `domain:verb` 冒号风格（dsh 用 `domain/verb`；events.jsonl
+  与 dashboard 消费方冻结）。
+- 陈旧注释勘误：plugin-playwright 头注释「§1.4.2 stableFieldId 错位不可达」已不成立
+  （initial-coverage spec §3.1 对齐后 missing 键域为 normalizedPath，demo data-mk-field
+  同域）—— goal-met 经 field-hit 实际可达，本批 G2 消除的是校验与注入残余缺口。
