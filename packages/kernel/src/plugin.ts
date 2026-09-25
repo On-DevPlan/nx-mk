@@ -86,7 +86,9 @@ export interface PluginContext {
   kernel: KernelAPI
   cwd: string                       // ← NEW: 内核运行的工作目录（Phase 1 引入）
   signal?: AbortSignal              // ← M14：Goal Loop 终止信号
-  // M14：Goal Loop 报告 / 信号 API
+  // M14：Goal Loop 报告 / 信号 API（emitSignal 归因见 PluginSignal.plugin ——
+  // hook 运行器包装 ctx 时注入插件名；信号进 loopState 供 goal-loop 终止判定，
+  // 并发布 plugin:signal 事件进 events.jsonl 审计链）
   emitReport(report: PluginReport): void
   emitSignal(signal: PluginSignal): void
   getTurn(): number

@@ -83,6 +83,7 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
   /** M14：Goal Loop 共享状态（mutable）—— 结构与读写方见 kernel-runtime.ts 的 KernelLoopState */
   const loopState: KernelLoopState = {
     reports: [],
+    signals: [],
     turn: 0,
     coverage: { total: 0, covered: 0, ratio: 1.0, missing: [] as MissingItem[] } as Coverage,
     idleTurns: 0,
@@ -116,8 +117,11 @@ export function createKernel(opts: CreateKernelOptions): KernelAPI {
       emitReport: (report: PluginReport): void => {
         loopState.reports.push(report)
       },
-      emitSignal: (_signal: PluginSignal): void => {
-        /* signal 处理留作未来 milestone（M14 当前仅记录 report） */
+      emitSignal: (signal: PluginSignal): void => {
+        // M14 v1.1 接线：信号进 loopState（goal-loop 消费 all-done / all-failed 终止）
+        // + plugin:signal 事件（events.jsonl 审计链；插件名由 hook 运行器包装时补全）
+        loopState.signals.push(signal)
+        events.emit({ type: 'plugin:signal', signal, timestamp: new Date().toISOString() })
       },
       getTurn: (): number => loopState.turn,
       getCoverage: (): Coverage => loopState.coverage,

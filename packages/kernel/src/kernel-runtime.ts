@@ -17,13 +17,15 @@ import type { EventBus } from './event-bus'
 import type { Logger } from './logger'
 import type { CreateKernelOptions } from './kernel'
 import type { Plugin, PluginContext } from './plugin'
-import type { Coverage, KernelState, Phase, PluginReport, PluginWorkerState, ResolvedConfig } from './types'
+import type { Coverage, KernelState, Phase, PluginReport, PluginSignal, PluginWorkerState, ResolvedConfig } from './types'
 import { assertNever, makePluginName } from './types'
 
 /** M14：Goal Loop 共享状态（mutable）。run 阶段触发 Goal Loop 时填充。
  *  buildCtx 的 emit/emitSignal/getTurn/getCoverage 方法读/写这里。 */
 export interface KernelLoopState {
   reports: PluginReport[]
+  /** M14 v1.1：插件信号（hook 运行器包装归因插件名；goal-loop 消费终止判定） */
+  signals: PluginSignal[]
   turn: number
   coverage: Coverage
   idleTurns: number
@@ -140,8 +142,14 @@ export function createKernelRuntime(deps: KernelRuntimeDeps): KernelRuntime {
     const name = hookNameForPhase(phase, timing)
     // 逐个插件串行执行；捕获后先记录失败详情再原样抛出（fail-fast）
     for (const plugin of phasePlugins) {
+      // M14 v1.1：per-plugin 浅包装 —— emitSignal 归因插件名（plugin 字段由内核
+      // 绑定，插件自身不填）；其余 ctx 成员原样共享
+      const pluginCtx: PluginContext = {
+        ...ctx,
+        emitSignal: (signal) => ctx.emitSignal({ ...signal, plugin: plugin.name }),
+      }
       try {
-        await runHook(name, plugin, ctx)
+        await runHook(name, plugin, pluginCtx)
       } catch (err) {
         // 中文：优先取被包装前的原始错误（cause）的信息与堆栈，
         // 让下游看到插件真实报错（如 "hook-boom"）而非外层包装文案
@@ -257,6 +265,7 @@ export function createKernelRuntime(deps: KernelRuntimeDeps): KernelRuntime {
       // Goal Loop 启动前被清空，spec §1.4.2「field-hit 提前 goal-met」静默失败。
       // initial coverage 仍在 beforeRun 之后读取（plugin-swagger 在 beforeRun 写 manifest）。
       loopState.reports = []
+      loopState.signals = []
       loopState.turn = 0
       loopState.idleTurns = 0
       await runHooksForPhaseWithCapture(phase, 'before', deps.getPlugins(), deps.buildCtx())
@@ -276,8 +285,9 @@ export function createKernelRuntime(deps: KernelRuntimeDeps): KernelRuntime {
             plugins: deps.getPlugins(),
             goal: config.goal,
             initialCoverage: loopState.coverage,
-            // 把 loopState 访问器注入 runGoalLoop —— 让 reports / turn 真正双向流动
+            // 把 loopState 访问器注入 runGoalLoop —— 让 reports / signals / turn 真正双向流动
             getReports: () => loopState.reports,
+            getSignals: () => loopState.signals,
             onTurn: (t) => { loopState.turn = t },
             ctx: deps.buildCtx(),
             signal: goalAbort.signal,
@@ -292,13 +302,14 @@ export function createKernelRuntime(deps: KernelRuntimeDeps): KernelRuntime {
               durationMs: goalResult.durationMs,
             })
           } else {
-            // GoalResult.terminatedBy 在 kind='unmet' 时只能是 4 种之一；其余视为内核 bug
+            // GoalResult.terminatedBy 在 kind='unmet' 时只能是 5 种之一；其余视为内核 bug
             const reason = goalResult.terminatedBy
             switch (reason) {
               case 'max-turns':
               case 'idle':
               case 'timeout':
               case 'all-failed':
+              case 'all-done':
                 events.emit({
                   type: 'goal:unmet',
                   reason,

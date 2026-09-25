@@ -24,7 +24,9 @@
     "@nx-mk/client": "workspace:*",
     "@nx-mk/coverage": "workspace:*",
     "@nx-mk/scenario": "workspace:*",
-    "playwright-core": "^1.49.0"
+    "@nx-mk/manifest-schema": "workspace:*",
+    "playwright-core": "^1.49.0",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

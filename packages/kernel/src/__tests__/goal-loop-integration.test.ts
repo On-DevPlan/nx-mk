@@ -144,6 +144,49 @@ describe('M14 integration: kernel.run() with goal loop', () => {
     expect(state.collectionResult?.turns).toBe(1)
   })
 
+  it('M14 v1.1：beforeRun 期 emitSignal(done) → all-done 早停 + plugin:signal 事件带插件归因', async () => {
+    // 场景：plugin-playwright 式插件完成单次收集（无字段命中）后声明 done ——
+    // Goal Loop 不再烧满 maxTurns，第 1 轮即以 all-done 诚实终止。
+    const goal: GoalConfig = {
+      targetRatio: 1.0,
+      maxTurns: 5,
+      idleTurnsLimit: 2,
+      absoluteTimeoutMs: 60000,
+    }
+    writeConfigWithGoal(goal)
+
+    const collectingPlugin: Plugin = {
+      name: '@nx-mk/one-pass-collector',
+      version: '1.0.0',
+      hooks: {
+        beforeRun(ctx) {
+          ctx.emitSignal({ kind: 'done', reason: 'all-collected', turn: ctx.getTurn() })
+        },
+      },
+    }
+
+    const kernel = createKernel({
+      configPath,
+      runId: 'goal-signal' as never,
+      subcommand: 'run',
+      cwd: workDir,
+      plugins: [collectingPlugin],
+    })
+    await kernel.run()
+
+    const state = kernel.getState()
+    // 断言核心：done 声明 → 第 1 轮 all-done 早停（未达目标 → kind unmet）
+    expect(state.collectionResult?.kind).toBe('unmet')
+    expect(state.collectionResult?.terminatedBy).toBe('all-done')
+    expect(state.collectionResult?.turns).toBe(1)
+    // 审计链：events.jsonl 落 plugin:signal 行，signal.plugin 由 hook 运行器归因
+    const signalEvents = readEvents('goal-signal').filter((e) => e.type === 'plugin:signal')
+    expect(signalEvents).toHaveLength(1)
+    expect(signalEvents[0]).toMatchObject({
+      signal: { kind: 'done', reason: 'all-collected', plugin: '@nx-mk/one-pass-collector' },
+    })
+  })
+
   it('seeds initial coverage from .nx-mk/manifest.json when present', async () => {
     // M14 收尾：写一份模拟 manifest.json，验证 kernel 把它转成 missing items
     const goal: GoalConfig = {

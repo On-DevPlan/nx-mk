@@ -30,6 +30,41 @@ describe('classifyReplay（plan §27.2 矩阵）', () => {
   })
 })
 
+describe('classifyReplay — C3 用户规则（config replay: 段）', () => {
+  it('blockPatterns glob 命中 → blocked（** 跨层级、* 单层内）', () => {
+    const rules = { blockPatterns: ['/api/vault/**', '/tmp/*/secret'] }
+    expect(classifyReplay('GET', 'http://api.local/api/vault/charge/1', rules).verdict).toBe('blocked')
+    expect(classifyReplay('GET', 'http://api.local/api/vault', rules).verdict).toBe('safe') // ** 需有后继层级
+    expect(classifyReplay('GET', 'http://api.local/tmp/abc/secret', rules).verdict).toBe('blocked')
+    expect(classifyReplay('GET', 'http://api.local/tmp/x/y/secret', rules).verdict).toBe('safe') // * 不跨层
+  })
+  it('自定义 allowMethods：GET 之外全部 fail-closed', () => {
+    const rules = { allowMethods: ['GET'] }
+    expect(classifyReplay('GET', 'http://api.local/a', rules).verdict).toBe('safe')
+    const u = classifyReplay('HEAD', 'http://api.local/a', rules)
+    expect(u.verdict).toBe('unsafe')
+    expect(u.reason).toContain('not in replay.allowMethods')
+  })
+  it('自定义 requireConfirmation：PUT 仍归 idempotent（V3 幂等键）', () => {
+    const rules = { requireConfirmation: ['PUT', 'DELETE'] }
+    expect(classifyReplay('PUT', 'http://api.local/a', rules).verdict).toBe('idempotent')
+    expect(classifyReplay('DELETE', 'http://api.local/a', rules).verdict).toBe('unsafe')
+    expect(classifyReplay('POST', 'http://api.local/a', rules).verdict).toBe('unsafe')
+    expect(classifyReplay('POST', 'http://api.local/a', rules).reason).toContain('not in replay.allowMethods')
+  })
+  it('规则缺省 = 内置默认行为逐字保持（回归锁）', () => {
+    expect(classifyReplay('GET', 'http://api.local/a', {}).verdict).toBe('safe')
+    expect(classifyReplay('HEAD', 'http://api.local/a', {}).verdict).toBe('safe')
+    expect(classifyReplay('PUT', 'http://api.local/a', {}).verdict).toBe('idempotent')
+    expect(classifyReplay('POST', 'http://api.local/a', {}).verdict).toBe('unsafe')
+    expect(classifyReplay('TRACE', 'http://api.local/a', {}).verdict).toBe('unsafe')
+  })
+  it('内置敏感词表始终兜底（用户规则放大而非收窄 blocked）', () => {
+    const rules = { allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }
+    expect(classifyReplay('GET', 'http://api.local/payment/x', rules).verdict).toBe('blocked')
+  })
+})
+
 describe('replay 路由', () => {
   let dir: string
   let app: FastifyInstance

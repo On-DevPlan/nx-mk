@@ -20,7 +20,7 @@ export function PluginSettingsPage() {
   if (error instanceof ApiError) {
     return <p className="error">{T('error {code}: {detail}', { code: error.status, detail: error.detailMessage })}</p>
   }
-  if (!data) return <p>{T('loading…')}</p>
+  if (!data) return <p className="loading">{T('loading…')}</p>
   if (data.stale) {
     return (
       <section>

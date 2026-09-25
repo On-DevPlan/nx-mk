@@ -81,8 +81,8 @@ export function analyzeCoverage(input: AnalyzeInput): CoverageReport {
 
   const ins = db.prepare(
     `INSERT OR REPLACE INTO coverage_fields
-       (id, run_id, field_id, endpoint_id, field_path, policy_status, coverage_state, access_hit, ui_hit, assertion_hit, suspicious, counted_required, counted_effective)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, run_id, field_id, endpoint_id, field_path, policy_status, coverage_state, access_hit, ui_hit, assertion_hit, suspicious, counted_required, counted_effective, matched_rule_reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   // B1（hygiene）：先收集全部行参数（纯分析），循环结束后单事务批量落库 ——
   // 中途任意一行失败 → 全部回滚，避免失败 run 残留部分 coverage_fields
@@ -140,11 +140,13 @@ export function analyzeCoverage(input: AnalyzeInput): CoverageReport {
     if (suspicious) suspiciousCoverage.push(item)
     if (policyStatus === 'ignored' && hit) ignoredReturnedFields.push(item)
 
-    // 5. coverage_fields 13 列逐列绑定（id `cf_${runId}_${normalizedPath}`；assertion_hit 恒 0）
+    // 5. coverage_fields 14 列逐列绑定（id `cf_${runId}_${normalizedPath}`；assertion_hit 恒 0；
+    //    matched_rule_reason C2 —— 用户配置 reason 透出，默认规则的 reason 也随决策落列）
     rows.push([
       `cf_${runId}_${f.normalizedPath}`, runId, f.id, f.endpointId, f.normalizedPath,
       policyStatus, state, accessHit ? 1 : 0, uiHit ? 1 : 0, 0, suspicious ? 1 : 0,
       countedRequired ? 1 : 0, countedEffective ? 1 : 0,
+      decision?.matchedRule?.reason ?? null,
     ])
   }
 

@@ -2909,3 +2909,119 @@ Dashboard
 ```
 
 ```
+
+---
+
+## 47. 实现裁定记录（2026-09-25，对照 master `55b609d`）
+
+> 本节是 §1–§46 与实际实现之间的**裁定差异台账**：分「已裁定偏离」（按 SDD spec/代码裁定落地，本文对应章节按此理解）与「未实现缺口」（转 `docs/hygiene-backlog.md` C 组跟踪）。§编号引用不变。
+
+### 47.1 已裁定偏离
+
+| # | Plan 原文 | 实现裁定 | 出处 |
+|---|---|---|---|
+| R1 | 全局命名 `mk`（`npx mk`、`node_modules/.mk/`） | 全局更名 `nx-mk`（`npx nx-mk`、scope `@nx-mk/*`）；`examples/react-vite-demo/mk/scenarios/` 目录名保留 `mk`（demo 本地验收物料，spec SP9 明示不随 PR 提交） | PR #21–#24 期间裁定 |
+| R2 | CLI `start` 为默认子命令并代启用户 App（§5.1） | 默认子命令为 `run`，**不代启用户 App**（用户自起 vite，`collect.url` 指向之）；`start` 收敛为 dashboard 启动命令（消费 `dashboard.port/open`） | run.ts / start 命令实现 |
+| R3 | dashboard-server 与 dashboard-ui 分立 | 合一包 `@nx-mk/dashboard`（fastify server + React UI 同包，`src/server` + `src/ui`） | PR #13 起 |
+| R4 | coverage.db / coverage-report.json 落 per-run 目录 | 提升至 `.nx-mk/` 根（共享库语义：agent loop 复用同一 coverage.db，dashboard 直接读根产物）；per-run 仅留 manifest 快照 + 运行日志 | Phase 3/5 实现 |
+| R5 | §20/D10 `defaultView` 配置 | 明示**不收**（dashboard 段仅 `port`/`open`，spec D10） | spec D10 |
+| R6 | codegen 产物落 `node_modules/.mk/client/` | 落用户源码 `app/src/generated-sdk.ts`（显式可见、可 review、可 diff） | Phase 1.5 实现 |
+| R7 | §10 示例配置键 `coveragePolicy` | 实为 `coverage:`（`required`/`optional`/`ignored` 三个 glob 字符串数组）；**reason 字段未收**（缺口 → C 组） | config schema.ts |
+| R8 | §26.1 step 8 种 | v0 裁定 5 种：goto / waitFor / waitForRequest / assertFieldVisible / screenshot（全 read-only，verdict 恒 safe） | spec S 系列 |
+
+### 47.2 技术栈替代（§6 清单整体过时；D2 铁律：零新增外部 npm 包）
+
+| Plan §6 | 实际 |
+|---|---|
+| Commander | 自研 argv dispatch（cli/src/index.ts） |
+| TanStack Query / ECharts | 自研 React 轮询页（Poller 5s）+ 原生 SVG/CSS |
+| Drizzle ORM | better-sqlite3 裸 SQL（§25 DDL 逐字 + 幂等加列） |
+| Monaco / jscodeshift | 自研 codegen 与 migrate（静态 fetch 替换） |
+
+### 47.3 §24 隐私落地裁定（2026-09-25 补实现）
+
+- 响应值通道实现为 **trace 级 `response_preview`（≤500 字符）**，非本 plan §24 的字段级 `valueType/hash` 明细（字段级 hash 通道未实现 → C 组）。
+- 隐私层施加于 **coverage 落库前**（`CoverageDb.flushDrained`）：`privacy.responseValues.mode = masked（默认）| raw | none`；masked 按 glob 规则（`*` 跨层级）对 JSON 叶子键打码（email/phone/full 策略），非 JSON 残片退化为字符串级正则；无 `privacy:` 段时按安全默认（内置规则表）脱敏。
+- 已知限制：采集侧浏览器内截断 500 → 超长响应体落库前非合法 JSON，结构化键打码退化为正则兜底。
+
+### 47.4 未实现缺口（转 hygiene-backlog C 组）
+
+> **2026-09-25 二批裁定**：C1–C5、C9 的 Copy curl 已小步落地（见 47.5）；C6/C10 属 Plan 自标后置
+> （§39 Watch/TUI）、C7 的权限四档与回滚属 §36/D1 自裁 MVP 后置 —— 三者**不是缺口而是 roadmap 归属**，
+> 改记 47.6；剩余真正待 SDD 的只有 C7 的 3 个插件与 C8 协议暴露面。
+
+| # | 缺口 | Plan 出处 | 裁定 |
+|---|---|---|---|
+| C1 | 字段级响应值通道（valueType/valueState/hash） | §24 | ✅ 47.5-F1 |
+| C2 | `coverage:` 条目 reason 字段（含报告透出） | §10/§16 | ✅ 47.5-F2 |
+| C3 | `replay:` 安全规则可配（现硬编码 GET-safe / POST-confirm） | §23 | ✅ 47.5-F3 |
+| C4 | CLI `report` / `replay` 子命令 | §5.1 | ✅ 47.5-F4 |
+| C5 | `config.resolved.json` 落盘（写盘面扩展，需走铁律评审） | §10 | ✅ 47.5-F5 |
+| C6 | `openapi.watch` / `app:`（CLI 代启应用）段 | §10/§39 | → 47.6（随 watch 模式一并 SDD） |
+| C7 | Agent：3 个内置插件（dsl/auth/perf）、权限四档、rollbackOnRegression 回滚执行 | §35/§36/§38 | 权限四档/回滚 → 47.6（§36/D1 自裁 MVP 后置）；**插件 ☐ 待独立 SDD**（dsl-agent 依赖 Request DSL） |
+| C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 | ☐ 待独立 SDD（API 面设计需 spec） |
+| C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | Copy curl ✅ 47.5-F6；Request DSL/Export DSL ☐ 待独立 SDD |
+| C10 | Watch 模式 / TUI 实时进度（Plan 自标后置） | §39 | → 47.6（Plan 自标后置，裁定延期） |
+| C11 | 采集上限 500 → 截断残片致结构化脱敏退化（配合 C1 一并评估） | §24 | ✅ 随 47.5-F1 消解（字段级散列在浏览器内对完整值计算，不经截断） |
+
+### 47.5 二批落地记录（2026-09-25，feat/plan-adjudication-privacy 追加 commit）
+
+- **F1（C1/C11）**：client 代理 get 拦截就地产 `valueState`（present/null/undefined/empty）/`valueType`
+  （null/array/typeof）/`valueHash`（FNV-1a 32bit 单向散列）随 hit 上报；coverage `field_hits` 演进列
+  `value_state/value_type/value_hash` 落库；dashboard RequestDetail 字段命中表透出。**隐私设计强于 trace 级
+  masked**：散列在浏览器内对完整值计算（不经 500 字符截断，C11 消解），原文不出浏览器。
+- **F2（C2）**：config `coverage:` 条目升级 `string | {pattern, reason}`（向后兼容）；policy-engine
+  matchedRule 透出 reason；`coverage_fields` 演进列 `matched_rule_reason`；agent policySummary 的
+  ignored 枚举附带 reason。
+- **F3（C3）**：config `replay:` 段（allowMethods / requireConfirmation / block[].pattern）；
+  `classifyReplay(method, url, rules?)` 用户规则注入，缺省逐字保持内置默认；CLI `replay` 与 dashboard
+  路由同源复用；fail-closed（未列入 allowMethods 的一律 deny）；内置敏感词表始终兜底。
+- **F4（C4）**：CLI 新增 `report`（打印三指标摘要 + 产物路径，`--open` 系统打开）与
+  `replay request <runId> <requestId> [--confirm]` / `replay scenario <scenarioId>` 子命令；
+  kernel `ResolvedConfig.subcommand` 联合扩展 `report|replay`。
+- **F5（C5）**：per-run `.nx-mk/runs/{runId}/config.resolved.json` 快照（runId/configPath/recordedAt/
+  resolved config）；写者归 CLI（run 产物目录既有写面，铁律不破）；失败 warn 不阻断。
+- **F6（C9 部分）**：dashboard RequestDetail「Copy curl」区（method+url；V3 裁定不臆造 body/headers）。
+
+### 47.6 延期裁定（Plan 自标后置项的归属确认，非缺口）
+
+| 项 | Plan 出处 | 裁定 |
+|---|---|---|
+| Watch 模式 / TUI 实时进度 | §39 | Plan 自标后置；与 C6（openapi.watch/app: 段）合并待独立 SDD |
+| Agent 权限四档（read-only/workspace-write/auto-apply）与 rollback 执行 | §36/§38 | D1 决策明示「MVP 默认 suggest-diff，不实现 workspace-write/auto-apply（Phase 5+）」；rollbackOnRegression 依赖 workspace-write 语义，随之 Phase 5+ |
+| api-client-agent / dsl-agent / policy-agent 插件 | §35.2/35.3/35.4 | 待独立 SDD（dsl-agent 依赖 Request DSL C9；policy-agent 依赖 §33 协议面） |
+
+### 47.7 插件 IO 对齐落地记录（2026-09-25，feat/plan-align-batch2；对齐 dsh/ReactLoopAgent IO 惯例）
+
+- **G1**：client `CollectReport` 改判别联合 —— `field-hit{fieldId}` / `endpoint-called{method,path}`
+  全字段必填；删除 snapshot() hit 侧 bare endpoint-called 兜底（无 method/path 的报告会被
+  toReport 伪造成 `'GET (unknown)'` 污染 Goal Loop 键空间）。dsh 惯例：canonical 空可选字段
+  缺席优于伪造。
+- **G2（原 Ruling 8 落地）**：plugin-playwright beforeRun 读 `.nx-mk/manifest.json`（与
+  initial-coverage 同路径语义）—— ① DOM dataMkField 直报过 `normalizedPath` 校验集
+  （spec §3.1 id-space 对齐后 Goal Loop missing 键域即 normalizedPath，垃圾 fieldId 不进
+  Goal Loop）；② `__MK_MANIFEST__` 注入（legacy initScripts + 套件 initScripts 双路径），
+  demo SDK 浏览器侧 matchEndpoint 解析真实 endpointId，`request_traces.endpoint_id` 不再
+  NULL。manifest 缺席降级 warn 一次 + 不校验直报。
+- **G3（M14 v1.1 emitSignal 接线）**：`emitSignal` 由 no-op 改为 loopState.signals +
+  `plugin:signal` 事件（events.jsonl 审计链）；hook 运行器 per-plugin 浅包装归因
+  `signal.plugin`；goal-loop `getSignals` + `classifySignals`：all-done（每参与者终态且
+  ≥1 done）/ all-failed（全 failed）在折算当轮 coverage 后判定，`goal-met` 优先序不被
+  时序差打破；`terminatedBy` 增 `'all-done'`。goal loop 从不重调插件 —— done 声明使循环
+  第 1 轮诚实终止而非烧满 max-turns。
+- **G4**：plugin-playwright 声明 `configSchema`（`{url?, waitForSelector?}`，zod 原生
+  StandardSchemaV1）；仅 config 声明路径生效（extraPlugins 代码装配不经 loadPlugins，
+  已记 hygiene-backlog 批注）。
+- **有意偏离（冻结面，非缺口）**：事件时间戳保持 ISO 8601（dsh 用 epoch ms；SQLite §25
+  DDL TEXT 冻结）；事件名保持 `domain:verb` 冒号风格（dsh 用 `domain/verb`；events.jsonl
+  与 dashboard 消费方冻结）。
+- **G5（demo 冒烟暴露的 matchEndpoint base 前缀缺口）**：`__MK_MANIFEST__` 注入后首次
+  以真实 manifest 参与 matchEndpoint —— demo fetch 经 `/api` 代理挂载，pathname 含前缀
+  （3 段）对模板 `/users/{id}`（2 段）段数恒不等 → endpointId 仍 'unknown'。新增
+  `endpointScopePath(pathname, baseUrl)` 剥离挂载前缀后再匹配（API 空间）；demo 复跑
+  验证 `request_traces.endpoint_id = d1b393a270b2`（真实 id，不再 NULL）、required 100%
+  → terminated_by = 'goal-met' @ turn 1。陈旧测试勘误：analysis.test.ts Ruling 8 用例
+  模板 `/api/users/{id}` 改回 API 空间 `/users/{id}`（OpenAPI path 永不含挂载前缀）。
+- 陈旧注释勘误：plugin-playwright 头注释「§1.4.2 stableFieldId 错位不可达」已不成立
+  （initial-coverage spec §3.1 对齐后 missing 键域为 normalizedPath，demo data-mk-field
+  同域）—— goal-met 经 field-hit 实际可达，本批 G2 消除的是校验与注入残余缺口。

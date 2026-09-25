@@ -20,6 +20,17 @@ import type {
   RequestsListResponse,
 } from '../../shared/api-types'
 
+/** HTTP 方法徽章着色（与 RequestsList 同一套语义色） */
+function MethodBadge({ method }: { method: string }) {
+  const cls =
+    method === 'GET' ? 'method method-get'
+    : method === 'POST' ? 'method method-post'
+    : method === 'PUT' || method === 'PATCH' ? 'method method-put'
+    : method === 'DELETE' ? 'method method-delete'
+    : 'method'
+  return <span className={cls}>{method}</span>
+}
+
 export function ManifestBrowserPage({ runId }: { runId: string }) {
   const T = useT()
   const manifest = usePolling<ManifestResponse>(`/api/runs/${runId}/manifest`)
@@ -41,7 +52,7 @@ export function ManifestBrowserPage({ runId }: { runId: string }) {
       </p>
     )
   }
-  if (!manifest.data) return <p>{T('loading…')}</p>
+  if (!manifest.data) return <p className="loading">{T('loading…')}</p>
 
   const m = manifest.data
   // policyStatus 映射：fieldPath → policyStatus（fields 路由失败时徽章显 —）
@@ -84,14 +95,11 @@ export function ManifestBrowserPage({ runId }: { runId: string }) {
             {m.endpoints.map((e) => (
               <tr
                 key={e.id}
+                className={current?.id === e.id ? 'row-click row-selected' : 'row-click'}
                 onClick={() => setSelected(e.id)}
-                style={{
-                  cursor: 'pointer',
-                  fontWeight: current?.id === e.id ? 'bold' : 'normal',
-                }}
               >
                 <td>
-                  <span className="badge">{e.method}</span>
+                  <MethodBadge method={e.method} />
                 </td>
                 <td>{e.path}</td>
                 <td>{requestedPaths.has(e.path) ? '✓' : '—'}</td>
@@ -104,7 +112,7 @@ export function ManifestBrowserPage({ runId }: { runId: string }) {
       {current && (
         <div className="section">
           <h2>
-            Schema — <span className="badge">{current.method}</span> {current.path}
+            Schema — <MethodBadge method={current.method} /> {current.path}
           </h2>
           {currentFields.length === 0 ? (
             <p className="empty">{T('no fields')}</p>

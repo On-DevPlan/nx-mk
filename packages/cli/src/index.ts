@@ -19,9 +19,11 @@ import { runDoctor } from './commands/doctor.js'
 import { runMigrate } from './commands/migrate.js'
 import { startMain } from './commands/start.js'
 import { loopMain } from './commands/loop.js'
+import { reportMain } from './commands/report.js'
+import { replayMain } from './commands/replay.js'
 
 // 子命令联合类型（run 为缺省值）
-type Subcommand = 'run' | 'init' | 'doctor' | 'migrate' | 'start' | 'loop'
+type Subcommand = 'run' | 'init' | 'doctor' | 'migrate' | 'start' | 'loop' | 'report' | 'replay'
 
 // argv 解析结果：子命令 + 各类全局选项（config/logLevel/outputDir/runId 可覆盖配置）
 interface ParsedArgs {
@@ -32,6 +34,14 @@ interface ParsedArgs {
   runId?: string
   help: boolean
   version: boolean
+  /** 非旗标位置参数（report/replay 的目标：kind 与 id 等） */
+  positionals: string[]
+  report: {
+    open: boolean
+  }
+  replay: {
+    confirm: boolean
+  }
   migrate: {
     manifestPath?: string
     dir?: string
@@ -61,6 +71,8 @@ Subcommands:
   migrate  Migrate static fetch('/api/...') calls to api.ns.method() (SDK-CG3)
   start    Start the local Dashboard at 127.0.0.1:4317 (auto-runs analysis unless --no-run)
   loop     Run the Agent Loop: turn coverage gaps into suggested diffs (no workspace writes)
+  report   Print coverage report summary and artifact paths (--open opens the report file)
+  replay   Replay a request or a scenario: replay request <runId> <requestId> | replay scenario <id>
 
 Options:
   --config <path>        Path to nx-mk.config.yml (overrides lookup)
@@ -70,6 +82,8 @@ Options:
   --port <n>             Dashboard port (start only; overrides config dashboard.port)
   --no-run               (start) serve existing artifacts without running analysis
   --max-iterations <n>   (loop) override agent.loop.maxIterations
+  --confirm              (replay request) confirm non-safe method replay
+  --open                 (report) open coverage-report.json with the system viewer
   --manifest <path>      Path to .nx-mk/manifest.json (migrate only, default ./.nx-mk/manifest.json)
   --dir <path>           Source dir to scan (migrate only, default ./src)
   --api-prefix <prefix>  fetch URL prefix (migrate only, default /api)
@@ -92,6 +106,9 @@ function parseArgs(argv: string[]): ParsedArgs {
     subcommand: 'run',
     help: false,
     version: false,
+    positionals: [],
+    report: { open: false },
+    replay: { confirm: false },
     migrate: { dryRun: false, json: false },
     start: { noRun: false },
     loop: {},
@@ -158,18 +175,27 @@ function parseArgs(argv: string[]): ParsedArgs {
       case '--json':
         out.migrate.json = true
         break
+      case '--confirm':
+        out.replay.confirm = true
+        break
+      case '--open':
+        out.report.open = true
+        break
       case 'run':
       case 'init':
       case 'doctor':
       case 'migrate':
       case 'start':
       case 'loop':
+      case 'report':
+      case 'replay':
         out.subcommand = a
         break
       default:
         if (a && a.startsWith('--')) {
           throw new KernelError('KERNEL_INTERNAL', `Unknown flag: ${a}`)
         }
+        if (a) out.positionals.push(a)
     }
   }
   return out
@@ -256,6 +282,28 @@ async function main(): Promise<void> {
         configPath,
         runId: args.runId ?? generateRunId(),
         cliOverrides: { logLevel: args.logLevel, outputDir: args.outputDir },
+      })
+      return
+    }
+    case 'report': {
+      // report 只读产物，不需要配置文件（产物缺失即 RUN_NOT_FOUND）
+      await reportMain({
+        ...(args.report.open ? { open: true } : {}),
+      })
+      return
+    }
+    case 'replay': {
+      // replay 需要配置文件（replay: 规则与 scenarios: 段都从 config 读）
+      const configPath = await resolveConfigPath(args.configPath)
+      const [kind, ...rest] = args.positionals
+      if (kind !== undefined && kind !== 'request' && kind !== 'scenario') {
+        throw new KernelError('KERNEL_INTERNAL', `unknown replay target: ${kind} — use 'request' or 'scenario'`)
+      }
+      await replayMain({
+        ...(kind !== undefined ? { kind } : {}),
+        args: rest,
+        configPath,
+        ...(args.replay.confirm ? { confirm: true } : {}),
       })
       return
     }

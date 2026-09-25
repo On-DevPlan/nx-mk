@@ -17,7 +17,7 @@
 import type { ApiManifest } from '@nx-mk/manifest-schema'
 import { createNoopCollector, type Collector } from '../collector/index.js'
 import { createTrackedProxy } from '../proxy/index.js'
-import { matchEndpoint } from '../mode/analysis.js'
+import { matchEndpoint, endpointScopePath } from '../mode/analysis.js'
 import { detectMode } from '../mode/index.js'
 
 // Ruling 6：浏览器侧 collector shim（plugin-playwright addInitScript 注入的单通道，
@@ -126,7 +126,8 @@ export function createFetchClient(options: FetchClientOptions): FetchClient {
   //   production 分支消费 DetectMode 前的常规解构 —— zero-overhead 语义保持。
   // - analysis 下 collector 缺省 → window.__MK_COLLECTOR__ shim（浏览器）；无 shim → noop
   //   （generated-sdk 产物 createFetchClient({baseUrl}) 零参也能在 demo 采集闭环中工作）。
-  // - manifest 缺省 → __MK_MANIFEST__（Ruling 8 编译期注入；缺省 undefined → endpointId 'unknown'）。
+  // - manifest 缺省 → __MK_MANIFEST__（原 Ruling 8，已落地：plugin-playwright 经
+  //   addInitScript 运行时注入；缺省 undefined → endpointId 'unknown' fallback）。
   const { baseUrl, headers: baseHeaders = {}, onRequest, onResponse } = options
   const mode = options.mode ?? detectMode()
   const isAnalysis = mode === 'analysis'
@@ -161,7 +162,9 @@ export function createFetchClient(options: FetchClientOptions): FetchClient {
       try {
         const requestId = `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
         const pathname = new URL(url, 'http://localhost').pathname
-        const endpointId = matchEndpoint(manifest, pathname, method)
+        // endpoint 匹配在 API 空间进行 —— 剥掉 baseUrl 前缀（如 '/api' 代理挂载），
+        // 否则段数不等匹配恒失败（manifest 注入后 demo 首现）
+        const endpointId = matchEndpoint(manifest, endpointScopePath(pathname, baseUrl), method)
         collector.trace({
           requestId,
           method,

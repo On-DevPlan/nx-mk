@@ -53,33 +53,33 @@ describe('createCollector', () => {
     expect(c.drain().hits).toHaveLength(1)  // snapshot 不消费
   })
 
-  it('同一 endpointId 不会在单个 snapshot 中重复报 endpoint-called', () => {
-    // 只 hit 无 trace → 恰好 1 个 bare endpoint-called
+  it('endpoint-called 只由 trace 产出：hit-only 不再兜底 bare 报告', () => {
+    // 只 hit 无 trace → 0 个 endpoint-called（bare 兜底已删除 —— 无 method/path 的报告会被伪造成 'GET (unknown)'）
     const c1 = createCollector()
     c1.hit(HIT('id'))
     const s1 = c1.snapshot(1)
-    expect(s1.filter((r) => r.kind === 'endpoint-called')).toHaveLength(1)
-    expect(s1.filter((r) => r.kind === 'endpoint-called')[0]).toEqual(
-      expect.objectContaining({ kind: 'endpoint-called' }),
-    )
-    // trace 到来 → 下一次 snapshot 重报带 method/path 的 endpoint-called，但不重复
+    expect(s1).toEqual([expect.objectContaining({ kind: 'field-hit', fieldId: 'data.id', count: 1, turn: 1 })])
+    // trace 到来 → snapshot 产出恰 1 条带 method/path 的 endpoint-called；重复 snapshot 幂等
     c1.trace({ requestId: 'r1', endpointId: 'ep1', method: 'GET', url: 'http://x/api/users/u_001', path: '/users/u_001' })
     const s2 = c1.snapshot(2)
-    expect(s2.filter((r) => r.kind === 'endpoint-called')).toHaveLength(1)
-    expect(s2.filter((r) => r.kind === 'endpoint-called')[0]).toEqual(
-      expect.objectContaining({ method: 'GET', path: '/users/u_001' }),
-    )
+    expect(s2).toEqual([
+      expect.objectContaining({ kind: 'endpoint-called', method: 'GET', path: '/users/u_001', turn: 2 }),
+    ])
+    expect(c1.snapshot(3).filter((r) => r.kind === 'endpoint-called')).toHaveLength(0)
     // hit + trace 同时存在 → 仅 trace 侧一份
     const c2 = createCollector()
     c2.hit(HIT('id'))
     c2.trace({ requestId: 'r1', endpointId: 'ep1', method: 'GET', url: '/api/users' })
-    expect(c2.snapshot(1).filter((r) => r.kind === 'endpoint-called')).toHaveLength(1)
+    expect(c2.snapshot(1)).toEqual([
+      expect.objectContaining({ kind: 'field-hit', fieldId: 'data.id', count: 1, turn: 1 }),
+      expect.objectContaining({ kind: 'endpoint-called', method: 'GET', path: '/api/users', turn: 1 }),
+    ])
   })
 
   it('snapshot 幂等：已报的增量不重复（hit count 变化后重报新 count）', () => {
     const c = createCollector()
     c.hit(HIT('id'))
-    expect(c.snapshot(1)).toHaveLength(2)   // field-hit + 无 trace
+    expect(c.snapshot(1)).toHaveLength(1)   // 仅 field-hit（endpoint-called 需 trace）
     // 无新数据 → 空增量
     expect(c.snapshot(2)).toHaveLength(0)
     // count 增长 → 重报（count 更新）

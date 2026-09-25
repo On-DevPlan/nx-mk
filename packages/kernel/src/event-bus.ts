@@ -6,7 +6,7 @@
  * 插件经 PluginContext.events 订阅感兴趣的事件类型。
  */
 import { EventEmitter } from 'node:events'
-import type { Coverage, Phase, PluginWorkerState } from './types'
+import type { Coverage, Phase, PluginSignal, PluginWorkerState } from './types'
 
 // 内核全部事件的判别联合：按 type 字段区分（阶段流转 / 插件加载 / 错误 / 日志 / M14 goal loop）
 export type KernelEvent =
@@ -54,9 +54,15 @@ export type KernelEvent =
   | {
       // M14: Goal Loop 未达目标
       type: 'goal:unmet'
-      reason: 'max-turns' | 'idle' | 'timeout' | 'all-failed'
+      reason: 'max-turns' | 'idle' | 'timeout' | 'all-failed' | 'all-done'
       coverage: Coverage
       turns: number
+    }
+  | {
+      // M14 v1.1：插件信号审计事件（emitSignal 时发布；signal.plugin 由内核 hook 运行器归因）
+      type: 'plugin:signal'
+      signal: PluginSignal
+      timestamp: string
     }
   | {
       type: 'log'

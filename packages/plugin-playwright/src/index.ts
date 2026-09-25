@@ -1,48 +1,39 @@
 /**
  * @nx-mk/plugin-playwright —— 采集插件：headless chromium DOM 扫描（spec §3.4）
  *
- * v0 语义（重要，与任务简报的差异已在任务报告中记录）：
+ * v0 语义（单次收集，靠 Goal Loop idleTurns / maxTurns 终止）：
  * - 内核 Plugin 合约只有 before{Phase}/after{Phase} 钩子（无裸 run 钩子），
- *   故 v0 把【单次收集通路】放在 beforeRun 的 doctor 之后执行：
- *   goto → 扫描 → collector.evidence → snapshot → emitReport。
- *   （内核 C1 修复后在 beforeRun 之前重置 loopState.reports —— beforeRun 期的
- *   报告完整进入 Goal Loop，可驱动 spec §1.4.2 的 field-hit 提前 goal-met。）
- * - 不按 maxTurns 循环（单次收集，靠 Goal Loop idleTurns / maxTurns 终止）；
- *   maxTurns 字段在选项中保留，供后续版本启用逐 turn 驱动。
+ *   故把【单次收集通路】放在 beforeRun：goto → 扫描 → collector.evidence →
+ *   snapshot → emitReport；完成后 emitSignal({kind:'done'}) 供 Goal Loop
+ *   all-done 早停（不按 maxTurns 循环；maxTurns 字段保留供后续版本启用逐 turn 驱动）。
  * - 共享 collector（Ruling 2）：插件在工厂内创建（或接收注入的）collector，
- *   runner.launchCollect 把扫描 evidence 投给它；下一任务通过
- *   context.addInitScript 把它挂到浏览器 window.__MK_COLLECTOR__ 单通道。
+ *   runner.launchCollect 把扫描 evidence 投给它；经 context.addInitScript 把
+ *   collector shim 挂到浏览器 window.__MK_COLLECTOR__ 单通道。
  * - 报告双通道：扫描到的字段直接以 field-hit 报给 Goal Loop（emitReport）；
- *   endpoint-called 来自 collector.snapshot(turn)（浏览器侧 trace/hit 的增量）。
- *   不为 DOM 字段伪造 collector.hit —— 那会污染经 drain→SQLite 落盘的共享通道。
- * - collect 段类型来自 @nx-mk/config 的 CollectConfigSchema（Task 6 审查 M3：
- *   以 schema 为单一事实来源，替换本地宽松声明）。
- * - Ruling 7（Task 8）：浏览器通道已接线 —— runner.launchCollect addInitScript
- *   注入 window.__MK_COLLECTOR__ shim（demo 业务代码经 Ruling 6 缺省解析 hit/trace），
- *   页面工作完成后 drainBrowserCollector 回捞进共享 collector（先于 snapshot）。
- * - Ruling 8 限制（本任务不注入 manifest）：插件无法低成本拿到 ApiManifest（kernel
- *   ctx 不携带 manifest 文件内容，.nx-mk/manifest.json 读取需引入 manifest 包解析），
- *   故不注入 __MK_MANIFEST__。后果：浏览器侧 fetch 的 endpointId 落 'unknown' fallback
- *   （trace.sql endpoint_id 列为 NULL —— flushDrained 语义已覆盖）；request_traces 的
- *   method/path 全落入表。manifest 注入留给 Phase 3。
- * - §1.4.2 goal-met 延期（计划级记账，Phase 3 修）：goal-loop 的 field-hit 断言的
- *   id 空间是 manifest stableFieldId（哈希），而 DOM 直报 fieldId 是 dataMkField
- *   字符串 —— 两者恒不相等，coverage 永不匹配 → goal-met 经 field-hit 实际不可达；
- *   且 demo config 未配 goal: 段（Goal Loop 不启用，v0 demo = 单次收集 + maxTurns
- *   上限语义，terminatedBy 未持久化）。修法：goal 段接入 + normalizedPath 键域
- *   的映射 + manifest 注入，一并排 Phase 3。
+ *   endpoint-called 来自 collector.snapshot(turn)（浏览器侧 trace 的增量，
+ *   判别联合 method/path 恒在）。不为 DOM 字段伪造 collector.hit。
+ * - manifest 接线（原 Ruling 8，已落地）：beforeRun 读 .nx-mk/manifest.json
+ *   （与 kernel initial-coverage 同路径语义）—— ① DOM dataMkField 直报前过
+ *   normalizedPath 校验集（spec §3.1 id-space 对齐：Goal Loop missing 项键域
+ *   即 normalizedPath，域内匹配使 field-hit → goal-met 可达）；缺席降级 warn
+ *   一次 + 不校验直报。② buildManifestShimScript 注入 window.__MK_MANIFEST__，
+ *   demo SDK（@nx-mk/client runtime）浏览器侧 matchEndpoint 据此解析真实
+ *   endpointId（trace/hit 不再落 'unknown'，SQLite endpoint_id 不再 NULL）。
+ * - Ruling 7 shim 语义：addInitScript 按文档重放 —— 整页导航时 shim 重新
+ *   初始化、缓冲清零；未及回捞的 hits/traces 即丢。v0 可接受（demo 无整页
+ *   导航），跨导航需求留 sessionStorage 或常态回捞方案。
  * - §26 套件模式分叉（S6/S9/SP3/SP6）：config.scenarios.include 非空时
  *   beforeRun 改走套件通路 —— loadScenarios → scenario:start 全量 emit →
  *   suiteRunner（缺省 runScenarioSuiteInBrowser，可注入测试缝）→ 逐结果
  *   scenario:done + 共享 collector snapshot 增量 flush → E8 失败汇总 warn
- *   （退出码不受影响）。observers：afterGoto = DOM 扫描 → field-hit 直报 +
- *   scanDom evidence 入共享通道；afterStep = drainBrowserCollector + §26
- *   归因标（scenarioId/dslStepId）。E2：include 0 命中 → warn 回落 legacy
- *   collect（collect 门不阻断套件模式 —— 套件是 collect 的替代入口）。
- * - Ruling 7 shim 语义补充（Task 8 审查 Important #3）：addInitScript 按文档重放
- *   —— 整页导航时 shim 重新初始化、缓冲清零；未及回捞的 hits/traces 即丢。v0
- *   可接受（demo 无整页导航），Phase 3 若需跨导航可改为 sessionStorage 或常态回捞。
+ *   （退出码不受影响）。observers：afterGoto = DOM 扫描 → field-hit 直报
+ *   （同一 manifest 校验）+ scanDom evidence 入共享通道；afterStep =
+ *   drainBrowserCollector + §26 归因标（scenarioId/dslStepId）。E2：include
+ *   0 命中 → warn 回落 legacy collect（collect 门不阻断套件模式）。
+ * - per-run 生命周期门（v1.1）：manifest 缺席 warn 与 done 信号都只挂在本
+ *   插件工厂实例上（plugin-registry 每次运行重新装配 → 无跨 run 泄漏）。
  */
+import { z } from 'zod'
 import {
   KernelError,
   type Plugin,
@@ -63,6 +54,7 @@ import {
 } from '@nx-mk/scenario'
 import { launchCollect, hasChromium } from './runner.js'
 import { scanPage, drainBrowserCollector, COLLECTOR_SHIM_SCRIPT } from './scanner.js'
+import { readManifest, buildFieldPathSet, buildManifestShimScript } from './manifest.js'
 
 const PLUGIN_NAME = '@nx-mk/plugin-playwright'
 
@@ -116,18 +108,36 @@ export function resolveCollectTarget(
   }
 }
 
-/** CollectReport → PluginReport 映射（补齐可选字段的缺省值） */
+/** CollectReport → PluginReport（判别联合两端字段恒在 —— 无需伪造缺省） */
 function toReport(r: CollectReport, turn: number): PluginReport {
   if (r.kind === 'field-hit') {
-    return { kind: 'field-hit', fieldId: r.fieldId ?? '(unknown)', count: r.count, turn }
+    return { kind: 'field-hit', fieldId: r.fieldId, count: r.count, turn }
   }
-  return { kind: 'endpoint-called', method: r.method ?? 'GET', path: r.path ?? '(unknown)', turn }
+  return { kind: 'endpoint-called', method: r.method, path: r.path, turn }
 }
 
 export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
   const collector = opts.collector ?? createCollector()
   // 最近一次收集通路的统计（afterRun 汇总日志用）
   let lastPass: { url: string; fields: number; reports: number } | null = null
+  // manifest 缺席 warn 每插件实例至多一次（套件 0 命中回退 legacy 时不双 warn）
+  let manifestWarned = false
+
+  // Ruling 8 落地：读 manifest → { fieldSet, shimScript }；缺席降级 warn 一次 + 不校验直报。
+  // manifest 由 plugin-swagger 在更早的 beforeRun 写入（config 插件先于 extraPlugins），
+  // 正常 run 时序下必然存在；缺席仅见于未配 openapi / 独立测试装配。
+  const resolveManifest = (ctx: PluginContext): { fieldSet: Set<string> | null; shimScript: string | null } => {
+    const cwd = typeof ctx.cwd === 'string' ? ctx.cwd : process.cwd()
+    const manifest = readManifest(cwd)
+    if (!manifest) {
+      if (!manifestWarned) {
+        manifestWarned = true
+        ctx.logger.warn('plugin-playwright: .nx-mk/manifest.json not found — field-hit validation and __MK_MANIFEST__ injection skipped', { cwd })
+      }
+      return { fieldSet: null, shimScript: null }
+    }
+    return { fieldSet: buildFieldPathSet(manifest), shimScript: buildManifestShimScript(manifest) }
+  }
 
   // —— legacy 单次收集通路（原 beforeRun 主体抽出，行为逐字保持）：
   // collect 门（collect 段或本插件条目）→ chromium 门 → doctor 自检 →
@@ -162,10 +172,17 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
     }
     const waitForSelector = target.waitForSelector ?? '[data-mk-field]'
 
+    // Ruling 8：manifest 校验键域 + 浏览器注入脚本（缺席 → null，runner 不注 manifest shim）
+    const { fieldSet, shimScript } = resolveManifest(ctx)
+
     let descs
     try {
       descs = await launchCollect(
-        { url, waitForSelector },
+        {
+          url,
+          waitForSelector,
+          ...(shimScript !== null ? { initScripts: [shimScript] } : {}),
+        },
         collector,
         // spec §4 row 3：DOM 扫描失败包容为空 evidence + warn，不阻断 Goal Loop
         (err) => {
@@ -186,19 +203,22 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
     const turn = ctx.getTurn()
     // 扫描到的 DOM 字段 → Goal Loop field-hit（UI 出现即视为字段触达信号）。
     // 空 dataMkField 与 scanDom 的过滤语义一致（evidence 侧已剔除）——报告侧
-    // 同样跳过，避免产出 fieldId 为空串的垃圾报告。
+    // 同样跳过；manifest 存在时只报已知 normalizedPath（垃圾 fieldId 不进 Goal Loop）。
     for (const d of descs) {
       if (d.dataMkField === '') continue
+      if (fieldSet && !fieldSet.has(d.dataMkField)) continue
       ctx.emitReport({ kind: 'field-hit', fieldId: d.dataMkField, count: 1, turn })
     }
-    // 共享 collector 的增量（浏览器侧 trace/hit；本任务由测试预置）→ 报告
+    // 共享 collector 的增量（浏览器侧 trace；本任务由测试预置）→ 报告
     const snapshotReports = collector.snapshot(turn)
     for (const r of snapshotReports) {
       ctx.emitReport(toReport(r, turn))
     }
-    const fieldCount = descs.filter((d) => d.dataMkField !== '').length
+    const fieldCount = descs.filter((d) => d.dataMkField !== '' && (!fieldSet || fieldSet.has(d.dataMkField))).length
     lastPass = { url, fields: fieldCount, reports: fieldCount + snapshotReports.length }
     ctx.logger.info('plugin-playwright: collection pass done', lastPass)
+    // 单次收集完成声明 → Goal Loop all-done 早停（原 v0 烧满 maxTurns 的零进展轮次消除）
+    ctx.emitSignal({ kind: 'done', reason: 'all-collected', turn })
   }
 
   // —— §26 套件模式（S6/S9/SP3/SP6）：scenarios.include 非空时的替代通路。
@@ -206,10 +226,13 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
   // 逐结果 scenario:done + snapshot 增量 flush → E8 失败汇总（退出码不受影响）。
   const runSuite = async (ctx: PluginContext, cfg: ScenarioConfig): Promise<void> => {
     const cmd = ctx.kernel.getSubcommand()
+    // Ruling 8：套件通路同一 manifest 接线（校验键域 + 注入脚本；缺席 warn 一次）
+    const { fieldSet, shimScript } = resolveManifest(ctx)
     const cwd = typeof ctx.cwd === 'string' ? ctx.cwd : process.cwd()
     const { scenarios, skipped } = loadScenarios(cwd, cfg.include ?? [])
     for (const s of skipped) ctx.logger.warn(`plugin-playwright: scenario skipped — ${s}`)
-    // E2：0 命中 → warn + 回落 legacy collect（其自身的 collect 门/doctor 语义完整复用）
+    // E2：0 命中 → warn + 回落 legacy collect（其自身的 collect 门/doctor 语义完整复用；
+    // manifestWarned 旗标保证 warn 不重复）
     if (scenarios.length === 0) {
       ctx.logger.warn('plugin-playwright: scenarios.include matched 0 files — falling back to legacy collect')
       return legacyCollect(ctx)
@@ -224,9 +247,9 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
     // doctor 只自检环境（加载/chromium），不执行套件 —— 与 legacy 语义对齐
     if (cmd !== 'run') return
 
-    // SP6：observers = 插件归因接线 —— afterGoto 扫描直报 field-hit（与
-    // legacy 同语义：scanPage 包容失败为空 evidence + warn；scanDom 推共享
-    // collector 供 drain→SQLite）；afterStep 回捞页内 shim 并打 §26 归因标（S6）。
+    // SP6：observers = 插件归因接线 —— afterGoto 扫描直报 field-hit（与 legacy 同语义：
+    // manifest 校验 + scanPage 包容失败为空 evidence + warn；scanDom 推共享 collector 供
+    // drain→SQLite）；afterStep 回捞页内 shim 并打 §26 归因标（S6）。
     const observers: SuiteObservers = {
       afterGoto: async (_sid, page, url) => {
         const turn = ctx.getTurn()
@@ -242,6 +265,7 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
         for (const ev of scanDom(descs)) collector.evidence(ev)
         for (const d of descs) {
           if (d.dataMkField === '') continue
+          if (fieldSet && !fieldSet.has(d.dataMkField)) continue
           ctx.emitReport({ kind: 'field-hit', fieldId: d.dataMkField, count: 1, turn })
         }
       },
@@ -259,9 +283,9 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
       {
         concurrency: cfg.concurrency ?? 3,
         observers,
-        // SP10：套件 context 注入 collector shim —— legacy collect 同一通道
-        // （Ruling 7 addInitScript），否则页内 analysis trace 无投递口、drain 恒空
-        initScripts: [COLLECTOR_SHIM_SCRIPT],
+        // SP10：套件 context 注入 initScripts —— manifest shim 在前（数据源）、
+        // collector shim 在后（SP10 通道），legacy collect 同序（Ruling 7/8）
+        initScripts: [...(shimScript !== null ? [shimScript] : []), COLLECTOR_SHIM_SCRIPT],
       },
     )
     // SP3：turn 取一次；snapshot 增量幂等 —— 逐结果 flush 执行期累积的新增量
@@ -277,11 +301,21 @@ export function createPlaywrightPlugin(opts: PlaywrightPluginOptions): Plugin {
         `plugin-playwright: ${failed.length}/${results.length} scenarios failed — [${failed.map((f) => f.scenarioId).join(', ')}]`,
       )
     }
+    // 套件批次完成声明 → Goal Loop all-done 早停（与 legacy 同语义）
+    ctx.emitSignal({ kind: 'done', reason: 'all-collected', turn })
   }
 
   return {
     name: '@nx-mk/plugin-playwright',
     version: '0.1.0',
+    // M2 configSchema：per-plugin 条目 config 的校验面（与 resolveCollectTarget
+    // 实际消费的字段一致）。zod 原生满足 StandardSchemaV1 —— kernel plugin-registry
+    // 的 validateConfigSchema 直接可用；仅 config 声明路径生效（extraPlugins 代码
+    // 装配不经 loadPlugins，见插件 README）。
+    configSchema: z.object({
+      url: z.string().optional(),
+      waitForSelector: z.string().optional(),
+    }),
     hooks: {
       // §26 分叉（beforeRun 主体）：
       // 1) cmd 门（run/doctor）→ 2) scenarios.include 非空 → 套件模式
