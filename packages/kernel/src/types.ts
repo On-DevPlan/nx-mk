@@ -110,7 +110,7 @@ export interface ResolvedConfig extends Config {
   runId: RunId
   envOverrides: Partial<Config>
   cliOverrides: Partial<Config>
-  subcommand: 'run' | 'init' | 'doctor' | 'start' | 'loop'
+  subcommand: 'run' | 'init' | 'doctor' | 'start' | 'loop' | 'report' | 'replay'
 }
 
 // 内核运行时可观测状态（外部通过 KernelAPI.getState() 读取快照）

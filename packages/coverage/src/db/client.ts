@@ -32,6 +32,13 @@ export class CoverageDb {
     ensureColumn(this.db, 'ui_evidence', 'text_sample', 'TEXT')
     // 响应值预览（UI「响应值」数据通道）：drained trace 的 responsePreview 落列
     ensureColumn(this.db, 'request_traces', 'response_preview', 'TEXT')
+    // C2（§25.8 对齐）：coverage_fields 命中规则 reason（用户配置 {pattern, reason} 透出）
+    ensureColumn(this.db, 'coverage_fields', 'matched_rule_reason', 'TEXT')
+    // C1（§23.2/§25.5 对齐）：字段级值通道 —— valueState/valueType/valueHash 落 field_hits
+    // （散列由 client 代理侧就地计算，原文不出浏览器；无 raw 列即无泄露面）
+    ensureColumn(this.db, 'field_hits', 'value_state', 'TEXT')
+    ensureColumn(this.db, 'field_hits', 'value_type', 'TEXT')
+    ensureColumn(this.db, 'field_hits', 'value_hash', 'TEXT')
   }
 
   get journalMode(): string {
@@ -68,17 +75,19 @@ export class CoverageDb {
   /** 事务批量 flush（spec §3.3）：hits 按 normalizedPath 幂等 upsert；traces/evidence 逐条插入 */
   flushDrained(d: FlushInput): void {
     const tx = this.db.transaction(() => {
-      // field_hits：§25.6 列全部填充（request_id/endpoint_id/field_id 本版可空）
+      // field_hits：§25.6 列全部填充（request_id/endpoint_id/field_id 本版可空）+
+      // C1 值通道演进列（value_state/value_type/value_hash，缺省 NULL）
       const insHit = this.db.prepare(
         `INSERT OR REPLACE INTO field_hits
-           (id, run_id, request_id, endpoint_id, field_id, field_path, normalized_path, count, first_hit_at, last_hit_at, route, source)
-         VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, NULL, 'proxy')`,
+           (id, run_id, request_id, endpoint_id, field_id, field_path, normalized_path, count, first_hit_at, last_hit_at, route, source, value_state, value_type, value_hash)
+         VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, NULL, 'proxy', ?, ?, ?)`,
       )
       for (const h of d.hits) {
         const at = new Date(h.timestamp).toISOString()
         insHit.run(
           `fh_${d.runId}_${h.normalizedPath}`, d.runId, h.requestId, h.endpointId,
           h.fieldPath, h.normalizedPath, h.count, at, at,
+          h.valueState ?? null, h.valueType ?? null, h.valueHash ?? null,
         )
       }
       // request_traces：§25.4 列（scenario_id/dsl_step_id/replayable/replay_safety/replay_reason Phase 2 无数据 → NULL/默认）

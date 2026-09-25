@@ -51,11 +51,32 @@ export const CollectConfigSchema = z.object({
 })
 export type CollectConfig = z.infer<typeof CollectConfigSchema>
 
-// Phase 3：coverage policy 段（spec §2.2/§3.2）—— 三个 glob 列表，缺省空
+// C3（§10/§23 对齐）：replay 段 —— 请求回放安全规则可配。
+// allowMethods=免确认安全方法（默认 GET/HEAD）；requireConfirmation=需确认方法（默认 POST/PUT/PATCH/DELETE）；
+// block=路径 glob 黑名单（/payment/**/ 等，命中即 403）。缺省项回退内置默认，整体缺省 = 既有硬编码行为。
+export const ReplayBlockRuleSchema = z.object({ pattern: z.string().min(1) })
+export type ReplayBlockRule = z.infer<typeof ReplayBlockRuleSchema>
+
+export const ReplayConfigSchema = z.object({
+  allowMethods: z.array(z.string().min(1)).optional(),
+  requireConfirmation: z.array(z.string().min(1)).optional(),
+  block: z.array(ReplayBlockRuleSchema).optional(),
+})
+export type ReplayConfig = z.infer<typeof ReplayConfigSchema>
+
+// C2（§10/§16 对齐）：coverage policy 段（spec §2.2/§3.2）—— 三个 glob 列表，缺省空。
+// C2（§10/§16 对齐）：条目升级为 string | {pattern, reason} 联合 —— reason 随
+// policy-engine matchedRule 透出（报告/落库消费）；纯 string 保持向后兼容。
+export const CoverageRuleSchema = z.union([
+  z.string().min(1),
+  z.object({ pattern: z.string().min(1), reason: z.string().min(1) }),
+])
+export type CoverageRule = z.infer<typeof CoverageRuleSchema>
+
 export const CoverageConfigSchema = z.object({
-  required: z.array(z.string().min(1)).optional(),
-  optional: z.array(z.string().min(1)).optional(),
-  ignored: z.array(z.string().min(1)).optional(),
+  required: z.array(CoverageRuleSchema).optional(),
+  optional: z.array(CoverageRuleSchema).optional(),
+  ignored: z.array(CoverageRuleSchema).optional(),
 })
 export type CoverageConfig = z.infer<typeof CoverageConfigSchema>
 
@@ -135,6 +156,8 @@ export const ConfigSchema = z
     agent: AgentConfigSchema.optional(),
     // §26：可选 scenarios 段（spec S6 —— 套件模式入口）
     scenarios: ScenarioConfigSchema.optional(),
+    // C3（§10 对齐）：可选 replay 段 —— 请求回放安全规则（缺省 = 内置默认行为）
+    replay: ReplayConfigSchema.optional(),
     // §24：可选隐私段（响应值脱敏策略；缺省由 coverage 层安全默认 masked）
     privacy: PrivacyConfigSchema.optional(),
   })

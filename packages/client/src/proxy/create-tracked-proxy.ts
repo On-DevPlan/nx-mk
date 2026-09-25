@@ -14,6 +14,10 @@ export interface ProxyCollector {
     normalizedPath: string
     type: 'get'
     timestamp: number
+    /** C1（§23.2/§24 对齐）：字段级值通道 —— 只出分类与单向散列，不出原文 */
+    valueState?: 'present' | 'null' | 'undefined' | 'empty'
+    valueType?: string
+    valueHash?: string
   }): void
 }
 
@@ -79,6 +83,12 @@ export function createTrackedProxy<T extends object>(target: T, options: Tracked
           normalizedPath,
           type: 'get',
           timestamp: Date.now(),
+          // C1：字段级值通道（§23.2 valueState/valueType/valueHash）——
+          // 散列在浏览器内对完整值计算（C11：不经 500 字符截断，无精度损失）；
+          // 单向 FNV-1a，原文不出浏览器（隐私设计强于 trace 级 masked preview）
+          valueState: valueStateOf(value),
+          valueType: valueTypeOf(value),
+          valueHash: valueHashOf(value),
         })
       } catch {
         // 探针纪律：异常不传播（spec §4）
@@ -101,4 +111,46 @@ function isProxyable(v: unknown): boolean {
   if (NON_PROXY_TAGS.has(Object.prototype.toString.call(v))) return false
   const ctor = (v as { constructor?: unknown }).constructor
   return ctor === Object || ctor === Array
+}
+
+// —— C1 字段级值通道（§23.2）：纯函数，随 get 拦截就地计算 ——
+
+/** 值状态四态（absent 由请求/响应层判定，代理侧 prop 读取缺省即 undefined） */
+function valueStateOf(v: unknown): 'present' | 'null' | 'undefined' | 'empty' {
+  if (v === undefined) return 'undefined'
+  if (v === null) return 'null'
+  if (typeof v === 'string' && v === '') return 'empty'
+  if (Array.isArray(v) && v.length === 0) return 'empty'
+  if (typeof v === 'object' && !Array.isArray(v) && Object.keys(v as object).length === 0) return 'empty'
+  return 'present'
+}
+
+/** 值类型：null / array / typeof（与 §23.2 valueType 语义对齐的最小实现） */
+function valueTypeOf(v: unknown): string {
+  if (v === null) return 'null'
+  if (Array.isArray(v)) return 'array'
+  return typeof v
+}
+
+/** FNV-1a 32bit → 8 位十六进制（零依赖单向散列；仅用于「同值异源」比对，非安全用途） */
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return ('0000000' + (h >>> 0).toString(16)).slice(-8)
+}
+
+/** 值散列：标量对 String(v)；对象/数组对 JSON 序列化；undefined/null 不产散列。失败静默缺席 */
+function valueHashOf(v: unknown): string | undefined {
+  if (v === undefined || v === null) return undefined
+  if (typeof v === 'object') {
+    try {
+      return fnv1a(JSON.stringify(v) ?? '')
+    } catch {
+      return undefined
+    }
+  }
+  return fnv1a(String(v))
 }

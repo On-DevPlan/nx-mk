@@ -9,18 +9,42 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ReplayVerdict } from '../shared/api-types.js'
 
-/** 敏感路径词表（plan §27.2「payment/delete 等敏感路径 => blocked」的 v0 实现） */
+/** 敏感路径词表（plan §27.2「payment/delete 等敏感路径 => blocked」的 v0 实现）—— 内置兜底，始终生效 */
 const SENSITIVE_PATH_RE = /payment|refund|payout|withdraw/i
 const REPLAY_TIMEOUT_MS = 10_000
 const PREVIEW_LIMIT = 500
+
+/**
+ * C3（§10 对齐）：replay 安全规则 —— 来自 config `replay:` 段（start 命令透传）。
+ * 全部可选：未提供的项回退内置默认（allow=[GET,HEAD]，confirm=[POST,PUT,PATCH,DELETE]），
+ * 与既有硬编码行为逐字一致。
+ */
+export interface ReplayRules {
+  /** 免确认安全方法（默认 GET/HEAD） */
+  allowMethods?: string[]
+  /** 需确认方法（默认 POST/PUT/PATCH/DELETE；PUT 归 idempotent 带幂等键） */
+  requireConfirmation?: string[]
+  /** 路径 glob 黑名单（`**` 跨层级、`*` 单层内），命中即 blocked（403） */
+  blockPatterns?: string[]
+}
 
 export interface ReplayClassification {
   verdict: ReplayVerdict
   reason: string
 }
 
-/** R1：分类纯函数 —— blocked 压过 method 规则 */
-export function classifyReplay(method: string, url: string): ReplayClassification {
+/** 路径 glob → RegExp（`**` 跨层级、`*` 单层内；自包含实现，不与 coverage 字段 matchGlob 共用语义） */
+function pathGlobToRegExp(pattern: string): RegExp {
+  const escaped = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '\0')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\0/g, '.*')
+  return new RegExp(`^${escaped}$`)
+}
+
+/** R1：分类纯函数 —— blocked（内置敏感词表 ∪ 用户 blockPatterns）压过 method 规则 */
+export function classifyReplay(method: string, url: string, rules?: ReplayRules): ReplayClassification {
   let path = url
   try {
     path = new URL(url).pathname
@@ -30,9 +54,20 @@ export function classifyReplay(method: string, url: string): ReplayClassificatio
   if (SENSITIVE_PATH_RE.test(path)) {
     return { verdict: 'blocked', reason: `sensitive path matched /${SENSITIVE_PATH_RE.source}/` }
   }
-  if (method === 'GET' || method === 'HEAD') return { verdict: 'safe', reason: 'read-only method' }
-  if (method === 'PUT') return { verdict: 'idempotent', reason: 'PUT replayed with generated idempotency-key' }
-  return { verdict: 'unsafe', reason: `${method} is not idempotent` }
+  for (const p of rules?.blockPatterns ?? []) {
+    if (pathGlobToRegExp(p).test(path)) {
+      return { verdict: 'blocked', reason: `path matched replay.block pattern: ${p}` }
+    }
+  }
+  const allow = rules?.allowMethods ?? ['GET', 'HEAD']
+  const confirm = rules?.requireConfirmation ?? ['POST', 'PUT', 'PATCH', 'DELETE']
+  if (allow.includes(method)) return { verdict: 'safe', reason: 'read-only method' }
+  if (method === 'PUT' && confirm.includes('PUT')) {
+    return { verdict: 'idempotent', reason: 'PUT replayed with generated idempotency-key' }
+  }
+  if (confirm.includes(method)) return { verdict: 'unsafe', reason: `${method} is not idempotent` }
+  // 未列入任何名单 → 默认拒绝（fail-closed）
+  return { verdict: 'unsafe', reason: `${method} not in replay.allowMethods — denied by default` }
 }
 
 export interface ReplayOutcome {

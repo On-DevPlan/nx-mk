@@ -13,7 +13,7 @@ import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
 import { KernelError, makeRunId, type LogLevel } from '@nx-mk/kernel'
-import { loadConfig, findConfigFile, type DashboardConfig } from '@nx-mk/config'
+import { loadConfig, findConfigFile, type DashboardConfig, type ReplayConfig } from '@nx-mk/config'
 import { buildServer, resolveUiDistDir } from '@nx-mk/dashboard'
 
 export const DEFAULT_DASHBOARD_PORT = 4317
@@ -62,6 +62,15 @@ export async function startMain(opts: StartMainOptions): Promise<void> {
   })
   const dash: DashboardConfig = (config as typeof config & { dashboard?: DashboardConfig }).dashboard ?? {}
   const port = opts.port ?? dash.port ?? DEFAULT_DASHBOARD_PORT
+  // C3（§10 对齐）：replay 安全规则透传（block[].pattern 摊平为 blockPatterns；缺省 = 内置默认行为）
+  const replayCfg: ReplayConfig | undefined = (config as typeof config & { replay?: ReplayConfig }).replay
+  const replayRules = replayCfg
+    ? {
+        ...(replayCfg.allowMethods !== undefined ? { allowMethods: replayCfg.allowMethods } : {}),
+        ...(replayCfg.requireConfirmation !== undefined ? { requireConfirmation: replayCfg.requireConfirmation } : {}),
+        ...(replayCfg.block !== undefined ? { blockPatterns: replayCfg.block.map((b) => b.pattern) } : {}),
+      }
+    : undefined
 
   // v1 写回链：把用户配置文件绝对路径透传给 dashboard。CLI 传入的 opts.configPath 可能已是
   // 绝对路径（index.ts resolveConfigPath 的产物）——resolve 对绝对段重置，join 只会拼接；
@@ -78,6 +87,7 @@ export async function startMain(opts: StartMainOptions): Promise<void> {
     nxMkDir: join(cwd, '.nx-mk'),
     uiDistDir: resolveUiDistDir(),
     ...(configPath !== undefined ? { configPath } : {}),
+    ...(replayRules !== undefined ? { replayRules } : {}),
   })
 
   const deps: StartDeps = opts.deps ?? {

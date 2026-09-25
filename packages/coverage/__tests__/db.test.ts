@@ -94,6 +94,28 @@ describe('insertRun / endRun / flush 读回', () => {
     } finally { db.close() }
   })
 
+  it('C1：hit 值通道落 value_state/value_type/value_hash 三列（缺省 NULL）', () => {
+    const db = openCoverageDb(dbPath)
+    try {
+      db.insertRun('run_v', '2026-09-25T00:00:00Z', 'running')
+      db.flushDrained({
+        runId: 'run_v',
+        hits: [
+          { requestId: 'r1', endpointId: 'ep1', fieldPath: 'data.name', normalizedPath: 'data.name', type: 'get', timestamp: 1700000000000, count: 1, valueState: 'present', valueType: 'string', valueHash: '1a2b3c4d' },
+          { requestId: 'r1', endpointId: 'ep1', fieldPath: 'data.ghost', normalizedPath: 'data.ghost', type: 'get', timestamp: 1700000000000, count: 1 },
+        ],
+        traces: [],
+        evidence: [],
+      })
+      const withValue = db.prepare('SELECT value_state, value_type, value_hash FROM field_hits WHERE normalized_path=?')
+        .get('data.name') as { value_state: string; value_type: string; value_hash: string }
+      expect(withValue).toEqual({ value_state: 'present', value_type: 'string', value_hash: '1a2b3c4d' })
+      const noValue = db.prepare('SELECT value_state, value_type, value_hash FROM field_hits WHERE normalized_path=?')
+        .get('data.ghost') as { value_state: null; value_type: null; value_hash: null }
+      expect(noValue).toEqual({ value_state: null, value_type: null, value_hash: null })
+    } finally { db.close() }
+  })
+
   it('endRun 更新 status', () => {
     const db = openCoverageDb(dbPath)
     try {

@@ -23,6 +23,7 @@
     "@nx-mk/coverage": "workspace:*",
     "@nx-mk/plugin-playwright": "workspace:*",
     "@nx-mk/dashboard": "workspace:*",
+    "@nx-mk/scenario": "workspace:*",
     "@nx-mk/agent": "workspace:*"
   },
   "devDependencies": {

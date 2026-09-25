@@ -80,6 +80,23 @@ export async function runMain(opts: RunMainOptions): Promise<void> {
   if (collect && !/^https?:\/\//.test(collect.url)) {
     throw new KernelError('CONFIG_INVALID', `collect.url must be an http(s) URL, got: ${collect.url}`)
   }
+  // C5（§10/§11 对齐）：per-run resolved config 快照 —— runs/{runId}/config.resolved.json。
+  // 写者归 CLI（run 产物目录既有写面，铁律不破）；失败 warn 不阻断（同 manifest 快照语义）。
+  // 记录最终生效配置（默认值/插件默认/env 展开后的 resolved 形状）+ 来源路径。
+  try {
+    mkdirSync(join(cwd, '.nx-mk', 'runs', runId), { recursive: true })
+    writeFileSync(
+      join(cwd, '.nx-mk', 'runs', runId, 'config.resolved.json'),
+      JSON.stringify(
+        { runId, configPath: opts.configPath, recordedAt: new Date().toISOString(), config },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+  } catch (err) {
+    console.warn(`config.resolved.json write failed: ${(err as Error).message}`)
+  }
   // spec §3.6：collect 配置时建立 coverage.db 并登记本次 run（§25.1 runs 表）
   let db: CoverageDb | undefined
   if (collect) {

@@ -6,10 +6,16 @@
  */
 import { matchGlob } from './glob.js'
 
+/**
+ * C2（§10 对齐）：策略条目 = 纯 glob 字符串（向后兼容）| {pattern, reason} 对象。
+ * 对象形式的 reason 随 matchedRule 透出（报告 / coverage_fields.matched_rule_reason 消费）。
+ */
+export type PolicyRuleEntry = string | { pattern: string; reason?: string }
+
 export interface PolicyConfig {
-  required?: string[]
-  optional?: string[]
-  ignored?: string[]
+  required?: PolicyRuleEntry[]
+  optional?: PolicyRuleEntry[]
+  ignored?: PolicyRuleEntry[]
 }
 
 export interface MatchedRule {
@@ -36,9 +42,16 @@ export interface ManifestFieldLike {
   required?: boolean
 }
 
-// 用户列表内按声明顺序取首个命中；跨列表按优先级
-function firstUserMatch(patterns: string[] | undefined, fieldPath: string): string | undefined {
-  return patterns?.find((p) => matchGlob(p, fieldPath))
+// 用户列表内按声明顺序取首个命中；跨列表按优先级。
+// C2：返回命中的完整条目（含 reason），对象形式解出 pattern/reason，字符串形式 pattern 即条目
+function firstUserMatch(entries: PolicyRuleEntry[] | undefined, fieldPath: string): MatchedRule | undefined {
+  for (const e of entries ?? []) {
+    const pattern = typeof e === 'string' ? e : e.pattern
+    if (matchGlob(pattern, fieldPath)) {
+      return { source: 'user-config', pattern, ...(typeof e === 'object' && e.reason ? { reason: e.reason } : {}) }
+    }
+  }
+  return undefined
 }
 
 export function evaluatePolicy(fields: ManifestFieldLike[], policy: PolicyConfig): PolicyDecision[] {
@@ -46,15 +59,15 @@ export function evaluatePolicy(fields: ManifestFieldLike[], policy: PolicyConfig
     const fp = f.normalizedPath
     const req = firstUserMatch(policy.required, fp)
     if (req !== undefined) {
-      return { fieldId: f.id, fieldPath: fp, status: 'required', countedInRequiredCoverage: true, countedInEffectiveCoverage: true, matchedRule: { source: 'user-config', pattern: req } }
+      return { fieldId: f.id, fieldPath: fp, status: 'required', countedInRequiredCoverage: true, countedInEffectiveCoverage: true, matchedRule: req }
     }
     const ign = firstUserMatch(policy.ignored, fp)
     if (ign !== undefined) {
-      return { fieldId: f.id, fieldPath: fp, status: 'ignored', countedInRequiredCoverage: false, countedInEffectiveCoverage: false, matchedRule: { source: 'user-config', pattern: ign } }
+      return { fieldId: f.id, fieldPath: fp, status: 'ignored', countedInRequiredCoverage: false, countedInEffectiveCoverage: false, matchedRule: ign }
     }
     const opt = firstUserMatch(policy.optional, fp)
     if (opt !== undefined) {
-      return { fieldId: f.id, fieldPath: fp, status: 'optional', countedInRequiredCoverage: false, countedInEffectiveCoverage: true, matchedRule: { source: 'user-config', pattern: opt } }
+      return { fieldId: f.id, fieldPath: fp, status: 'optional', countedInRequiredCoverage: false, countedInEffectiveCoverage: true, matchedRule: opt }
     }
     // default：schema required 标记 → required，否则 optional（spec §3.2）
     if (f.required === true) {

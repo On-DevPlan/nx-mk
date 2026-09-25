@@ -18,8 +18,10 @@ export function RequestDetailPage({ runId, requestId }: { runId: string; request
   if (error instanceof ApiError) {
     return <p className="error">{T('error {code}: {detail}', { code: error.status, detail: error.detailMessage })}</p>
   }
-  if (!data) return <p>{T('loading…')}</p>
+  if (!data) return <p className="loading">{T('loading…')}</p>
   const t = data.trace
+  /** 状态码着色：与 RequestsList 同一套语义（2xx 绿 / 3xx 琥珀 / 4xx+ 红） */
+  const stCls = t.status == null ? '' : t.status < 300 ? 'st-ok' : t.status < 400 ? 'st-warn' : 'st-bad'
   return (
     <section>
       <h1>{t.method} {t.path ?? t.url}</h1>
@@ -29,7 +31,7 @@ export function RequestDetailPage({ runId, requestId }: { runId: string; request
       <table>
         <tbody>
           <tr><th>{T('url')}</th><td>{t.url}</td></tr>
-          <tr><th>{T('status')}</th><td>{t.status ?? '—'}</td></tr>
+          <tr><th>{T('status')}</th><td className={stCls}>{t.status ?? '—'}</td></tr>
           <tr><th>{T('duration')}</th><td>{t.durationMs != null ? `${t.durationMs}ms` : '—'}</td></tr>
           <tr><th>{T('endpoint')}</th><td>{t.endpointId ?? '—'}</td></tr>
           <tr><th>{T('started')}</th><td>{t.startedAt ?? '—'}</td></tr>
@@ -41,6 +43,7 @@ export function RequestDetailPage({ runId, requestId }: { runId: string; request
           ? <pre>{t.responsePreview}</pre>
           : <p className="empty">{T('not recorded')}</p>}
       </div>
+      <CopyCurlSection method={t.method} url={t.url} />
       <ReplaySection runId={runId} requestId={requestId} />
       <div className="section">
         <h2>{T('Field hits')}</h2>
@@ -48,12 +51,15 @@ export function RequestDetailPage({ runId, requestId }: { runId: string; request
           <p className="empty">{T('not associated')}</p>
         ) : (
           <table>
-            <thead><tr><th>{T('field')}</th><th>{T('count')}</th><th>{T('source')}</th><th>{T('last hit')}</th></tr></thead>
+            <thead><tr><th>{T('field')}</th><th>{T('count')}</th><th>{T('value state')}</th><th>{T('value type')}</th><th>{T('value hash')}</th><th>{T('source')}</th><th>{T('last hit')}</th></tr></thead>
             <tbody>
               {data.hits.map((h) => (
                 <tr key={h.id}>
                   <td>{h.normalizedPath}</td>
                   <td>{h.count}</td>
+                  <td>{h.valueState ?? '—'}</td>
+                  <td>{h.valueType ?? '—'}</td>
+                  <td><code>{h.valueHash ?? '—'}</code></td>
                   <td>{h.source ?? '—'}</td>
                   <td>{h.lastHitAt ?? '—'}</td>
                 </tr>
@@ -83,6 +89,32 @@ export function RequestDetailPage({ runId, requestId }: { runId: string; request
         )}
       </div>
     </section>
+  )
+}
+
+/**
+ * Copy curl（§22 Export DSL v0）：method+url 复刻为 curl 命令复制到剪贴板。
+ * V3 裁定：trace 不存原始 body/headers —— curl 只含 method 与 URL，不臆造数据。
+ */
+function CopyCurlSection({ method, url }: { method: string; url: string }) {
+  const T = useT()
+  const [copied, setCopied] = useState(false)
+  const curl = `curl -X ${method} '${url}'`
+  const copy = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(curl)
+      setCopied(true)
+      setTimeout(() => { setCopied(false) }, 2000)
+    } catch {
+      /* 剪贴板不可用（非安全上下文等）——静默，按钮态不变 */
+    }
+  }
+  return (
+    <div className="section">
+      <h2>{T('Copy curl')}</h2>
+      <pre>{curl}</pre>
+      <button onClick={() => void copy()}>{copied ? T('copied!') : T('Copy curl')}</button>
+    </div>
   )
 }
 
