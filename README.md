@@ -6,8 +6,9 @@
 
 ## 当前状态
 
-**Phase 0-5 全部完成** —— 含 Phase 1.5（SDK Facade Codegen）、Phase 4.5（Dashboard 可操作化）、v1（插件配置写回链）。
-测试基线：**77 文件 / 588 测试全绿**，`pnpm -r typecheck` 14 包零报错。
+**Phase 0-5 全部完成** —— 含 Phase 1.5（SDK Facade Codegen）、Phase 4.5（Dashboard 可操作化）、
+v1（插件配置写回链）、§26（Scenario DSL 运行器 + Replay Scenario）。
+测试基线：**90 文件 / 660 测试全绿**；`pnpm -r typecheck` 覆盖 **15 个目标（13 包 + 2 example）零报错**。
 
 已完成能力一览：
 
@@ -15,15 +16,15 @@
 - **Phase 2 采集闭环**：`nx-mk run` 驱动 headless chromium 扫 demo 前端 → field_hits / ui_evidence / request_traces 三表落库。
 - **Phase 3 goal 闭环**（手动验收，见下）：config `goal:` 段 + `coverage:` 段 → CLI `run` 驱动 Goal Loop → 期望 events.jsonl `goal:met` + `runs.terminated_by='goal-met'` + `coverage-report.json` 三指标互证。
 - **demo 闭环**：`pnpm demo:codegen` 一键跑 `demo:openapi` → `nx-mk run` → codegen → `app/src/generated-sdk.ts`。存量代码迁移：`nx-mk migrate`（静态 fetch 替换）+ `patchGlobalFetch()`（兜底）。
+- **§26 Scenario DSL + Replay Scenario**：方案 §26/§27 落地 —— 新包 `@nx-mk/scenario`（dsl-schema / dsl-loader / runner / playwright-runner / scenario-replay）、config `scenarios:` 段、`nx-mk run` 套件执行模式、dashboard `GET /api/scenarios` + 单场景回放 + `/scenarios` 页。5 种 step（goto / waitFor / waitForRequest / assertFieldVisible / screenshot）全 read-only，replay 恒 safe 无 confirm 门；`click` / `fill` / `assertVisible` 后置。详见 [`packages/scenario/README.md`](./packages/scenario/README.md) 与 [设计 spec](./docs/superpowers/specs/2026-09-21-nx-mk-scenario-dsl-replay-design.md)。
 
-**进行中：§26 Scenario DSL 运行器 + Replay Scenario** —— spec 已合入
-（[`2026-09-21-nx-mk-scenario-dsl-replay-design.md`](./docs/superpowers/specs/2026-09-21-nx-mk-scenario-dsl-replay-design.md)），
-实现未开始。范围为：新包 `@nx-mk/scenario`（dsl-schema / dsl-loader / runner / playwright-runner / scenario-replay）、
-config `scenarios:` 段、`nx-mk run` 套件执行模式、dashboard `GET /api/scenarios` + 单场景回放 + `/scenarios` 页。
+§26 之后另有 6 个 PR 合入：hygiene 清账（#25）、backlog 4.5 备忘清零（#26）、Agent 测试 fixture 抽离（#27）、
+spec 实现裁定记录补写（#28）、**套件 context 注入 collector shim**（#29 —— 修套件页无 shim 通道导致每步 drain 恒空、
+归因列恒 NULL）、**Dashboard UI 中英双语 + 请求响应值展示**（#30）、spec demo 物料字段路径勘误（#31）。
 
 完整方案见 [`docx/plan/nx-mk-plan.md`](./docx/plan/nx-mk-plan.md)（§编号是各期 spec 的引用锚点）；
 各期 SDD 产物在 [`docs/superpowers/specs/`](./docs/superpowers/specs/) 与 [`docs/superpowers/plans/`](./docs/superpowers/plans/)；
-非阻塞遗留项台账 [`docs/hygiene-backlog.md`](./docs/hygiene-backlog.md)（15 项全部已修，2026-09-19 清零）。
+非阻塞遗留项台账 [`docs/hygiene-backlog.md`](./docs/hygiene-backlog.md)（A 组 7 + B 组 8 + 4.5 备忘 4 全部清零，文档已归档）。
 
 ### Phase 3 手动验收步骤（goal 闭环 + coverage 报告三点互证）
 
@@ -90,7 +91,9 @@ node ../../packages/cli/dist/index.js start
 
 - 默认 `http://127.0.0.1:4317`（`--port` 覆盖；config `dashboard.port` / `dashboard.open` 可配）
 - 先起 server 再自动跑一次分析（`--no-run` 只看已有产物）；run 失败 server 不关，failed run 可见
-- 页面：Overview（最新 run 三指标）/ Runs / run 总览 / Requests 列表+详情（含 field hits 与 UI evidence 文本样本）/ Fields 四态列表 / Returned-but-ignored
+- 页面：Overview（最新 run 三指标）/ Runs / run 总览 / Requests 列表+详情（含 field hits、UI evidence 文本样本与**响应值展示**）/ Fields 四态列表 / Returned-but-ignored / Manifest 浏览 / 插件设置 / **Scenarios（场景列表 + Replay + 步骤级结果表）**
+- 响应值**默认脱敏**（§24）：落库前按 `privacy:` 段打码——`responseValues.mode` 三态 `masked`（默认，内置 email/phone/token/password 等键规则）/ `raw` / `none`，`mask:` 支持 glob 规则（`*` 跨层级，email/phone/full 策略）
+- UI 支持**中英双语**：右上角开关切换（缺省英文，选择持久化到 localStorage；`ui/i18n.ts` 零新依赖自实现，zh 缺项回退英文）
 - 数据全部只读自 `.nx-mk/`（coverage.db readonly + coverage-report.json + runs 目录）；UI 每 5 秒轮询，运行中的 run 完成后数据自动出现
 
 ## Agent Loop（Phase 5，实验）
@@ -105,6 +108,28 @@ nx-mk run          # 验证 requiredCoverage 真实提升
 ```
 
 前置：本地已安装并登录 `claude` CLI（loop 只授 Read/Grep/Glob 只读工具，agent 无写文件通道）。可选配置（provider 超时 / 轮数 / 批次）见 demo `nx-mk.config.yml` 尾部注释。注意：含 `/` 的字段 id 生成的补丁文件名可能带子目录，shell 通配用 `find .nx-mk/patches/<id> -name '*.patch'` 更稳。
+
+## §26 Scenario DSL（套件采集 + 场景回放）
+
+config 加 `scenarios:` 段，`nx-mk run` 就从「自由探索采集」切成「按场景套件采集」（无此段 → legacy collect 行为分毫不差）：
+
+```yaml
+scenarios:
+  include:
+    - "mk/scenarios/**/*.yml"
+  concurrency: 3   # 1..10，缺省 3
+```
+
+```bash
+nx-mk run      # 套件模式：逐场景 context 采集，trace 带 scenarioId / dslStepId 归因
+nx-mk start    # 再开 dashboard → /scenarios 页 → 点 Replay 单场景复跑
+```
+
+- 场景文件形状与 5 种 step（goto / waitFor / waitForRequest / assertFieldVisible / screenshot）见
+  [`packages/scenario/README.md`](./packages/scenario/README.md) 与 [设计 spec §6](./docs/superpowers/specs/2026-09-21-nx-mk-scenario-dsl-replay-design.md)
+- replay 留痕落 `.nx-mk/replays/scenarios/<scenarioId>/<replayId>.json`；replay 全 read-only，恒 safe 无 confirm 门
+- 场景失败**不 fail run**：warn 汇总失败场景 id，退出码 0（`--strict` 推后续版本）
+- demo 手动验收物料（`mk/scenarios/user-profile.yml` + config 段）见 spec §6/SP9 —— 属本地物料，不随仓库提交
 
 ## Phase 4.5：Dashboard 可操作化（手动验收）
 
@@ -160,7 +185,8 @@ pnpm -r --workspace-concurrency=1 build
 
 ## 包结构
 
-12 个包，全部 `@nx-mk/*` scope（业务集成契约 `@mk/client` 见 [方案 §5.3](./docx/plan/nx-mk-plan.md)）。
+13 个包 + 2 个 example 包（`examples/react-vite-demo/{app,server}`），包全部 `@nx-mk/*` scope
+（业务集成契约 `@mk/client` 见 [方案 §5.3](./docx/plan/nx-mk-plan.md)）。
 
 ```
 packages/
@@ -171,9 +197,10 @@ packages/
 ├── manifest/              # @nx-mk/manifest — OpenAPI → Manifest（Provider 角色）
 ├── client/                # @nx-mk/client — SDK Facade：runtime proxy/collector + Codegen + migrate + patch
 ├── coverage/              # @nx-mk/coverage — 覆盖率存储：§25 DDL + traces/evidence 落库 + analyzer + policy-engine
+├── scenario/              # @nx-mk/scenario — §26 Scenario DSL：schema/loader/runner/playwright 驱动/回放留痕
 ├── plugin-swagger/        # @nx-mk/plugin-swagger — OpenAPI 解析插件（写 .nx-mk/manifest.json）
-├── plugin-playwright/     # @nx-mk/plugin-playwright — headless chromium 采集 + DOM 扫描 + Goal 收敛
-├── dashboard/             # @nx-mk/dashboard — 本地只读覆盖台（fastify server + React UI）
+├── plugin-playwright/     # @nx-mk/plugin-playwright — headless chromium 采集 + DOM 扫描 + Goal 收敛（含套件模式）
+├── dashboard/             # @nx-mk/dashboard — 本地只读覆盖台（fastify server + React UI，中英双语）
 ├── agent/                 # @nx-mk/agent — Agent Loop（claude-code provider / review guard / suggest-diff 落盘）
 └── cli/                   # @nx-mk/cli — npx nx-mk 入口（init / doctor / run / start / loop / migrate）
 ```
@@ -183,6 +210,7 @@ packages/
 [`kernel`](./packages/kernel/README.md) · [`schema`](./packages/schema/README.md) ·
 [`config`](./packages/config/README.md) · [`manifest-schema`](./packages/manifest-schema/README.md) ·
 [`manifest`](./packages/manifest/README.md) · [`client`](./packages/client/README.md) ·
-[`coverage`](./packages/coverage/README.md) · [`plugin-swagger`](./packages/plugin-swagger/README.md) ·
-[`plugin-playwright`](./packages/plugin-playwright/README.md) · [`dashboard`](./packages/dashboard/README.md) ·
-[`agent`](./packages/agent/README.md) · [`cli`](./packages/cli/README.md)
+[`coverage`](./packages/coverage/README.md) · [`scenario`](./packages/scenario/README.md) ·
+[`plugin-swagger`](./packages/plugin-swagger/README.md) · [`plugin-playwright`](./packages/plugin-playwright/README.md) ·
+[`dashboard`](./packages/dashboard/README.md) · [`agent`](./packages/agent/README.md) ·
+[`cli`](./packages/cli/README.md)
