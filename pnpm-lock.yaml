@@ -377,12 +377,18 @@ importers:
       '@nx-mk/kernel':
         specifier: workspace:*
         version: link:../kernel
+      '@nx-mk/manifest-schema':
+        specifier: workspace:*
+        version: link:../manifest-schema
       '@nx-mk/scenario':
         specifier: workspace:*
         version: link:../scenario
       playwright-core:
         specifier: ^1.49.0
         version: 1.63.0
+      zod:
+        specifier: ^3.22.4
+        version: 3.25.76
     devDependencies:
       '@nx-mk/config':
         specifier: workspace:*
