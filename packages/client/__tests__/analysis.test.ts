@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createFetchClient } from '../src/runtime/client.js'
-import { createAnalysisContext } from '../src/mode/analysis.js'
+import { createAnalysisContext, endpointScopePath, matchEndpoint } from '../src/mode/analysis.js'
 import { createCollector, createNoopCollector, type Collector } from '../src/collector/index.js'
 
 // fetch stub：JSON 响应
@@ -120,11 +120,11 @@ describe('Ruling 6 缺省解析', () => {
     }
     ;(globalThis as Record<string, unknown>).window = { __MK_COLLECTOR__: (globalThis as Record<string, unknown>).__MK_COLLECTOR__ }
     ;(globalThis as Record<string, unknown>).__MK_MANIFEST__ = {
-      endpoints: [{ id: 'ep_getUser', method: 'GET', path: '/api/users/{id}' }],
+      endpoints: [{ id: 'ep_getUser', method: 'GET', path: '/users/{id}' }],
     }
-    // 注：fetch URL 含 baseUrl 段（http://x/api/users/u1 → pathname /api/users/u1），
-    // 故 manifest 模板写 /api/users/{id} —— 断言的是「__MK_MANIFEST__ 参与 matchEndpoint」
-    // 这一机制本身
+    // fetch URL 含 baseUrl 段（http://x/api/users/u1 → pathname /api/users/u1）；
+    // endpointScopePath 先剥掉 baseUrl 前缀再进 matchEndpoint —— 模板保持 API 空间
+    // （OpenAPI path 永不含挂载前缀），断言 __MK_MANIFEST__ 参与 matchEndpoint 的机制本身
     const client = createFetchClient({ baseUrl: 'http://x/api', mode: 'analysis' })
     const data = await client.fetch<{ id: string }>('GET', '/users/u1')
     const id = data.id
@@ -137,5 +137,24 @@ describe('Ruling 6 缺省解析', () => {
     const client = createFetchClient({ baseUrl: 'http://x/api', mode: 'analysis' })
     const data = await client.fetch('GET', '/ping')
     expect(data).toEqual({ ok: 1 })
+  })
+})
+
+describe('endpointScopePath（base 前缀剥离 → matchEndpoint API 空间匹配）', () => {
+  const manifest = {
+    endpoints: [{ id: 'ep-user', method: 'GET', path: '/users/{id}' }],
+  } as never
+
+  it('带 /api 代理前缀的 pathname 剥前缀后命中模板', () => {
+    expect(endpointScopePath('/api/users/u_001', '/api')).toBe('/users/u_001')
+    expect(matchEndpoint(manifest, endpointScopePath('/api/users/u_001', '/api'), 'GET')).toBe('ep-user')
+  })
+
+  it('base 为绝对 URL / 根 / 尾斜杠时行为正确', () => {
+    expect(endpointScopePath('/users/u_001', 'http://localhost:8787')).toBe('/users/u_001')
+    expect(endpointScopePath('/users/u_001', '/')).toBe('/users/u_001')
+    expect(endpointScopePath('/api/users/u_001', '/api/')).toBe('/users/u_001')
+    // 前缀不匹配（不同挂载点）→ 原样返回，匹配自然失败
+    expect(endpointScopePath('/v2/users/u_001', '/api')).toBe('/v2/users/u_001')
   })
 })

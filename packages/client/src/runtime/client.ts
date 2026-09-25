@@ -17,7 +17,7 @@
 import type { ApiManifest } from '@nx-mk/manifest-schema'
 import { createNoopCollector, type Collector } from '../collector/index.js'
 import { createTrackedProxy } from '../proxy/index.js'
-import { matchEndpoint } from '../mode/analysis.js'
+import { matchEndpoint, endpointScopePath } from '../mode/analysis.js'
 import { detectMode } from '../mode/index.js'
 
 // Ruling 6：浏览器侧 collector shim（plugin-playwright addInitScript 注入的单通道，
@@ -162,7 +162,9 @@ export function createFetchClient(options: FetchClientOptions): FetchClient {
       try {
         const requestId = `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
         const pathname = new URL(url, 'http://localhost').pathname
-        const endpointId = matchEndpoint(manifest, pathname, method)
+        // endpoint 匹配在 API 空间进行 —— 剥掉 baseUrl 前缀（如 '/api' 代理挂载），
+        // 否则段数不等匹配恒失败（manifest 注入后 demo 首现）
+        const endpointId = matchEndpoint(manifest, endpointScopePath(pathname, baseUrl), method)
         collector.trace({
           requestId,
           method,

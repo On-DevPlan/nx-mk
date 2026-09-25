@@ -3015,6 +3015,13 @@ Dashboard
 - **有意偏离（冻结面，非缺口）**：事件时间戳保持 ISO 8601（dsh 用 epoch ms；SQLite §25
   DDL TEXT 冻结）；事件名保持 `domain:verb` 冒号风格（dsh 用 `domain/verb`；events.jsonl
   与 dashboard 消费方冻结）。
+- **G5（demo 冒烟暴露的 matchEndpoint base 前缀缺口）**：`__MK_MANIFEST__` 注入后首次
+  以真实 manifest 参与 matchEndpoint —— demo fetch 经 `/api` 代理挂载，pathname 含前缀
+  （3 段）对模板 `/users/{id}`（2 段）段数恒不等 → endpointId 仍 'unknown'。新增
+  `endpointScopePath(pathname, baseUrl)` 剥离挂载前缀后再匹配（API 空间）；demo 复跑
+  验证 `request_traces.endpoint_id = d1b393a270b2`（真实 id，不再 NULL）、required 100%
+  → terminated_by = 'goal-met' @ turn 1。陈旧测试勘误：analysis.test.ts Ruling 8 用例
+  模板 `/api/users/{id}` 改回 API 空间 `/users/{id}`（OpenAPI path 永不含挂载前缀）。
 - 陈旧注释勘误：plugin-playwright 头注释「§1.4.2 stableFieldId 错位不可达」已不成立
   （initial-coverage spec §3.1 对齐后 missing 键域为 normalizedPath，demo data-mk-field
   同域）—— goal-met 经 field-hit 实际可达，本批 G2 消除的是校验与注入残余缺口。

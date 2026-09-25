@@ -15,6 +15,24 @@ export function createAnalysisContext(opts?: { manifest?: ApiManifest }): Analys
 }
 
 /**
+ * 剥离 baseUrl 前缀，得到 endpoint 模板空间的匹配路径（API space）。
+ * 浏览器场景 fetch 实际 pathname 带代理/挂载前缀（如 baseUrl='/api' → /api/users/u_001），
+ * 而模板是 API 空间路径（/users/{id}）—— 不剥离则段数恒不等、匹配必失败
+ * （manifest 注入后首现于 demo 冒烟：trace/hit endpointId 恒 'unknown'）。
+ * base 为空/根（绝对 URL 或 '/'）→ 原样返回。
+ */
+export function endpointScopePath(pathname: string, baseUrl: string): string {
+  let base: string
+  try {
+    base = new URL(baseUrl, 'http://localhost').pathname.replace(/\/+$/, '')
+  } catch {
+    return pathname
+  }
+  if (base === '' || base === '/') return pathname
+  return pathname.startsWith(base) ? pathname.slice(base.length) || '/' : pathname
+}
+
+/**
  * URL path 与 endpoint path 模板的段匹配（复用 §42.5 语义：{param} 捕获段）。
  * 规则：段数相等；字面段全等；{param} 段匹配任意内容；方法需全等（所有 HTTP 方法均参与匹配）。
  */
