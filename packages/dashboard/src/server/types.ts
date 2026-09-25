@@ -6,4 +6,6 @@ export interface RouteContext {
   busyTimeoutMs?: number
   /** 用户主配置文件绝对路径（start 命令发现后透传；缺省 = 写回 API 以 409 诚实降级） */
   configPath?: string
+  /** C3（§10）：replay 安全规则（start 命令从 config `replay:` 段透传；缺省 = 内置默认） */
+  replayRules?: import('./replay.js').ReplayRules
 }

@@ -8,7 +8,7 @@
  * - collect.url 非 http(s) → CONFIG_INVALID fail-fast（spec §4）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync, existsSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runMain } from '../commands/run'
@@ -114,6 +114,29 @@ describe('runMain collect 装配（spec §3.6）', () => {
     }
     expect(existsSync(dbPath)).toBe(false)
     expect(existsSync(reportPath)).toBe(false)
+  })
+
+  it('C5：per-run config.resolved.json 落 runs/{runId}/（含最终生效配置与来源路径）', async () => {
+    writeFileSync(configPath, "plugins: []\nlogLevel: info\ndashboard:\n  port: 4317\n")
+    const log = silenceConsole()
+    try {
+      await runMain({ configPath, runId: 'run_resolved', cwd: workDir })
+    } finally {
+      log.mockRestore()
+    }
+    const runDir = join(workDir, '.nx-mk', 'runs', 'run_resolved')
+    expect(existsSync(runDir)).toBe(true)
+    expect(readdirSync(runDir)).toContain('config.resolved.json')
+    const parsed = JSON.parse(readFileSync(join(runDir, 'config.resolved.json'), 'utf8')) as {
+      runId: string
+      configPath: string
+      recordedAt: string
+      config: Record<string, unknown>
+    }
+    expect(parsed.runId).toBe('run_resolved')
+    expect(parsed.configPath).toBe(configPath)
+    expect(typeof parsed.recordedAt).toBe('string')
+    expect(parsed.config).toMatchObject({ logLevel: 'info' })
   })
 
   it('collect 配置 → runs 表登记本次 run（insertRun → endRun completed，不带 terminatedBy）', async () => {

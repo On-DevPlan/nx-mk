@@ -8,7 +8,7 @@ import { createTrackedProxy } from '../src/proxy/index.js'
 
 // 最小 hit 收集器（形状 = Task 2 正式 Collector 的 hit 子集）
 function makeCollector() {
-  const hits: { requestId: string; endpointId: string; fieldPath: string; normalizedPath: string; type: string; timestamp: number }[] = []
+  const hits: { requestId: string; endpointId: string; fieldPath: string; normalizedPath: string; type: string; timestamp: number; valueState?: string; valueType?: string; valueHash?: string }[] = []
   return { hits, hit: (h: (typeof hits)[number]) => { hits.push(h) } }
 }
 const BASE = { requestId: 'req1', endpointId: 'ep1', basePath: 'data' }
@@ -99,6 +99,59 @@ describe('缓存与安全', () => {
     const boom = { hit: () => { throw new Error('collector down') } }
     const p = createTrackedProxy({ id: 7 } as AnyObj, { ...BASE, collector: boom })
     expect((p as AnyObj).id).toBe(7)
+  })
+})
+
+describe('C1 字段级值通道（§23.2：valueState/valueType/valueHash）', () => {
+  it.each([
+    ['string', 'name', 'Alice', 'present', 'string'],
+    ['number', 'age', 7, 'present', 'number'],
+    ['null', 'nickname', null, 'null', 'null'],
+    ['undefined（prop 缺省）', 'ghost', undefined, 'undefined', 'undefined'],
+    ['empty string', 'bio', '', 'empty', 'string'],
+    ['empty array', 'tags', [], 'empty', 'array'],
+    ['empty object', 'meta', {}, 'empty', 'object'],
+  ])('%s → 状态/类型正确', (_name, prop, value, state, vtype) => {
+    const c = makeCollector()
+    const p = createTrackedProxy({ [prop]: value } as AnyObj, { ...BASE, collector: c })
+    void (p as AnyObj)[prop as string]
+    expect(c.hits[0]).toMatchObject({ normalizedPath: `data.${prop as string}`, valueState: state, valueType: vtype })
+  })
+
+  it('标量值产单向散列；null/undefined 不产散列；同值同散列、异值异散列', () => {
+    const c = makeCollector()
+    const p = createTrackedProxy({ a: 'x', b: 'y', n: null, g: undefined } as AnyObj, { ...BASE, collector: c })
+    void (p as AnyObj).a
+    void (p as AnyObj).b
+    void (p as AnyObj).n
+    void (p as AnyObj).g
+    const byPath = new Map(c.hits.map((h) => [h.normalizedPath, h]))
+    expect(byPath.get('data.a')?.valueHash).toMatch(/^[0-9a-f]{8}$/)
+    expect(byPath.get('data.a')?.valueHash).not.toBe(byPath.get('data.b')?.valueHash)
+    expect(byPath.get('data.n')?.valueHash).toBeUndefined()
+    expect(byPath.get('data.g')?.valueHash).toBeUndefined()
+  })
+
+  it('对象/数组对完整值取散列（C11：不经截断）——大值仍同值同散列', () => {
+    const c = makeCollector()
+    const big = { list: Array.from({ length: 500 }, (_, i) => i) }
+    const p = createTrackedProxy({ big, big2: { list: Array.from({ length: 500 }, (_, i) => i) } } as AnyObj, { ...BASE, collector: c })
+    void (p as AnyObj).big
+    void (p as AnyObj).big2
+    const byPath = new Map(c.hits.map((h) => [h.normalizedPath, h]))
+    // 结构相同 → 散列一致（同值异源可比对）
+    expect(byPath.get('data.big')?.valueHash).toBe(byPath.get('data.big2')?.valueHash)
+    // 散列是 FNV-1a 8 位十六进制 —— 原文不出浏览器
+    expect(byPath.get('data.big')?.valueHash).toMatch(/^[0-9a-f]{8}$/)
+  })
+
+  it('散列不泄露原文：短字符串值不可由散列反解（单向性回归锁）', () => {
+    const c = makeCollector()
+    const secret = 'jane@gmail.com'
+    const p = createTrackedProxy({ email: secret } as AnyObj, { ...BASE, collector: c })
+    void (p as AnyObj).email
+    expect(c.hits[0]?.valueHash).toBeDefined()
+    expect(JSON.stringify(c.hits[0])).not.toContain(secret)
   })
 })
 

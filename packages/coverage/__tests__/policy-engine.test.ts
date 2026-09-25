@@ -69,3 +69,28 @@ describe('evaluatePolicy — §21.5 优先级', () => {
     expect(d.fieldPath).toBe('data.name')
   })
 })
+
+describe('evaluatePolicy — C2 对象条目（string | {pattern, reason}）', () => {
+  it('对象条目：pattern 匹配 + reason 透出', () => {
+    const d = evaluatePolicy(
+      [f('f1', 'data.internalRiskScore', false)],
+      { ignored: [{ pattern: 'data.internalRiskScore', reason: '内部风控字段，不应展示' }] },
+    )[0]!
+    expect(d.status).toBe('ignored')
+    expect(d.matchedRule).toEqual({ source: 'user-config', pattern: 'data.internalRiskScore', reason: '内部风控字段，不应展示' })
+  })
+  it('对象条目无 reason → matchedRule 不含 reason 键', () => {
+    const d = evaluatePolicy([f('f1', 'data.name', true)], { required: [{ pattern: 'data.name' }] })[0]!
+    expect(d.matchedRule).toEqual({ source: 'user-config', pattern: 'data.name' })
+  })
+  it('混合列表：string 与对象条目共存，按声明顺序取首个命中', () => {
+    const d = evaluatePolicy([f('f1', 'data.name', true)], {
+      required: ['data.*', { pattern: 'data.name', reason: '用户主标识' }],
+    })[0]!
+    expect(d.matchedRule).toEqual({ source: 'user-config', pattern: 'data.*' })
+    const d2 = evaluatePolicy([f('f2', 'data.user.name', true)], {
+      required: ['data.*', { pattern: '**.name', reason: '用户主标识' }],
+    })[0]!
+    expect(d2.matchedRule).toEqual({ source: 'user-config', pattern: '**.name', reason: '用户主标识' })
+  })
+})

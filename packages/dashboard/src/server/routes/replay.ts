@@ -49,8 +49,8 @@ export function registerReplayRoutes(app: FastifyInstance, ctx: RouteContext): v
       method = summary.method ?? 'GET'
       url = summary.url ?? ''
     }
-    // R1：服务端分类；E1 blocked → 403
-    const cls = classifyReplay(method, url)
+    // R1：服务端分类（C3：规则来自 config `replay:` 段透传，缺省 = 内置默认）；E1 blocked → 403
+    const cls = classifyReplay(method, url, ctx.replayRules)
     if (cls.verdict === 'blocked') {
       return reply.code(403).send({ error: `replay blocked: ${cls.reason}`, verdict: cls.verdict })
     }

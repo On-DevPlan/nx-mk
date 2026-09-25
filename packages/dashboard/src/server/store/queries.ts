@@ -62,6 +62,9 @@ function mapHitRow(r: Row): FieldHitRow {
     lastHitAt: str(r.last_hit_at),
     route: str(r.route),
     source: str(r.source),
+    valueState: str(r.value_state),
+    valueType: str(r.value_type),
+    valueHash: str(r.value_hash),
   }
 }
 

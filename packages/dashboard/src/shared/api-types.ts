@@ -44,7 +44,7 @@ export interface TraceRow {
   responsePreview: string | null
 }
 
-/** §25.6 field_hits 行投影 */
+/** §25.6 field_hits 行投影（含 C1 值通道演进列 value_state/value_type/value_hash） */
 export interface FieldHitRow {
   id: string
   runId: string
@@ -58,6 +58,12 @@ export interface FieldHitRow {
   lastHitAt: string | null
   route: string | null
   source: string | null
+  /** C1（§23.2）：值状态 present/null/undefined/empty（缺省 null = 旧 run 无此列数据） */
+  valueState: string | null
+  /** C1（§23.2）：值类型 null/array/string/number/… */
+  valueType: string | null
+  /** C1：FNV-1a 8 位十六进制单向散列（原文不出浏览器，无可逆泄露） */
+  valueHash: string | null
 }
 
 /** §25.7 ui_evidence 行投影（含 Phase 3 增量列 text_sample） */

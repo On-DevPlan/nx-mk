@@ -120,6 +120,17 @@ describe('analyzeCoverage — 四态与三指标', () => {
     expect(fieldRow('h4')).toMatchObject({ policy_status: 'ignored', coverage_state: 'ignored', access_hit: 1 })
   })
 
+  it('C2：matchedRule.reason 落 matched_rule_reason 列（对象条目 → 决策 → 落库透出）', () => {
+    const decisions = evaluatePolicy(FIELDS, {
+      ignored: [{ pattern: 'data.internalRiskScore', reason: '内部风控字段，不应展示' }],
+    })
+    const r = analyzeWith({ hits: HITS(['data.internalRiskScore']) }, MANIFEST, decisions)
+    expect(r.ignoredReturnedFields[0]?.matchedRule?.reason).toBe('内部风控字段，不应展示')
+    expect(fieldRow('h4')).toMatchObject({ matched_rule_reason: '内部风控字段，不应展示' })
+    // 默认规则（无用户匹配）的 reason 也随决策落列
+    expect(fieldRow('h1')).toMatchObject({ matched_rule_reason: 'OpenAPI required 标记' })
+  })
+
   it('三指标算术（§21.6）与零分母', () => {
     const r = analyzeWith({ hits: HITS(['data.name', 'data.tags[]', 'data.internalRiskScore', 'data.address.city']) })
     expect(r.metrics.requiredCoverage).toBeCloseTo(1 / 2)        // name 命中 / email 未命中

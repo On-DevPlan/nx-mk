@@ -149,6 +149,9 @@ importers:
       '@nx-mk/plugin-playwright':
         specifier: workspace:*
         version: link:../plugin-playwright
+      '@nx-mk/scenario':
+        specifier: workspace:*
+        version: link:../scenario
     devDependencies:
       '@types/node':
         specifier: ^20.10.0

@@ -11,6 +11,14 @@ export interface FieldHitCore {
   normalizedPath: string
   type: 'get'
   timestamp: number
+  /**
+   * C1（§23.2/§24 对齐）：字段级值通道 —— 代理侧就地计算，只出分类与单向散列，不出原文。
+   * 聚合（同 normalizedPath 计数）保留首个 hit 的值特征：同路径跨请求值变化时以首见为准
+   * （哈希仍可跨 run 比对「同值异源」；逐请求明细属 §25.5 request_fields，Phase 2 范畴）。
+   */
+  valueState?: 'present' | 'null' | 'undefined' | 'empty'
+  valueType?: string
+  valueHash?: string
 }
 
 export interface RequestTraceCore {
