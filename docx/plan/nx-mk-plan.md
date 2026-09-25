@@ -2946,16 +2946,47 @@ Dashboard
 
 ### 47.4 未实现缺口（转 hygiene-backlog C 组）
 
-| # | 缺口 | Plan 出处 |
+> **2026-09-25 二批裁定**：C1–C5、C9 的 Copy curl 已小步落地（见 47.5）；C6/C10 属 Plan 自标后置
+> （§39 Watch/TUI）、C7 的权限四档与回滚属 §36/D1 自裁 MVP 后置 —— 三者**不是缺口而是 roadmap 归属**，
+> 改记 47.6；剩余真正待 SDD 的只有 C7 的 3 个插件与 C8 协议暴露面。
+
+| # | 缺口 | Plan 出处 | 裁定 |
+|---|---|---|---|
+| C1 | 字段级响应值通道（valueType/valueState/hash） | §24 | ✅ 47.5-F1 |
+| C2 | `coverage:` 条目 reason 字段（含报告透出） | §10/§16 | ✅ 47.5-F2 |
+| C3 | `replay:` 安全规则可配（现硬编码 GET-safe / POST-confirm） | §23 | ✅ 47.5-F3 |
+| C4 | CLI `report` / `replay` 子命令 | §5.1 | ✅ 47.5-F4 |
+| C5 | `config.resolved.json` 落盘（写盘面扩展，需走铁律评审） | §10 | ✅ 47.5-F5 |
+| C6 | `openapi.watch` / `app:`（CLI 代启应用）段 | §10/§39 | → 47.6（随 watch 模式一并 SDD） |
+| C7 | Agent：3 个内置插件（dsl/auth/perf）、权限四档、rollbackOnRegression 回滚执行 | §35/§36/§38 | 权限四档/回滚 → 47.6（§36/D1 自裁 MVP 后置）；**插件 ☐ 待独立 SDD**（dsl-agent 依赖 Request DSL） |
+| C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 | ☐ 待独立 SDD（API 面设计需 spec） |
+| C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | Copy curl ✅ 47.5-F6；Request DSL/Export DSL ☐ 待独立 SDD |
+| C10 | Watch 模式 / TUI 实时进度（Plan 自标后置） | §39 | → 47.6（Plan 自标后置，裁定延期） |
+| C11 | 采集上限 500 → 截断残片致结构化脱敏退化（配合 C1 一并评估） | §24 | ✅ 随 47.5-F1 消解（字段级散列在浏览器内对完整值计算，不经截断） |
+
+### 47.5 二批落地记录（2026-09-25，feat/plan-adjudication-privacy 追加 commit）
+
+- **F1（C1/C11）**：client 代理 get 拦截就地产 `valueState`（present/null/undefined/empty）/`valueType`
+  （null/array/typeof）/`valueHash`（FNV-1a 32bit 单向散列）随 hit 上报；coverage `field_hits` 演进列
+  `value_state/value_type/value_hash` 落库；dashboard RequestDetail 字段命中表透出。**隐私设计强于 trace 级
+  masked**：散列在浏览器内对完整值计算（不经 500 字符截断，C11 消解），原文不出浏览器。
+- **F2（C2）**：config `coverage:` 条目升级 `string | {pattern, reason}`（向后兼容）；policy-engine
+  matchedRule 透出 reason；`coverage_fields` 演进列 `matched_rule_reason`；agent policySummary 的
+  ignored 枚举附带 reason。
+- **F3（C3）**：config `replay:` 段（allowMethods / requireConfirmation / block[].pattern）；
+  `classifyReplay(method, url, rules?)` 用户规则注入，缺省逐字保持内置默认；CLI `replay` 与 dashboard
+  路由同源复用；fail-closed（未列入 allowMethods 的一律 deny）；内置敏感词表始终兜底。
+- **F4（C4）**：CLI 新增 `report`（打印三指标摘要 + 产物路径，`--open` 系统打开）与
+  `replay request <runId> <requestId> [--confirm]` / `replay scenario <scenarioId>` 子命令；
+  kernel `ResolvedConfig.subcommand` 联合扩展 `report|replay`。
+- **F5（C5）**：per-run `.nx-mk/runs/{runId}/config.resolved.json` 快照（runId/configPath/recordedAt/
+  resolved config）；写者归 CLI（run 产物目录既有写面，铁律不破）；失败 warn 不阻断。
+- **F6（C9 部分）**：dashboard RequestDetail「Copy curl」区（method+url；V3 裁定不臆造 body/headers）。
+
+### 47.6 延期裁定（Plan 自标后置项的归属确认，非缺口）
+
+| 项 | Plan 出处 | 裁定 |
 |---|---|---|
-| C1 | 字段级响应值通道（valueType/valueState/hash） | §24 |
-| C2 | `coverage:` 条目 reason 字段（含报告透出） | §10/§16 |
-| C3 | `replay:` 安全规则可配（现硬编码 GET-safe / POST-confirm） | §23 |
-| C4 | CLI `report` / `replay` 子命令 | §5.1 |
-| C5 | `config.resolved.json` 落盘（写盘面扩展，需走铁律评审） | §10 |
-| C6 | `openapi.watch` / `app:`（CLI 代启应用）段 | §10/§39 |
-| C7 | Agent：3 个内置插件（dsl/auth/perf）、权限四档、rollbackOnRegression 回滚执行 | §35/§36/§38 |
-| C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 |
-| C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 |
-| C10 | Watch 模式 / TUI 实时进度（Plan 自标后置） | §39 |
-| C11 | 采集上限 500 → 截断残片致结构化脱敏退化（配合 C1 一并评估） | §24 |
+| Watch 模式 / TUI 实时进度 | §39 | Plan 自标后置；与 C6（openapi.watch/app: 段）合并待独立 SDD |
+| Agent 权限四档（read-only/workspace-write/auto-apply）与 rollback 执行 | §36/§38 | D1 决策明示「MVP 默认 suggest-diff，不实现 workspace-write/auto-apply（Phase 5+）」；rollbackOnRegression 依赖 workspace-write 语义，随之 Phase 5+ |
+| api-client-agent / dsl-agent / policy-agent 插件 | §35.2/35.3/35.4 | 待独立 SDD（dsl-agent 依赖 Request DSL C9；policy-agent 依赖 §33 协议面） |

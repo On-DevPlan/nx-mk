@@ -8,7 +8,7 @@
 
 **Phase 0-5 全部完成** —— 含 Phase 1.5（SDK Facade Codegen）、Phase 4.5（Dashboard 可操作化）、
 v1（插件配置写回链）、§26（Scenario DSL 运行器 + Replay Scenario）。
-测试基线：**90 文件 / 660 测试全绿**；`pnpm -r typecheck` 覆盖 **15 个目标（13 包 + 2 example）零报错**。
+测试基线：**93 文件 / 699 测试全绿**；`pnpm -r typecheck` 覆盖 **15 个目标（13 包 + 2 example）零报错**。
 
 已完成能力一览：
 
@@ -24,7 +24,8 @@ spec 实现裁定记录补写（#28）、**套件 context 注入 collector shim*
 
 完整方案见 [`docx/plan/nx-mk-plan.md`](./docx/plan/nx-mk-plan.md)（§编号是各期 spec 的引用锚点）；
 各期 SDD 产物在 [`docs/superpowers/specs/`](./docs/superpowers/specs/) 与 [`docs/superpowers/plans/`](./docs/superpowers/plans/)；
-非阻塞遗留项台账 [`docs/hygiene-backlog.md`](./docs/hygiene-backlog.md)（A 组 7 + B 组 8 + 4.5 备忘 4 全部清零，文档已归档）。
+非阻塞遗留项台账 [`docs/hygiene-backlog.md`](./docs/hygiene-backlog.md)（A 组 7 + B 组 8 + 4.5 备忘 4 全部清零；
+C 组为 Plan × 实现对照缺口：C1–C5/C11 与 Copy curl 已落地，C6/C10 裁定延期，C7 插件与 C8 待独立 SDD）。
 
 ### Phase 3 手动验收步骤（goal 闭环 + coverage 报告三点互证）
 
@@ -91,8 +92,9 @@ node ../../packages/cli/dist/index.js start
 
 - 默认 `http://127.0.0.1:4317`（`--port` 覆盖；config `dashboard.port` / `dashboard.open` 可配）
 - 先起 server 再自动跑一次分析（`--no-run` 只看已有产物）；run 失败 server 不关，failed run 可见
-- 页面：Overview（最新 run 三指标）/ Runs / run 总览 / Requests 列表+详情（含 field hits、UI evidence 文本样本与**响应值展示**）/ Fields 四态列表 / Returned-but-ignored / Manifest 浏览 / 插件设置 / **Scenarios（场景列表 + Replay + 步骤级结果表）**
-- 响应值**默认脱敏**（§24）：落库前按 `privacy:` 段打码——`responseValues.mode` 三态 `masked`（默认，内置 email/phone/token/password 等键规则）/ `raw` / `none`，`mask:` 支持 glob 规则（`*` 跨层级，email/phone/full 策略）
+- 页面：Overview（最新 run 三指标）/ Runs / run 总览 / Requests 列表+详情（含 field hits、UI evidence 文本样本、**响应值展示**与**字段级值通道**：值状态/值类型/值散列，及 **Copy curl**）/ Fields 四态列表 / Returned-but-ignored / Manifest 浏览 / 插件设置 / **Scenarios（场景列表 + Replay + 步骤级结果表）**
+- 响应值**默认脱敏**（§24）：落库前按 `privacy:` 段打码——`responseValues.mode` 三态 `masked`（默认，内置 email/phone/token/password 等键规则）/ `raw` / `none`，`mask:` 支持 glob 规则（`*` 跨层级，email/phone/full 策略）；**字段级通道更强**——client 代理在浏览器内就地产值状态/值类型/FNV-1a 单向散列（对完整值计算，不经截断，原文不出浏览器）
+- replay 安全规则可配（§23）：config `replay:` 段 `allowMethods` / `requireConfirmation` / `block`（路径 glob），CLI `replay` 与 dashboard 同源分类，未列入 allowMethods 的一律拒绝（fail-closed）
 - UI 支持**中英双语**：右上角开关切换（缺省英文，选择持久化到 localStorage；`ui/i18n.ts` 零新依赖自实现，zh 缺项回退英文）
 - 数据全部只读自 `.nx-mk/`（coverage.db readonly + coverage-report.json + runs 目录）；UI 每 5 秒轮询，运行中的 run 完成后数据自动出现
 

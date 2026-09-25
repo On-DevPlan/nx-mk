@@ -74,18 +74,18 @@
 > 同批已落地：**§24 隐私脱敏**（trace 级 response_preview 默认 masked，`privacy:` 段 + glob 规则，
 > coverage 落库前施加 —— Plan §47.3）与 Plan §47.1/§47.2 裁定回写。
 
-## C 组 —— 2026-09-25 Plan × 实现对照新开
+## C 组 —— 2026-09-25 Plan × 实现对照新开（同日下午二批裁定：F1–F6 落地，详见 Plan §47.5/§47.6）
 
 | # | 条目 | Plan 出处 | 状态 |
 |---|---|---|---|
-| C1 | 字段级响应值通道（valueType / valueState / hash 明细；现仅 trace 级 preview） | §24 | ☐ |
-| C2 | `coverage:` 条目 reason 字段（含报告/policySummary 透出） | §10/§16 | ☐ |
-| C3 | `replay:` 安全规则可配（现硬编码 GET-safe / POST-confirm） | §23 | ☐ |
-| C4 | CLI `report` / `replay` 子命令 | §5.1 | ☐ |
-| C5 | `config.resolved.json` 落盘（新增写盘面，需按铁律评审落点） | §10 | ☐ |
-| C6 | `openapi.watch` / `app:`（CLI 代启用户应用）配置段 | §10/§39 | ☐ |
-| C7 | Agent：补 3 个内置插件（dsl/auth/perf）、权限四档、rollbackOnRegression 的回滚执行 | §35/§36/§38 | ☐ |
-| C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 | ☐ |
-| C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | ☐ |
-| C10 | Watch 模式 / TUI 实时进度（Plan 自标后置，低优） | §39 | ☐ |
-| C11 | 采集上限 500 字符 → 截断残片致结构化脱敏退化为正则兜底（与 C1 合并评估） | §24 | ☐ |
+| C1 | 字段级响应值通道（valueType / valueState / hash 明细；现仅 trace 级 preview） | §24 | ☑ F1（client 代理就地产值特征 → field_hits 三列 → RequestDetail 透出；散列对完整值计算，C11 一并消解） |
+| C2 | `coverage:` 条目 reason 字段（含报告/policySummary 透出） | §10/§16 | ☑ F2（条目升级 string \| {pattern, reason}；matched_rule_reason 落列；policySummary 附带 reason） |
+| C3 | `replay:` 安全规则可配（现硬编码 GET-safe / POST-confirm） | §23 | ☑ F3（replay: 段 allowMethods/requireConfirmation/block；CLI 与 dashboard 同源；fail-closed） |
+| C4 | CLI `report` / `replay` 子命令 | §5.1 | ☑ F4（report [--open]；replay request/scenario） |
+| C5 | `config.resolved.json` 落盘（新增写盘面，需按铁律评审落点） | §10 | ☑ F5（per-run runs/{runId}/config.resolved.json，写者归 CLI，铁律不破） |
+| C6 | `openapi.watch` / `app:`（CLI 代启用户应用）配置段 | §10/§39 | ☐ → 随 watch 模式一并 SDD（Plan §39 自标后置，裁定见 Plan §47.6） |
+| C7 | Agent：补 3 个内置插件（api-client/dsl/policy，§35.2-35.4）、权限四档、rollbackOnRegression 的回滚执行 | §35/§36/§38 | 部分裁定：权限四档/回滚 = §36/D1 自裁 MVP 后置（→ Plan §47.6，非缺口）；**3 个插件 ☐ 待独立 SDD**（dsl-agent 依赖 C9） |
+| C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 | ☐ 待独立 SDD（API 面设计需 spec） |
+| C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | 部分落地：**Copy curl ☑ F6**（RequestDetail，method+url，V3 不臆造 body）；Request DSL/Export DSL ☐ 待独立 SDD |
+| C10 | Watch 模式 / TUI 实时进度（Plan 自标后置，低优） | §39 | ☑ 裁定延期（Plan §47.6 归属确认，非缺口） |
+| C11 | 采集上限 500 字符 → 截断残片致结构化脱敏退化为正则兜底（与 C1 合并评估） | §24 | ☑ 随 F1 消解（字段级散列在浏览器内对完整值计算，不经截断） |
