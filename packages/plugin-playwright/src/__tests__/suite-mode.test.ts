@@ -43,6 +43,7 @@ type SuiteRunner = NonNullable<PlaywrightPluginOptions['suiteRunner']>
 interface SuiteCtx {
   reports: Array<Record<string, unknown>>
   emitted: Array<Record<string, unknown>>
+  signals: Array<Record<string, unknown>>
   logger: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> }
 }
 
@@ -51,15 +52,18 @@ let dir = ''
 function makeCtx(overrides: Record<string, unknown> = {}): never {
   const reports: Array<Record<string, unknown>> = []
   const emitted: Array<Record<string, unknown>> = []
+  const signals: Array<Record<string, unknown>> = []
   return {
     reports,
     emitted,
+    signals,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     config: { plugins: [], outputDir: '.nx-mk/runs' },
     cwd: dir,
     kernel: { getSubcommand: () => 'run' },
     getTurn: () => 1,
     emitReport: (r: Record<string, unknown>) => { reports.push(r) },
+    emitSignal: (s: Record<string, unknown>) => { signals.push(s) },
     events: { emit: (e: Record<string, unknown>) => { emitted.push(e) } },
     ...overrides,
   } as never
@@ -99,13 +103,53 @@ describe('beforeRun 套件模式', () => {
     expect(runOpts.concurrency).toBe(3)
     expect(typeof runOpts.observers.afterGoto).toBe('function')
     expect(typeof runOpts.observers.afterStep).toBe('function')
-    // SP10：套件页必注入 collector shim（legacy Ruling 7 同通道）—— 否则
-    // 页内 analysis trace 无投递口、S6 归因列在真实 run 中恒 NULL
+    // SP10：套件页必注入 collector shim（legacy Ruling 7 同通道）—— tmpdir 无
+    // manifest → 不注 manifest shim，数组恰为单 collector shim；manifest 存在的
+    // 顺序断言见下方 (a2)
     expect(runOpts.initScripts).toEqual([COLLECTOR_SHIM_SCRIPT])
     // start 两个场景均在 runner 调用前 emit（批次语义：start 全部 → 执行）
     expect(emittedAtRunnerCall).toBe(2)
     const starts = emitted.filter((e) => e.type === 'scenario:start')
     expect(starts.map((e) => e.scenarioId)).toEqual(['s-ok', 's-bad'])
+    // 单次批次完成 → done 信号（Goal Loop all-done 早停的生产者侧）
+    const { signals } = ctx as SuiteCtx
+    expect(signals).toEqual([{ kind: 'done', reason: 'all-collected', turn: 1 }])
+  })
+
+  it('(a2) manifest 存在 → initScripts 先 manifest shim 后 collector shim + afterGoto 按 normalizedPath 集过滤', async () => {
+    // 预置 manifest（plugin-swagger beforeRun 产物语义）—— 只登记 data.name
+    mkdirSync(join(dir, '.nx-mk'), { recursive: true })
+    writeFileSync(
+      join(dir, '.nx-mk', 'manifest.json'),
+      JSON.stringify({ version: '1', fields: [{ normalizedPath: 'data.name' }] }),
+      'utf8',
+    )
+    const suiteRunner = vi.fn(async (_scenarios: ReadonlyArray<Scenario>, opts: { concurrency: number; observers: SuiteObservers }) => {
+      // afterGoto：data.name 已知 → 直报；data.unknown 不在校验集 → 抑制
+      const page = {
+        evaluate: async () => [
+          { dataMkField: 'data.name', visible: true, inViewport: true },
+          { dataMkField: 'data.unknown', visible: true, inViewport: true },
+        ],
+      } as unknown as Page
+      await opts.observers.afterGoto!('s-ok', page, '/a')
+      return [] as ScenarioRunResult[]
+    })
+    const plugin = createPlaywrightPlugin({ url: 'http://localhost:5173', suiteRunner: suiteRunner as SuiteRunner })
+    const ctx = makeCtx({
+      config: { plugins: [], outputDir: '.nx-mk/runs', scenarios: { include: ['mk/scenarios/s.yml'] } },
+    })
+
+    await plugin.hooks.beforeRun?.(ctx)
+
+    const [ , runOpts ] = suiteRunner.mock.calls[0] as unknown as [
+      Scenario[],
+      { initScripts: ReadonlyArray<string> },
+    ]
+    expect(runOpts.initScripts).toEqual([expect.stringContaining('__MK_MANIFEST__'), COLLECTOR_SHIM_SCRIPT])
+    const { reports } = ctx as SuiteCtx
+    expect(reports).toContainEqual({ kind: 'field-hit', fieldId: 'data.name', count: 1, turn: 1 })
+    expect(reports.every((r) => r.kind !== 'field-hit' || r.fieldId !== 'data.unknown')).toBe(true)
   })
 
   it('(b) include 命中 0 文件 → suiteRunner 不被调 + warn 回落 legacy collect（collect.url 消费为证）', async () => {

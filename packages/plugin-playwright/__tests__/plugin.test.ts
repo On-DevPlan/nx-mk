@@ -6,6 +6,9 @@
  * 另覆盖 beforeRun doctor 语义（collect 缺失静默 skip / chromium 不可用 fail-fast）。
  */
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest'
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { KernelError } from '@nx-mk/kernel'
 import { createCollector } from '@nx-mk/client/collector'
 import { createPlaywrightPlugin } from '../src/index.js'
@@ -38,20 +41,24 @@ const hasChromiumMock = vi.mocked(hasChromium)
 
 interface Ctx {
   reports: Array<Record<string, unknown>>
+  signals: Array<Record<string, unknown>>
   logger: { info: ReturnType<typeof vi.fn> }
   config: Record<string, unknown>
 }
 
 function makeCtx(overrides: Record<string, unknown> = {}): never {
   const reports: Array<Record<string, unknown>> = []
+  const signals: Array<Record<string, unknown>> = []
   return {
     reports,
+    signals,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     config: { collect: { url: 'http://localhost:5173' }, plugins: [], outputDir: '.nx-mk/runs' },
     cwd: '/tmp/x',
     kernel: { getSubcommand: () => 'run' },
     getTurn: () => 1,
     emitReport: (r: Record<string, unknown>) => { reports.push(r) },
+    emitSignal: (s: Record<string, unknown>) => { signals.push(s) },
     ...overrides,
   } as never
 }
@@ -224,6 +231,40 @@ describe('plugin hooks（mock browser）', () => {
       { kind: 'endpoint-called', method: 'GET', path: '/users', turn: 1 },
     ])
     expect(kinds.size).toBeGreaterThanOrEqual(2)
+    // 单次收集完成 → done 信号（Goal Loop all-done 早停的生产者侧；cwd 无 manifest 不影响）
+    expect((ctx as Ctx).signals).toEqual([{ kind: 'done', reason: 'all-collected', turn: 1 }])
+  })
+
+  it('manifest 存在：launchCollect 收 manifest shim + 未知字段抑制（normalizedPath 校验集）', async () => {
+    const collector = createCollector()
+    const dir = mkdtempSync(join(tmpdir(), 'nx-mk-legacy-'))
+    try {
+      // 预置 manifest（plugin-swagger beforeRun 产物语义）—— 只登记 data.id
+      mkdirSync(join(dir, '.nx-mk'), { recursive: true })
+      writeFileSync(
+        join(dir, '.nx-mk', 'manifest.json'),
+        JSON.stringify({ version: '1', fields: [{ normalizedPath: 'data.id' }] }),
+        'utf8',
+      )
+      const plugin = createPlaywrightPlugin({ url: 'http://localhost:5173', collector })
+      const ctx = makeCtx({ cwd: dir })
+
+      await plugin.hooks.beforeRun?.(ctx)
+
+      // Ruling 8：manifest shim 经 initScripts 传给 runner（collector shim 由 runner 自行追加）
+      expect(vi.mocked(launchCollect).mock.calls[0]![0]).toMatchObject({
+        url: 'http://localhost:5173',
+        initScripts: [expect.stringContaining('__MK_MANIFEST__')],
+      })
+      const { reports, signals } = ctx as Ctx
+      // data.id 在校验集 → 直报；data.address.zip 不在 → 抑制（垃圾 fieldId 不进 Goal Loop）
+      expect(reports.filter((r) => r.kind === 'field-hit')).toEqual([
+        { kind: 'field-hit', fieldId: 'data.id', count: 1, turn: 1 },
+      ])
+      expect(signals).toEqual([{ kind: 'done', reason: 'all-collected', turn: 1 }])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('空 dataMkField 描述符 → 不产 field-hit 报告（与 scanDom 过滤语义一致）', async () => {

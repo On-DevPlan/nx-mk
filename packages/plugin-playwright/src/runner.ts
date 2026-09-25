@@ -20,6 +20,8 @@ import { scanPage, COLLECTOR_SHIM_SCRIPT, drainBrowserCollector, type ParsedDesc
 export interface CollectConfig {
   url: string
   waitForSelector?: string
+  /** 额外 initScript（manifest shim 等），先于 COLLECTOR_SHIM_SCRIPT 注入 */
+  initScripts?: ReadonlyArray<string>
 }
 
 /**
@@ -40,10 +42,13 @@ export async function launchCollect(
   const browser = await chromium.launch({ headless: true })
   try {
     const context = await browser.newContext()
-    // Ruling 6/7（Task 7 审查）：浏览器侧单通道 —— addInitScript 注入可序列化 shim
-    // （window.__MK_COLLECTOR__ 缓冲；demo 业务代码 Ruling 6 缺省解析会从 analysis
-    // 分支往这里 hit/trace）。manifest 注入见 Ruling 8 —— 未实现（见插件头注释）。
-    await context.addInitScript(COLLECTOR_SHIM_SCRIPT)
+    // Ruling 6/7/8：initScript 注入 —— manifest shim 在前（数据源：__MK_MANIFEST__ 供
+    // demo SDK matchEndpoint 解析真实 endpointId），collector shim 在后（传输通道：
+    // __MK_COLLECTOR__ 缓冲，页代码 Ruling 6 缺省解析往这里 hit/trace）。
+    // 两者皆为可序列化字面量，页脚本运行前全部就位。
+    for (const script of [...(config.initScripts ?? []), COLLECTOR_SHIM_SCRIPT]) {
+      await context.addInitScript(script)
+    }
     const page = await context.newPage()
     await page.goto(config.url, { waitUntil: 'networkidle' })
     await page.waitForSelector(config.waitForSelector ?? '[data-mk-field]')
