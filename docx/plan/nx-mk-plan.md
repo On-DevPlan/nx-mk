@@ -2909,3 +2909,53 @@ Dashboard
 ```
 
 ```
+
+---
+
+## 47. 实现裁定记录（2026-09-25，对照 master `55b609d`）
+
+> 本节是 §1–§46 与实际实现之间的**裁定差异台账**：分「已裁定偏离」（按 SDD spec/代码裁定落地，本文对应章节按此理解）与「未实现缺口」（转 `docs/hygiene-backlog.md` C 组跟踪）。§编号引用不变。
+
+### 47.1 已裁定偏离
+
+| # | Plan 原文 | 实现裁定 | 出处 |
+|---|---|---|---|
+| R1 | 全局命名 `mk`（`npx mk`、`node_modules/.mk/`） | 全局更名 `nx-mk`（`npx nx-mk`、scope `@nx-mk/*`）；`examples/react-vite-demo/mk/scenarios/` 目录名保留 `mk`（demo 本地验收物料，spec SP9 明示不随 PR 提交） | PR #21–#24 期间裁定 |
+| R2 | CLI `start` 为默认子命令并代启用户 App（§5.1） | 默认子命令为 `run`，**不代启用户 App**（用户自起 vite，`collect.url` 指向之）；`start` 收敛为 dashboard 启动命令（消费 `dashboard.port/open`） | run.ts / start 命令实现 |
+| R3 | dashboard-server 与 dashboard-ui 分立 | 合一包 `@nx-mk/dashboard`（fastify server + React UI 同包，`src/server` + `src/ui`） | PR #13 起 |
+| R4 | coverage.db / coverage-report.json 落 per-run 目录 | 提升至 `.nx-mk/` 根（共享库语义：agent loop 复用同一 coverage.db，dashboard 直接读根产物）；per-run 仅留 manifest 快照 + 运行日志 | Phase 3/5 实现 |
+| R5 | §20/D10 `defaultView` 配置 | 明示**不收**（dashboard 段仅 `port`/`open`，spec D10） | spec D10 |
+| R6 | codegen 产物落 `node_modules/.mk/client/` | 落用户源码 `app/src/generated-sdk.ts`（显式可见、可 review、可 diff） | Phase 1.5 实现 |
+| R7 | §10 示例配置键 `coveragePolicy` | 实为 `coverage:`（`required`/`optional`/`ignored` 三个 glob 字符串数组）；**reason 字段未收**（缺口 → C 组） | config schema.ts |
+| R8 | §26.1 step 8 种 | v0 裁定 5 种：goto / waitFor / waitForRequest / assertFieldVisible / screenshot（全 read-only，verdict 恒 safe） | spec S 系列 |
+
+### 47.2 技术栈替代（§6 清单整体过时；D2 铁律：零新增外部 npm 包）
+
+| Plan §6 | 实际 |
+|---|---|
+| Commander | 自研 argv dispatch（cli/src/index.ts） |
+| TanStack Query / ECharts | 自研 React 轮询页（Poller 5s）+ 原生 SVG/CSS |
+| Drizzle ORM | better-sqlite3 裸 SQL（§25 DDL 逐字 + 幂等加列） |
+| Monaco / jscodeshift | 自研 codegen 与 migrate（静态 fetch 替换） |
+
+### 47.3 §24 隐私落地裁定（2026-09-25 补实现）
+
+- 响应值通道实现为 **trace 级 `response_preview`（≤500 字符）**，非本 plan §24 的字段级 `valueType/hash` 明细（字段级 hash 通道未实现 → C 组）。
+- 隐私层施加于 **coverage 落库前**（`CoverageDb.flushDrained`）：`privacy.responseValues.mode = masked（默认）| raw | none`；masked 按 glob 规则（`*` 跨层级）对 JSON 叶子键打码（email/phone/full 策略），非 JSON 残片退化为字符串级正则；无 `privacy:` 段时按安全默认（内置规则表）脱敏。
+- 已知限制：采集侧浏览器内截断 500 → 超长响应体落库前非合法 JSON，结构化键打码退化为正则兜底。
+
+### 47.4 未实现缺口（转 hygiene-backlog C 组）
+
+| # | 缺口 | Plan 出处 |
+|---|---|---|
+| C1 | 字段级响应值通道（valueType/valueState/hash） | §24 |
+| C2 | `coverage:` 条目 reason 字段（含报告透出） | §10/§16 |
+| C3 | `replay:` 安全规则可配（现硬编码 GET-safe / POST-confirm） | §23 |
+| C4 | CLI `report` / `replay` 子命令 | §5.1 |
+| C5 | `config.resolved.json` 落盘（写盘面扩展，需走铁律评审） | §10 |
+| C6 | `openapi.watch` / `app:`（CLI 代启应用）段 | §10/§39 |
+| C7 | Agent：3 个内置插件（dsl/auth/perf）、权限四档、rollbackOnRegression 回滚执行 | §35/§36/§38 |
+| C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 |
+| C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 |
+| C10 | Watch 模式 / TUI 实时进度（Plan 自标后置） | §39 |
+| C11 | 采集上限 500 → 截断残片致结构化脱敏退化（配合 C1 一并评估） | §24 |

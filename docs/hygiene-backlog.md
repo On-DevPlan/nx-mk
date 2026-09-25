@@ -66,3 +66,26 @@
 - ☑ v1 质量杠杆：ignored ids 进 prompt / policySummary 消费 —— `renderPolicySummary` 枚举 report 观测到的 ignored 字段路径（R8 约束保持：不读 manifest.json）；`buildPrompt` 接入 `ctx.policySummary`（原 v0 渲染后未消费）。
 
 **至此本文档全部条目（A 组 7 + B 组 8 + 4.5 备忘 4）清零，backlog 归档。**
+
+---
+
+> **2026-09-25 重建**：Plan（`docx/plan/nx-mk-plan.md`）× master 逐节对照后新开 **C 组**（Plan 有、实现无的缺口）。
+> 逐条裁定详情（含 Plan 出处）见 Plan **§47.4**；本表是操作台账，修一项划一项。
+> 同批已落地：**§24 隐私脱敏**（trace 级 response_preview 默认 masked，`privacy:` 段 + glob 规则，
+> coverage 落库前施加 —— Plan §47.3）与 Plan §47.1/§47.2 裁定回写。
+
+## C 组 —— 2026-09-25 Plan × 实现对照新开
+
+| # | 条目 | Plan 出处 | 状态 |
+|---|---|---|---|
+| C1 | 字段级响应值通道（valueType / valueState / hash 明细；现仅 trace 级 preview） | §24 | ☐ |
+| C2 | `coverage:` 条目 reason 字段（含报告/policySummary 透出） | §10/§16 | ☐ |
+| C3 | `replay:` 安全规则可配（现硬编码 GET-safe / POST-confirm） | §23 | ☐ |
+| C4 | CLI `report` / `replay` 子命令 | §5.1 | ☐ |
+| C5 | `config.resolved.json` 落盘（新增写盘面，需按铁律评审落点） | §10 | ☐ |
+| C6 | `openapi.watch` / `app:`（CLI 代启用户应用）配置段 | §10/§39 | ☐ |
+| C7 | Agent：补 3 个内置插件（dsl/auth/perf）、权限四档、rollbackOnRegression 的回滚执行 | §35/§36/§38 | ☐ |
+| C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 | ☐ |
+| C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | ☐ |
+| C10 | Watch 模式 / TUI 实时进度（Plan 自标后置，低优） | §39 | ☐ |
+| C11 | 采集上限 500 字符 → 截断残片致结构化脱敏退化为正则兜底（与 C1 合并评估） | §24 | ☐ |
