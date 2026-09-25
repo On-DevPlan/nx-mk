@@ -15,7 +15,7 @@ export function OverviewPage() {
   // Phase 4.5（R11）：SSE 事件到达 → 立即 refresh（轮询保留，SSE 只是加速器）
   const { connected } = useEventSource('/api/events', () => refresh())
   if (runsError !== null && runsData === null) return <p className="error">{T('failed to load runs')}</p>
-  if (!runsData) return <p>{T('loading…')}</p>
+  if (!runsData) return <p className="loading">{T('loading…')}</p>
   if (runsData.runs.length === 0) {
     return <p className="empty">{T('No runs yet — run {cmd} first.', { cmd: 'nx-mk run' })}</p>
   }
@@ -24,7 +24,7 @@ export function OverviewPage() {
     <section>
       <h1>
         {T('Overview')} {latest !== null ? <span className="muted">({latest.runId})</span> : null}
-        {connected ? <span className="badge">{T('live')}</span> : null}
+        {connected ? <span className="badge live">{T('live')}</span> : null}
       </h1>
       {latest?.terminatedBy != null && (
         <span className="badge ok">{T('terminated: {reason}', { reason: latest.terminatedBy })}</span>

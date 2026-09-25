@@ -11,7 +11,8 @@ export function ScenarioResult({ result }: { result: ScenarioReplayResponse }) {
   return (
     <div className="scenario-result">
       <p>
-        <strong>{result.scenarioId}</strong> — {result.ok ? T('pass') : T('fail')}
+        <strong>{result.scenarioId}</strong> —{' '}
+        {result.ok ? <span className="badge ok">{T('pass')}</span> : <span className="badge bad">{T('fail')}</span>}
         {result.trailWritten && <span> · {T('trail written')}</span>}
       </p>
       <table>
@@ -60,7 +61,7 @@ export function ScenariosPage() {
     }
   }
 
-  if (!data) return <p>{T('loading…')}</p>
+  if (!data) return <p className="loading">{T('loading…')}</p>
   if (!data.enabled) {
     return (
       <section>

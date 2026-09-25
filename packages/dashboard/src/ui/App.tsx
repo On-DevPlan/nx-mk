@@ -32,17 +32,37 @@ function LangToggle() {
   )
 }
 
+/**
+ * 路由 → 导航项映射：run/requests/fields 等详情页都归属 Runs 组高亮。
+ * 只注入 aria-current 与 class，不改任何文案（页面测试按文本锚定）。
+ */
+const NAV_GROUP: Record<string, string> = {
+  overview: 'overview',
+  runs: 'runs',
+  run: 'runs',
+  requests: 'runs',
+  request: 'runs',
+  fields: 'runs',
+  ignored: 'runs',
+  manifest: 'runs',
+  scenarios: 'scenarios',
+  settings: 'settings',
+}
+
 export function App() {
   const { page, params } = useHashRoute()
   const T = useT()
+  const group = NAV_GROUP[page] ?? ''
+  /** 当前页高亮：命中路由组时注入 aria-current（CSS 用 [aria-current=page] 着色） */
+  const nav = (id: string) => (group === id ? { 'aria-current': 'page' as const } : {})
   return (
     <>
       <nav>
-        <span className="brand">nx-mk</span>
-        <a href="#/">{T('Overview')}</a>
-        <a href="#/runs">{T('Runs')}</a>
-        <a href="#/scenarios">{T('Scenarios')}</a>
-        <a href="#/settings/plugins">{T('Plugins')}</a>
+        <a className="brand" href="#/">nx-mk</a>
+        <a href="#/" {...nav('overview')}>{T('Overview')}</a>
+        <a href="#/runs" {...nav('runs')}>{T('Runs')}</a>
+        <a href="#/scenarios" {...nav('scenarios')}>{T('Scenarios')}</a>
+        <a href="#/settings/plugins" {...nav('settings')}>{T('Plugins')}</a>
         <LangToggle />
       </nav>
       <main>

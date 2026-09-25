@@ -20,11 +20,11 @@ export function RunOverviewPage({ runId }: { runId: string }) {
       </p>
     )
   }
-  if (!detail.data) return <p>{T('loading…')}</p>
+  if (!detail.data) return <p className="loading">{T('loading…')}</p>
   const m = metrics.error instanceof ApiError ? undefined : metrics.data?.metrics
   return (
     <section>
-      <h1>{runId} {connected ? <span className="badge">{T('live')}</span> : null}</h1>
+      <h1>{runId} {connected ? <span className="badge live">{T('live')}</span> : null}</h1>
       {detail.data.terminatedBy != null && (
         <span className="badge ok">{T('terminated: {reason}', { reason: detail.data.terminatedBy })}</span>
       )}
