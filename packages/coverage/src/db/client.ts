@@ -6,6 +6,7 @@ import Database from 'better-sqlite3'
 import type { Statement as SqliteStatement } from 'better-sqlite3'
 import { SCHEMA_SQL, ensureColumn } from './schema.js'
 import type { FieldHitCore, RequestTraceCore, UiEvidenceCore } from '@nx-mk/client/collector'
+import { maskResponsePreview, type PrivacyConfig } from '../privacy/mask.js'
 
 export type DrainedHit = FieldHitCore & { count: number }
 
@@ -18,9 +19,12 @@ export interface FlushInput {
 
 export class CoverageDb {
   private readonly db: Database.Database
+  // §24 隐私策略：缺省（undefined）= 安全默认 masked + 内置规则（见 privacy/mask.ts）
+  private readonly privacy: PrivacyConfig | undefined
 
-  constructor(dbPath: string) {
+  constructor(dbPath: string, privacy?: PrivacyConfig) {
     this.db = new Database(dbPath)
+    this.privacy = privacy
     this.db.pragma('journal_mode = WAL')
     for (const stmt of SCHEMA_SQL) this.db.exec(stmt)
     // schema 演进（spec §3.1/§3.4）：§25 DDL 冻结，新列幂等 ALTER 落地
@@ -90,7 +94,7 @@ export class CoverageDb {
           t.endpointId ?? null,
           t.method, t.url, t.path ?? null, t.status ?? null, t.durationMs ?? null,
           t.startedAt ?? null, t.endedAt ?? null,
-          t.responsePreview ?? null,
+          t.responsePreview == null ? null : maskResponsePreview(t.responsePreview, this.privacy),
         )
       }
       // ui_evidence：§25.7 列 + text_sample（§3.4 evidence 文本通道；evidence_type v0=text；screenshot_path 不采 → NULL）
@@ -113,6 +117,6 @@ export class CoverageDb {
   close(): void { this.db.close() }
 }
 
-export function openCoverageDb(dbPath: string): CoverageDb {
-  return new CoverageDb(dbPath)
+export function openCoverageDb(dbPath: string, privacy?: PrivacyConfig): CoverageDb {
+  return new CoverageDb(dbPath, privacy)
 }

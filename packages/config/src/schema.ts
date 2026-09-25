@@ -95,6 +95,23 @@ export const ScenarioConfigSchema = z.object({
 })
 export type ScenarioConfig = z.infer<typeof ScenarioConfigSchema>
 
+// §24（响应值展示与隐私）：privacy 段 —— responseValues.mode 三态 + mask 规则列表。
+// 整段缺失时消费方 @nx-mk/coverage 按安全默认回填（masked + 内置规则表），
+// config 层不设默认（与 agent 段同约定：默认值归消费方）。
+export const PrivacyMaskRuleSchema = z.object({
+  pattern: z.string().min(1),
+  strategy: z.enum(['email', 'phone', 'full']),
+})
+export type PrivacyMaskRule = z.infer<typeof PrivacyMaskRuleSchema>
+
+export const PrivacyConfigSchema = z.object({
+  responseValues: z
+    .object({ mode: z.enum(['masked', 'raw', 'none']).optional() })
+    .optional(),
+  mask: z.array(PrivacyMaskRuleSchema).optional(),
+})
+export type PrivacyConfig = z.infer<typeof PrivacyConfigSchema>
+
 // 顶层配置 schema：插件列表上限 20，输出目录必须是相对路径
 export const ConfigSchema = z
   .object({
@@ -118,5 +135,7 @@ export const ConfigSchema = z
     agent: AgentConfigSchema.optional(),
     // §26：可选 scenarios 段（spec S6 —— 套件模式入口）
     scenarios: ScenarioConfigSchema.optional(),
+    // §24：可选隐私段（响应值脱敏策略；缺省由 coverage 层安全默认 masked）
+    privacy: PrivacyConfigSchema.optional(),
   })
   .passthrough()

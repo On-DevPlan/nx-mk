@@ -25,6 +25,7 @@ import {
   evaluatePolicy,
   type AnalyzeInput,
   type CoverageDb,
+  type PrivacyConfig,
 } from '@nx-mk/coverage'
 import { createCollector, type Collector } from '@nx-mk/client/collector'
 
@@ -73,6 +74,8 @@ export async function runMain(opts: RunMainOptions): Promise<void> {
   const config = await loadConfig({ path: opts.configPath, cwd, runId, subcommand: 'run' })
   // ResolvedConfig（kernel 类型）未声明 collect 段 —— 以 schema 推导类型收窄读取
   const collect = (config as typeof config & { collect?: CollectConfig }).collect
+  // §24：privacy 段透传给 coverage 层（缺省 = coverage 侧安全默认 masked）
+  const privacy = (config as typeof config & { privacy?: PrivacyConfig }).privacy
   // spec §3.6/§4：collect.url 必填且须 http/https（用户需先起 vite）—— 非法即 fail-fast
   if (collect && !/^https?:\/\//.test(collect.url)) {
     throw new KernelError('CONFIG_INVALID', `collect.url must be an http(s) URL, got: ${collect.url}`)
@@ -81,7 +84,7 @@ export async function runMain(opts: RunMainOptions): Promise<void> {
   let db: CoverageDb | undefined
   if (collect) {
     mkdirSync(join(cwd, '.nx-mk'), { recursive: true })
-    db = openCoverageDb(join(cwd, '.nx-mk', 'coverage.db'))
+    db = openCoverageDb(join(cwd, '.nx-mk', 'coverage.db'), privacy)
     db.insertRun(runId, new Date().toISOString(), 'running')
   }
   // Ruling 5（Task 7 审查 Adjudication B）：collect 存在 → 代码装配 ——

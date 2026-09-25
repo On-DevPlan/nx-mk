@@ -18,6 +18,13 @@ export {
 } from './analyzer/index.js'
 export { matchGlob } from './policy/glob.js'
 export {
+  maskResponsePreview,
+  DEFAULT_MASK_RULES,
+  type PrivacyConfig,
+  type PrivacyMaskRule,
+  type MaskStrategy,
+} from './privacy/mask.js'
+export {
   evaluatePolicy,
   type PolicyConfig,
   type PolicyDecision,
