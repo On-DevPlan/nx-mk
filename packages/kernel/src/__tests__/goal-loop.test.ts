@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { computeCoverage, runGoalLoop } from '../goal-loop'
-import type { Coverage, GoalConfig, PluginReport, MissingItem } from '../types'
+import type { Coverage, GoalConfig, PluginReport, PluginSignal, MissingItem } from '../types'
 import { EventBus } from '../event-bus'
 import type { PluginContext } from '../plugin'
 import type { Plugin } from '../plugin'
@@ -119,11 +119,13 @@ describe('M14: runGoalLoop termination', () => {
       ratio: 1.0,
       missing: [],
     }
+    const signals: PluginSignal[] = []
     const result = await runGoalLoop({
       plugins: [],
       goal: { targetRatio: 1.0, maxTurns: 10, idleTurnsLimit: 3, absoluteTimeoutMs: 30000 },
       initialCoverage: initial,
       getReports: () => [],
+      getSignals: () => signals,
       onTurn: () => {},
       ctx: makeCtx(events, []),
       signal: new AbortController().signal,
@@ -148,11 +150,13 @@ describe('M14: runGoalLoop termination', () => {
       idleTurnsLimit: 2,
       absoluteTimeoutMs: 60000,
     }
+    const signals: PluginSignal[] = []
     const result = await runGoalLoop({
       plugins: [idlePlugin],
       goal,
       initialCoverage: initial,
       getReports: () => [],
+      getSignals: () => signals,
       onTurn: () => {},
       ctx: makeCtx(events, [idlePlugin]),
       signal: new AbortController().signal,
@@ -175,11 +179,13 @@ describe('M14: runGoalLoop termination', () => {
       idleTurnsLimit: 100,  // 长 idle 容差，确保被 maxTurns 截断
       absoluteTimeoutMs: 60000,
     }
+    const signals: PluginSignal[] = []
     const result = await runGoalLoop({
       plugins: [idlePlugin],
       goal,
       initialCoverage: initial,
       getReports: () => [],
+      getSignals: () => signals,
       onTurn: () => {},
       ctx: makeCtx(events, [idlePlugin]),
       signal: new AbortController().signal,
@@ -212,11 +218,13 @@ describe('M14: runGoalLoop termination', () => {
       idleTurnsLimit: 2,
       absoluteTimeoutMs: 60000,
     }
+    const signals: PluginSignal[] = []
     const result = await runGoalLoop({
       plugins: [],
       goal,
       initialCoverage: initial,
       getReports: () => reports,
+      getSignals: () => signals,
       onTurn: () => {},
       ctx: makeCtx(events, []),
       signal: new AbortController().signal,
@@ -237,15 +245,160 @@ describe('M14: runGoalLoop termination', () => {
       idleTurnsLimit: 100,
       absoluteTimeoutMs: 60000,
     }
+    const signals: PluginSignal[] = []
     await runGoalLoop({
       plugins: [],
       goal,
       initialCoverage: initial,
       getReports: () => [],
+      getSignals: () => signals,
       onTurn: (t) => { turnsSeen.push(t) },
       ctx: makeCtx(events, []),
       signal: new AbortController().signal,
     })
     expect(turnsSeen).toEqual([1, 2, 3])
+  })
+})
+describe('M14 v1.1: signal-driven termination (all-done / all-failed)', () => {
+  function makeCtx(events: EventBus): PluginContext {
+    return {
+      config: {} as any,
+      logger: {} as any,
+      events,
+      kernel: {} as any,
+      cwd: '/tmp',
+      signal: undefined,
+      emitReport: () => {},
+      emitSignal: () => {},
+      getTurn: () => 0,
+      getCoverage: () => ({ total: 0, covered: 0, ratio: 0, missing: [] }),
+    }
+  }
+  const goal: GoalConfig = {
+    targetRatio: 1.0,
+    maxTurns: 100,
+    idleTurnsLimit: 100,
+    absoluteTimeoutMs: 60000,
+  }
+
+  it('一参与者 done 一参与者 failed → 每参与者皆终态且 ≥1 done → all-done', async () => {
+    const signals: PluginSignal[] = [
+      { kind: 'done', reason: 'all-collected', turn: 1, plugin: 'p-done' },
+      { kind: 'failed', error: { code: 'X', message: 'boom' }, turn: 1, plugin: 'p-fail' },
+    ]
+    const result = await runGoalLoop({
+      plugins: [],
+      goal,
+      initialCoverage: makeInitialCoverage(),
+      getReports: () => [],
+      getSignals: () => signals,
+      onTurn: () => {},
+      ctx: makeCtx(new EventBus()),
+      signal: new AbortController().signal,
+    })
+    expect(result.kind).toBe('unmet')
+    expect(result.terminatedBy).toBe('all-done')
+  })
+
+  it('全部参与者 failed → all-failed', async () => {
+    const signals: PluginSignal[] = [
+      { kind: 'failed', error: { code: 'X', message: 'a' }, turn: 1, plugin: 'p1' },
+      { kind: 'failed', error: { code: 'X', message: 'b' }, turn: 1, plugin: 'p2' },
+    ]
+    const result = await runGoalLoop({
+      plugins: [],
+      goal,
+      initialCoverage: makeInitialCoverage(),
+      getReports: () => [],
+      getSignals: () => signals,
+      onTurn: () => {},
+      ctx: makeCtx(new EventBus()),
+      signal: new AbortController().signal,
+    })
+    expect(result.kind).toBe('unmet')
+    expect(result.terminatedBy).toBe('all-failed')
+  })
+
+  it('沉默插件不阻塞 all-done（participating 只统计发过信号的插件）', async () => {
+    // plugin-swagger 类沉默插件在列 —— 不发信号即不参与判定
+    const silent: Plugin = { name: '@nx-mk/silent', version: '1.0.0', hooks: {} }
+    const signals: PluginSignal[] = [
+      { kind: 'done', reason: 'all-collected', turn: 1, plugin: '@nx-mk/collector' },
+    ]
+    const result = await runGoalLoop({
+      plugins: [silent],
+      goal,
+      initialCoverage: makeInitialCoverage(),
+      getReports: () => [],
+      getSignals: () => signals,
+      onTurn: () => {},
+      ctx: makeCtx(new EventBus()),
+      signal: new AbortController().signal,
+    })
+    expect(result.terminatedBy).toBe('all-done')
+  })
+
+  it('优先序锁：ratio 达标 + done 信号并存 → 仍 goal-met（goal-met 高于 all-done）', async () => {
+    const initial = makeInitialCoverage()
+    const reports: PluginReport[] = [
+      { kind: 'endpoint-called', method: 'GET', path: '/users', turn: 1 },
+      { kind: 'endpoint-called', method: 'POST', path: '/users', turn: 1 },
+      { kind: 'route-visited', route: '/home', turn: 1 },
+      { kind: 'route-visited', route: '/about', turn: 1 },
+      ...(['f1', 'f2', 'f3', 'f4', 'f5', 'f6'] as const).map((id) => ({
+        kind: 'field-hit' as const,
+        fieldId: id,
+        count: 1,
+        turn: 1,
+      })),
+    ]
+    const signals: PluginSignal[] = [
+      { kind: 'done', reason: 'all-collected', turn: 1, plugin: 'p' },
+    ]
+    const result = await runGoalLoop({
+      plugins: [],
+      goal,
+      initialCoverage: initial,
+      getReports: () => reports,
+      getSignals: () => signals,
+      onTurn: () => {},
+      ctx: makeCtx(new EventBus()),
+      signal: new AbortController().signal,
+    })
+    expect(result.kind).toBe('met')
+    expect(result.terminatedBy).toBe('goal-met')
+  })
+
+  it('idle 信号不算终态：done + idle-only 参与者 → 不触发 all-done，落入 idle 终止', async () => {
+    const signals: PluginSignal[] = [
+      { kind: 'done', reason: 'all-collected', turn: 1, plugin: 'p1' },
+      { kind: 'idle', turn: 1, plugin: 'p2' },
+    ]
+    const result = await runGoalLoop({
+      plugins: [],
+      goal: { ...goal, idleTurnsLimit: 2 },
+      initialCoverage: makeInitialCoverage(),
+      getReports: () => [],
+      getSignals: () => signals,
+      onTurn: () => {},
+      ctx: makeCtx(new EventBus()),
+      signal: new AbortController().signal,
+    })
+    expect(result.terminatedBy).toBe('idle')
+  })
+
+  it('无归因信号（测试直调 ctx）落单匿名参与者桶 → 仍可 all-done', async () => {
+    const signals: PluginSignal[] = [{ kind: 'done', reason: 'all-collected', turn: 1 }]
+    const result = await runGoalLoop({
+      plugins: [],
+      goal,
+      initialCoverage: makeInitialCoverage(),
+      getReports: () => [],
+      getSignals: () => signals,
+      onTurn: () => {},
+      ctx: makeCtx(new EventBus()),
+      signal: new AbortController().signal,
+    })
+    expect(result.terminatedBy).toBe('all-done')
   })
 })

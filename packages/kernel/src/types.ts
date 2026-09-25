@@ -184,15 +184,20 @@ export type PluginReport =
   | { kind: 'analysis'; missing: MissingItem[]; recommendations: string[]; turn: number }
 
 /**
- * Plugin 完成信号（M14 Plugin API）
+ * Plugin 完成信号（M14 Plugin API）。
+ * plugin 字段由内核 hook 运行器绑定（浅包装 ctx 时注入插件名），插件自身不填；
+ * 未经包装直调（如测试）时缺席 → 落入 '' 匿名参与者桶。
  */
 export type PluginSignal =
-  | { kind: 'idle'; turn: number }
-  | { kind: 'done'; reason: 'all-collected' | 'timeout'; turn: number }
-  | { kind: 'failed'; error: { code: string; message: string }; turn: number }
+  | { kind: 'idle'; turn: number; plugin?: string }
+  | { kind: 'done'; reason: 'all-collected' | 'timeout'; turn: number; plugin?: string }
+  | { kind: 'failed'; error: { code: string; message: string }; turn: number; plugin?: string }
 
 /**
- * Goal Loop 终态（M14）
+ * Goal Loop 终态（M14）。terminatedBy：
+ * - goal-met / max-turns / idle / timeout：资源与目标边界
+ * - all-done：所有参与插件（发过 ≥1 信号）均已声明终态且 ≥1 done —— 生产者完成早停
+ * - aborted：外部取消
  */
 export interface GoalResult {
   kind: 'met' | 'unmet' | 'aborted'
@@ -200,5 +205,5 @@ export interface GoalResult {
   turns: number
   durationMs: number
   reports: PluginReport[]
-  terminatedBy: 'goal-met' | 'max-turns' | 'idle' | 'timeout' | 'aborted' | 'all-failed'
+  terminatedBy: 'goal-met' | 'max-turns' | 'idle' | 'timeout' | 'aborted' | 'all-failed' | 'all-done'
 }

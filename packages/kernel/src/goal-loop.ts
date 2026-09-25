@@ -2,17 +2,20 @@
  * Goal-Oriented Multi-Turn Loop —— run 阶段的多轮目标驱动采集循环（M14）
  *
  * 核心模式：多生产者（plugins emitReport） + 协调者（kernel 计算覆盖率）
- * + 目标驱动终止（goal-met / max-turns / idle / timeout / aborted）。
+ * + 目标驱动终止（goal-met / all-done / all-failed / max-turns / idle / timeout / aborted）。
  *
  * 数据流（每轮 turn）：
  *   1. emit 'turn:start { turn: N, idleTurns }'
  *   2. plugins 执行本轮工作（emitReport / emitSignal）
  *   3. computeCoverage(reports, initial) → coverage[N]
  *   4. emit 'turn:end { turn: N, coverage, progress }'
- *   5. 检查终止条件（signal > goal-met > bounds > all-failed）
+ *   5. 检查终止条件（aborted > goal-met > all-done > all-failed > 资源边界）
  *   6. 若未终止 → yield event loop → 下一轮
  *
  * 设计依据：docx/plan/2026-08-28-goal-oriented-loop-design.md
+ * IO 对齐（dsh）：终止原因 kind 判别联合；生产者完成声明（done 信号）优先于
+ * 资源边界 —— goal loop 不重调插件，首轮收集后的轮次必然零进展，done 声明
+ * 让循环立即诚实终止而非烧满 max-turns。
  */
 import type {
   Coverage,
@@ -20,6 +23,7 @@ import type {
   GoalResult,
   MissingItem,
   PluginReport,
+  PluginSignal,
 } from './types'
 
 /**
@@ -78,14 +82,17 @@ export function computeCoverage(reports: PluginReport[], initial: Coverage): Cov
 }
 
 /**
- * Goal Loop 终止决策（按优先级，资源保护优先）：
+ * Goal Loop 资源边界决策（turn 起点判定）：
  *
- *   1. signal.aborted       → 'aborted'
- *   2. ratio >= targetRatio  → 'goal-met'
+ *   1. signal.aborted        → 'aborted'
+ *   2. ratio >= targetRatio  → 'goal-met'（上一轮折算结果）
  *   3. turn > maxTurns       → 'max-turns'
  *   4. idleTurns >= limit    → 'idle'
  *   5. now - start >= timeout → 'timeout'
- *   6. allActiveFailed       → 'all-failed'
+ *
+ * 信号终态（all-done / all-failed）不在此处判定 —— 信号与 reports 同为插件
+ * 钩子期产物，必须在折算当轮 coverage 之后判定（见 runGoalLoop 步骤 5.5），
+ * 保证 goal-met > all-done > all-failed 的优先序不被时序差打破。
  */
 function checkTermination(args: {
   signal: AbortSignal
@@ -94,7 +101,6 @@ function checkTermination(args: {
   turn: number
   idleTurns: number
   startedAt: number
-  allActiveFailed: boolean
 }): { kind: 'met' | 'unmet' | 'aborted' | 'continue'; reason?: GoalResult['terminatedBy'] } {
   if (args.signal.aborted) return { kind: 'aborted', reason: 'aborted' }
   if (args.coverage.ratio >= args.goal.targetRatio) {
@@ -109,10 +115,31 @@ function checkTermination(args: {
   if (Date.now() - args.startedAt >= args.goal.absoluteTimeoutMs) {
     return { kind: 'unmet', reason: 'timeout' }
   }
-  if (args.allActiveFailed) {
-    return { kind: 'unmet', reason: 'all-failed' }
-  }
   return { kind: 'continue' }
+}
+
+/**
+ * 信号终止判定（M14 v1.1）：按归因插件聚合信号。
+ * - participating：发过 ≥1 信号的去重 plugin 集（未归因信号落 '' 匿名桶，按单参与者计）
+ * - all-done：participating 非空 ∧ 每参与者有终态信号（done|failed）∧ 整体 ≥1 done
+ * - all-failed：participating 非空 ∧ 全部信号为 failed
+ * idle 信号不算终态（意为「本轮暂无数据」，生产者仍可能再产出）。
+ */
+export function classifySignals(signals: PluginSignal[]): { allDone: boolean; allFailed: boolean } {
+  if (signals.length === 0) return { allDone: false, allFailed: false }
+  const byPlugin = new Map<string, Set<string>>()
+  for (const s of signals) {
+    const key = s.plugin ?? ''
+    const kinds = byPlugin.get(key) ?? new Set<string>()
+    kinds.add(s.kind)
+    byPlugin.set(key, kinds)
+  }
+  const perParticipant = [...byPlugin.values()]
+  const allFailed = perParticipant.every((kinds) => !kinds.has('done') && !kinds.has('idle'))
+  const allDone =
+    perParticipant.every((kinds) => kinds.has('done') || kinds.has('failed')) &&
+    signals.some((s) => s.kind === 'done')
+  return { allDone, allFailed }
 }
 
 /**
@@ -153,6 +180,7 @@ function buildResult(
  * @param opts.goal      - 终止配置
  * @param opts.initialCoverage - 初始 Coverage（含 total + missing）
  * @param opts.getReports - 从 kernel loopState 读取当前累积的 PluginReport 列表
+ * @param opts.getSignals - 从 kernel loopState 读取当前累积的 PluginSignal 列表
  * @param opts.onTurn    - 把当前 turn 写回 kernel loopState（供插件 getTurn 读取）
  * @param opts.ctx       - 共享 PluginContext（用于 events.emit）
  * @param opts.signal    - AbortSignal（外部取消）
@@ -162,6 +190,7 @@ export async function runGoalLoop(opts: {
   goal: GoalConfig
   initialCoverage: Coverage
   getReports: () => PluginReport[]
+  getSignals: () => PluginSignal[]
   onTurn: (turn: number) => void
   ctx: import('./plugin').PluginContext
   signal: AbortSignal
@@ -170,7 +199,6 @@ export async function runGoalLoop(opts: {
   let coverage = opts.initialCoverage
   let turn = 0
   let idleTurns = 0
-  const allActiveFailed = false
 
   // 边界：初始已达成
   if (coverage.ratio >= opts.goal.targetRatio) {
@@ -181,7 +209,7 @@ export async function runGoalLoop(opts: {
     turn++
     opts.onTurn(turn)
 
-    // 1. 边界检查
+    // 1. 边界检查（资源边界；信号终态在步骤 5.5 与 reports 同相判定）
     const decision = checkTermination({
       signal: opts.signal,
       coverage,
@@ -189,7 +217,6 @@ export async function runGoalLoop(opts: {
       turn,
       idleTurns,
       startedAt: startTime,
-      allActiveFailed,
     })
 
     if (decision.kind !== 'continue' && decision.reason) {
@@ -231,6 +258,16 @@ export async function runGoalLoop(opts: {
     // 5. 目标检查（在 turn:end 后立即判定，避免多余一轮）
     if (coverage.ratio >= opts.goal.targetRatio) {
       return buildResult('met', 'goal-met', coverage, turn, opts.getReports(), Date.now() - startTime)
+    }
+
+    // 5.5 信号终态检查（M14 v1.1）：信号与 reports 同为插件钩子期产物，折算
+    // coverage 后再判 —— goal-met 恒优先于 all-done / all-failed，不被时序差打破
+    const signalState = classifySignals(opts.getSignals())
+    if (signalState.allDone) {
+      return buildResult('unmet', 'all-done', coverage, turn, opts.getReports(), Date.now() - startTime)
+    }
+    if (signalState.allFailed) {
+      return buildResult('unmet', 'all-failed', coverage, turn, opts.getReports(), Date.now() - startTime)
     }
   }
 }

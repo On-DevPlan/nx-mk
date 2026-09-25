@@ -100,7 +100,8 @@ describe('EventBus', () => {
       { type: 'kernel:error', phase: 'run', error: { message: 'x' } },
       { type: 'log', level: 'info', message: 'm' },
       { type: 'log', level: 'debug', message: 'm', meta: { a: 1 } },
+      { type: 'plugin:signal', signal: { kind: 'done', reason: 'all-collected', turn: 1, plugin: 'p' }, timestamp: 't' },
     ]
-    expect(events).toHaveLength(8)
+    expect(events).toHaveLength(9)
   })
 })
