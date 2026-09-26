@@ -49,6 +49,8 @@ export function RunOverviewPage({ runId }: { runId: string }) {
         </p>
       )}
       <div className="section">
+        <a href={`#/runs/${runId}/pipeline`}>{T('Pipeline →')}</a>
+        {'　'}
         <a href={`#/runs/${runId}/requests`}>{T('Requests →')}</a>
         {'　'}
         <a href={`#/runs/${runId}/fields`}>{T('Fields →')}</a>
