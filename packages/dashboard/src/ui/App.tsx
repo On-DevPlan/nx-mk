@@ -10,6 +10,7 @@ import { useT, useLang } from './i18n'
 import { OverviewPage } from './pages/Overview'
 import { RunsListPage } from './pages/RunsList'
 import { RunOverviewPage } from './pages/RunOverview'
+import { PipelinePage } from './pages/Pipeline'
 import { RequestsListPage } from './pages/RequestsList'
 import { RequestDetailPage } from './pages/RequestDetail'
 import { FieldsListPage } from './pages/FieldsList'
@@ -40,6 +41,7 @@ const NAV_GROUP: Record<string, string> = {
   overview: 'overview',
   runs: 'runs',
   run: 'runs',
+  pipeline: 'runs',
   requests: 'runs',
   request: 'runs',
   fields: 'runs',
@@ -69,6 +71,7 @@ export function App() {
         {page === 'overview' && <OverviewPage key={JSON.stringify(params)} />}
         {page === 'runs' && <RunsListPage key={JSON.stringify(params)} />}
         {page === 'run' && <RunOverviewPage runId={params.runId ?? ''} key={JSON.stringify(params)} />}
+        {page === 'pipeline' && <PipelinePage runId={params.runId ?? ''} key={JSON.stringify(params)} />}
         {page === 'requests' && (
           <RequestsListPage runId={params.runId ?? ''} key={JSON.stringify(params)} />
         )}

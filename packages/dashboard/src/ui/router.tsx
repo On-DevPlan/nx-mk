@@ -6,12 +6,13 @@
 import { useEffect, useState } from 'react'
 
 export type PageId =
-  | 'overview' | 'runs' | 'run' | 'requests' | 'request' | 'fields' | 'ignored' | 'manifest' | 'settings' | 'scenarios' | 'not-found'
+  | 'overview' | 'runs' | 'run' | 'pipeline' | 'requests' | 'request' | 'fields' | 'ignored' | 'manifest' | 'settings' | 'scenarios' | 'not-found'
 
 export const ROUTES: { pattern: string; page: PageId }[] = [
   { pattern: '/', page: 'overview' },
   { pattern: '/runs', page: 'runs' },
   { pattern: '/runs/:runId', page: 'run' },
+  { pattern: '/runs/:runId/pipeline', page: 'pipeline' },
   { pattern: '/runs/:runId/requests', page: 'requests' },
   { pattern: '/runs/:runId/requests/:requestId', page: 'request' },
   { pattern: '/runs/:runId/fields', page: 'fields' },
