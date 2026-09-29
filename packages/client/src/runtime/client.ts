@@ -151,7 +151,27 @@ export function createFetchClient(options: FetchClientOptions): FetchClient {
       }
       const start = Date.now()
       if (isAnalysis && onRequest) onRequest({ method, url, headers })
-      const res = await fetch(url, { method, headers, body })
+      let res: Response
+      try {
+        // SDK-CG3b fetch 兜底去重（C16）：analysis 分支发起的原生 fetch 置 inflight
+        // 标记 —— plugin-playwright shim 的 window.fetch 补丁见标记跳过（本请求 trace
+        // 由下方 SDK 通路全量上报），未迁移裸 fetch 无标记 → shim 补 trace。
+        // finally 清除：并发请求下仅窗口期置位（竞态仅影响 shim 是否补 trace，
+        // 不影响业务响应 —— 与探针纪律同口径）。
+        try {
+          ;(globalThis as unknown as Record<string, unknown>).__MK_SDK_INFLIGHT__ = true
+        } catch { /* 标记失败仅影响去重，不影响请求 */ }
+        try {
+          res = await fetch(url, { method, headers, body })
+        } finally {
+          try {
+            delete (globalThis as unknown as Record<string, unknown>).__MK_SDK_INFLIGHT__
+          } catch { /* 清理失败同上 */ }
+        }
+      } catch (err) {
+        // fetch 本身失败（网络层）：原语义向调用方抛出（HTTP 错误在下方 res.ok 路径）
+        throw err
+      }
       const durationMs = Date.now() - start
       if (isAnalysis && onResponse) onResponse({ method, url, status: res.status, durationMs })
       if (!res.ok) throw new Error(`HTTP ${res.status} ${method} ${url}`)

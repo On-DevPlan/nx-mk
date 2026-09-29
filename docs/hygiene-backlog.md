@@ -98,10 +98,21 @@
 | C13 | `request_traces.replayable/replay_safety/replay_reason` 三列 flush 恒 NULL（F3/C3 只收 config + `classifyReplay()`，trace 级不落库，replay 时现算） | §23/§25.4 | ☐ 待裁定：要么采集侧回写，要么明确「replay 前现算不落库」为冻结行为并注记 §25 |
 | C14 | §30 报告页缺口：`/runs/:runId/endpoints`（endpoint 覆盖页，数据在 metrics 路由与 DB 已备）与 `/runs/:runId/agent`（Agent Loop 页，`agent_iterations` 已落库）仅缺 UI | §30 | ☐ 待 SDD |
 | C15 | coverage 模块缺 plan §8 的 `trace-store/field-extractor/value-masker/ui-evidence/metrics` 文件位——职能已被 db/client.ts（flushDrained）、client 代理、privacy/mask.ts、analyzer 内联吸收；`endpoints` 表有 `tags` 无 `summary`，`manifest_fields` 为精简裁定集（无 direction/status/description/schema_name） | §8/§25 | ☑ 文件布局裁定为 R3 同类（吸收合并，语义不缺）；DB 列集属 spec 裁定，仅注记不更名（`endpoints.summary` 若后续 Manifest Browser 需要，随 C14 一并评估） |
-| C16 | `runtime/patch.ts`（patchGlobalFetch，SDK-CG3b fetch monkey-patch fallback）无命令接线：任何 CLI/dashboard 路径都不会启用它，仅 `migrate` 命令文案提示存在（plan 语义：未全量迁移时 coverage 不断） | §42.5 SDK-CG3 | ☐ 待 SDD（小：`run`/`start` boot 时按 config 开关 patch globalThis.fetch 即可，但涉及注入面语义，不宜顺手加） |
+| C16 | `runtime/patch.ts`（patchGlobalFetch，SDK-CG3b fetch monkey-patch fallback）无命令接线：任何 CLI/dashboard 路径都不会启用它，仅 `migrate` 命令文案提示存在（plan 语义：未全量迁移时 coverage 不断） | §42.5 SDK-CG3 | ☑ 改道落地（见 fix 注记） |
 
 > 2026-09-29 审计同时确认：§47.1–47.7 全部逐项属实（R1–R8、F1–F6、G1–G5 在码复核通过）；
 > C7/C8/C9 open 状态不变。测试基线 695 tests / 91 files / 13 包（PR #34 合并后）。
+
+**C16 落地注记（2026-09-29，feat/c16-fetch-shim-fallback）**：
+原 backlog 构想「`run`/`start` boot 时 patch globalThis.fetch」在审计中判**无效**——
+coverage 采集通路在浏览器侧 `__MK_COLLECTOR__`，Node 侧 patch 看不到页面 fetch。
+实际落法改道 browser：① `COLLECTOR_SHIM_SCRIPT` 建立 shim 时 patch `window.fetch`
+（`/api` 前缀整段命中 → trace 进单通道，status 于响应 then 补齐；探针 try/catch 全吞；
+幂等 `__MK_FETCH_PATCHED__`）；② 去重：client analysis 分支发原生 fetch 置
+`__MK_SDK_INFLIGHT__`（finally 清除），shim 见标记跳过（该请求 trace 由 SDK 通路
+全量上报），双重 trace 消除；③ `runtime/patch.ts`（Node 版 patchGlobalFetch）保留
+为 SDK-CG3b 机制存量，接线裁为 browser 方案已承载该语义。测试 +5（fetch-shim.test.ts），
+基线 700/92/13。
 
 > **2026-09-25 插件 IO 对齐批注**（feat/plan-align-batch2）：CollectReport 改判别联合
 > （method/path 恒在，'GET (unknown)' 伪影消解）；原 Ruling 8 落地（manifest normalizedPath
