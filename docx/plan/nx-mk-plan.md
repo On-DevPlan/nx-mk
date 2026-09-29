@@ -7,6 +7,7 @@
 
 > **修订记录**：
 > - **2026-09-03**：按 `nx-mk-plan-questions.md` 收口决策（A→K + C-X1/SDK-CG1-3）修订 5 处关键章节——§5.3 SDK Facade、§8 Monorepo 结构 + Phase 1.5 SDK Codegen 包、§10 配置（scenarios.concurrency / dashboard.defaultView / agent.provider、删 ci 段）、§19/§20（SDK 内部行为 + UI evidence 显式标记）、§41/§42/§42.5/§43（MVP 支持 + Roadmap 新增 Phase 1.5 + 风险表）。§40 CI 标记后置。
+> - **2026-09-29**：全仓审计（对照 master `a33d1a7`）补 §47.8——§8 包清单 relic 勘误、§10 配置键面双向同步、§47.2 SSE 勘误、C 组命名统一；hygiene-backlog 新开 C12–C16 承接本次审计新发现的未裁定缺口。
 
 ---
 
@@ -2934,7 +2935,7 @@ Dashboard
 | Plan §6 | 实际 |
 |---|---|
 | Commander | 自研 argv dispatch（cli/src/index.ts） |
-| TanStack Query / ECharts | 自研 React 轮询页（Poller 5s）+ 原生 SVG/CSS |
+| TanStack Query / ECharts | 自研 React 数据层（Poller 5s 兜底轮询 + 原生 EventSource SSE，`server/routes/events.ts`）+ 原生 SVG/CSS——~~自研 React 轮询页~~（2026-09-29 勘误：§15 的 `GET /api/events` SSE 已实现，Poller 为 fallback，见 47.8-X3） |
 | Drizzle ORM | better-sqlite3 裸 SQL（§25 DDL 逐字 + 幂等加列） |
 | Monaco / jscodeshift | 自研 codegen 与 migrate（静态 fetch 替换） |
 
@@ -2958,7 +2959,7 @@ Dashboard
 | C4 | CLI `report` / `replay` 子命令 | §5.1 | ✅ 47.5-F4 |
 | C5 | `config.resolved.json` 落盘（写盘面扩展，需走铁律评审） | §10 | ✅ 47.5-F5 |
 | C6 | `openapi.watch` / `app:`（CLI 代启应用）段 | §10/§39 | → 47.6（随 watch 模式一并 SDD） |
-| C7 | Agent：3 个内置插件（dsl/auth/perf）、权限四档、rollbackOnRegression 回滚执行 | §35/§36/§38 | 权限四档/回滚 → 47.6（§36/D1 自裁 MVP 后置）；**插件 ☐ 待独立 SDD**（dsl-agent 依赖 Request DSL） |
+| C7 | Agent：3 个内置插件（~~dsl/auth/perf~~ → api-client/dsl/policy，与 §35.2-35.4/backlog 对齐，2026-09-29 勘误）、权限四档、rollbackOnRegression 回滚执行 | §35/§36/§38 | 权限四档/回滚 → 47.6（§36/D1 自裁 MVP 后置）；**插件 ☐ 待独立 SDD**（dsl-agent 依赖 Request DSL） |
 | C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 | ☐ 待独立 SDD（API 面设计需 spec） |
 | C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | Copy curl ✅ 47.5-F6；Request DSL/Export DSL ☐ 待独立 SDD |
 | C10 | Watch 模式 / TUI 实时进度（Plan 自标后置） | §39 | → 47.6（Plan 自标后置，裁定延期） |
@@ -3025,3 +3026,67 @@ Dashboard
 - 陈旧注释勘误：plugin-playwright 头注释「§1.4.2 stableFieldId 错位不可达」已不成立
   （initial-coverage spec §3.1 对齐后 missing 键域为 normalizedPath，demo data-mk-field
   同域）—— goal-met 经 field-hit 实际可达，本批 G2 消除的是校验与注入残余缺口。
+
+### 47.8 全仓审计补录（2026-09-29，对照 master `a33d1a7`；PR #34 合并次日）
+
+> 逐包/逐节审计（包结构 × §8、CLI × §9、config × §10、coverage × §21–25、scenario × §26/§27、
+> dashboard × §30、agent × §32–38、隐私 × §24）复核了 §47.1–47.7（全部逐项属实），以下为其
+> 新发现的未裁定偏离与勘误。缺口落 backlog C12–C16，不重复于本节。
+
+#### 47.8.1 勘误与命名统一
+
+- **X1（agent 包名）**：plan §8 `agent-sdk` → 实际包名 `@nx-mk/agent`（R1 更名一刀切唯一漏网；
+  包名即裁定 —— `@mk/agent-sdk` 契约名冻结不变（C8 落地时再定对外命名），repo 内包现名 `agent`。
+  define-agent/context/guard/project-api 等 plan 文件名亦不存在，职能由 `src/types.ts`
+  （`defineCoverageAgent`/`AgentContext`）、`src/runtime.ts`（`runAgentLoop`）、`src/agents/review.ts`
+  （review guard）分摊。
+- **X2（§30.2 settings 面）**：`GET /api/settings` 与 `PATCH /api/settings/policy|agent|replay`
+  四条路由未实现（插件写回走既有 `PATCH /api/plugins/:name/config`；policy/agent/replay 设置页
+  均无）→ ** backlog C12**。
+- **X3（§47.2 SSE 勘误）**：§15 的 `GET /api/events` SSE **已实现**（text/event-stream、
+  `reply.hijack` raw 流、`?runId=` 过滤、15s 心跳、`retry: 2000`）；UI 数据层 = EventSource
+  驱动即时 refresh + 5s Poller 兜底（spec R11 双通道）。47.2 表「自研轮询 Poller 5s」表述不全，
+  已就地勘误。
+- **X4（C6/C10 标记统一）**：C 打组时 C6 标 `☐`、C10 标 `☑ 裁定延期`，两者同为 §47.6 延期项
+  （非缺口）；backlog 标记统一为「裁定延期」，各自归属不变。
+- **X5（§47.4 C7 插件名）**：plan 提出「dsl/auth/perf」三插件与 §35.2–35.4（api-client/dsl/policy）
+  指同一缺口槽位；统一为 api-client/dsl/policy（§35 正文为准），auth/perf 无 plan 章节出处、
+  系笔误。
+- **X6（已有偏离的文件名注记，语义不变）**：① client 无 `middleware/` 层（§5.3/§18.2
+  auth/transport/normalize 三段）—— SDK Facade 实现为 fetch wrapper + tracked proxy + collector
+  直连，**middleware 流水线判为 roadmap 后置**（无冻结消费方，不承认为缺口）；② `production.ts`
+  → `runtime/client.ts` 非 analysis 分支（zero-overhead 语义保持）；③ `migrate/fetch-patch.ts`
+  → `runtime/patch.ts`（patchGlobalFetch，SDK-CG3b fallback；尚无命令接线，仅 migrate 文案提示，
+  见 backlog C16）；④ `react/useField.ts` 未建（Field.tsx 为 Phase 1.5 placeholder，
+  collector 经 DOM scanner 间接接入）。
+
+#### 47.8.2 §10 配置键面双向同步（以 `config/src/schema.ts` 为唯一真源）
+
+- 代码有、plan §10 无（不裁缺口，属 SDD 后补章节）：`collect: {url, waitForSelector?, maxTurns?}`
+  （R2 产物，替代 `app:`/`runtime:` 段）、`goal: {targetRatio, maxTurns, idleTurnsLimit,
+  absoluteTimeoutMs}`（Goal Loop 配置）、`outputDir`（默认 `.nx-mk/runs`）、`logLevel`、
+  `plugins[]: {name, config}` 对象形态。
+- plan §10 有、代码无（裁定**不收敛**，配置键面就此冻结，除非后续 SDD 推翻）：`version`/
+  `project`/`openapi.watch`/`app:`/`runtime:`；`agent.model`（E3 收敛 claude-code 单 adapter 后
+  未留 model 键）、`agent.permission/allowEdit/denyEdit/plugins`（D1 suggest-diff 铁律使其无
+  写面语义）；`privacy.mask.strategy` 枚举实际为 `email|phone|full`，§10 示例的 `partial`
+  **不收敛**（内置规则表已覆盖常用脱敏形态）。
+- §10 示例中 `agent.provider.model: claude-sonnet-4` 行已过时（E3/D1 生效前原文），随本节注记作废。
+
+#### 47.8.3 与 §25/§28/§30 的零散裁定
+
+- `request_traces.replayable/replay_safety/replay_reason` 三列 flush 恒 NULL —— F3/C3 只收了
+  config + `classifyReplay()` 纯函数，trace 级回写未做（dashboard/CLI replay 时按请求现算，
+  不落库）→ backlog C13。
+- `agent_iterations.after_coverage` 恒 NULL（loop 内不做 mid-loop 重测，coverage 变化由
+  kernel `turn:end` 事件承载）→ 属 v0 行为锁定，无需 backlog。
+- §30 的 `/runs/:runId/endpoints`（endpoint 覆盖页）与 `/runs/:runId/agent`（Agent Loop 页）
+  未建：endpoint 数据在 metrics 路由与 DB 皆备、agent_iterations 已落库，仅缺 UI → backlog C14。
+- **PR #34 补注（§15/§30 关系）**：dashboard 新增 `/runs/:runId/pipeline` 页（`pipeline.ts`
+  路由 + `pipeline-reader.ts` 从 per-run `events.jsonl` 事后重建 phase 时间线 / turn 级 coverage
+  快照 / goal verdict / plugin 状态 / raw events（cap 500））与 `/scenarios` 顶层页的回放 per-step
+  I/O trail 明细（`trail-reader.ts`，max 100 newest-first）。属 §15 RunState 阶段序列的 dashboard
+  **事后可视化**，与 §39 CLI 实时进度（C10 裁定延期）互补不替代。
+- §8 中 `plugin-coverage`/`plugin-agent` 为 relic：git 全历史零 commit；职责分别被 `coverage`、
+  `agent` 包吸收。§8 另外三个未载包（`manifest-schema`、`schema`、`plugin-playwright`）来自
+  2026-08-28 foundation-modification-plan（M2/M4/Ruling 5），plan §8 不回写，以此注记为准。

@@ -83,12 +83,25 @@
 | C3 | `replay:` 安全规则可配（现硬编码 GET-safe / POST-confirm） | §23 | ☑ F3（replay: 段 allowMethods/requireConfirmation/block；CLI 与 dashboard 同源；fail-closed） |
 | C4 | CLI `report` / `replay` 子命令 | §5.1 | ☑ F4（report [--open]；replay request/scenario） |
 | C5 | `config.resolved.json` 落盘（新增写盘面，需按铁律评审落点） | §10 | ☑ F5（per-run runs/{runId}/config.resolved.json，写者归 CLI，铁律不破） |
-| C6 | `openapi.watch` / `app:`（CLI 代启用户应用）配置段 | §10/§39 | ☐ → 随 watch 模式一并 SDD（Plan §39 自标后置，裁定见 Plan §47.6） |
+| C6 | `openapi.watch` / `app:`（CLI 代启用户应用）配置段 | §10/§39 | ☑ 裁定延期（Plan §47.6 归属确认，非缺口；随 watch 模式一并 SDD） |
 | C7 | Agent：补 3 个内置插件（api-client/dsl/policy，§35.2-35.4）、权限四档、rollbackOnRegression 的回滚执行 | §35/§36/§38 | 部分裁定：权限四档/回滚 = §36/D1 自裁 MVP 后置（→ Plan §47.6，非缺口）；**3 个插件 ☐ 待独立 SDD**（dsl-agent 依赖 C9） |
 | C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 | ☐ 待独立 SDD（API 面设计需 spec） |
 | C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | 部分落地：**Copy curl ☑ F6**（RequestDetail，method+url，V3 不臆造 body）；Request DSL/Export DSL ☐ 待独立 SDD |
 | C10 | Watch 模式 / TUI 实时进度（Plan 自标后置，低优） | §39 | ☑ 裁定延期（Plan §47.6 归属确认，非缺口） |
 | C11 | 采集上限 500 字符 → 截断残片致结构化脱敏退化为正则兜底（与 C1 合并评估） | §24 | ☑ 随 F1 消解（字段级散列在浏览器内对完整值计算，不经截断） |
+
+## C 组续批 —— 2026-09-29 全仓审计新开（编号顺延 C12–C16；Plan × master `a33d1a7` 逐节对照，裁定详情见 Plan §47.8）
+
+| # | 条目 | Plan 出处 | 状态 |
+|---|---|---|---|
+| C12 | §30 设置面：`GET /api/settings` + `PATCH /api/settings/policy\|agent\|replay` 四路由与 `/settings/policy\|agent\|replay` 三页未建（现仅 `/settings/plugins` 插件写回可用） | §30 | ☐ 待 SDD（优先级低于 C 组三项；policy 手编 config 文件可替代） |
+| C13 | `request_traces.replayable/replay_safety/replay_reason` 三列 flush 恒 NULL（F3/C3 只收 config + `classifyReplay()`，trace 级不落库，replay 时现算） | §23/§25.4 | ☐ 待裁定：要么采集侧回写，要么明确「replay 前现算不落库」为冻结行为并注记 §25 |
+| C14 | §30 报告页缺口：`/runs/:runId/endpoints`（endpoint 覆盖页，数据在 metrics 路由与 DB 已备）与 `/runs/:runId/agent`（Agent Loop 页，`agent_iterations` 已落库）仅缺 UI | §30 | ☐ 待 SDD |
+| C15 | coverage 模块缺 plan §8 的 `trace-store/field-extractor/value-masker/ui-evidence/metrics` 文件位——职能已被 db/client.ts（flushDrained）、client 代理、privacy/mask.ts、analyzer 内联吸收；`endpoints` 表有 `tags` 无 `summary`，`manifest_fields` 为精简裁定集（无 direction/status/description/schema_name） | §8/§25 | ☑ 文件布局裁定为 R3 同类（吸收合并，语义不缺）；DB 列集属 spec 裁定，仅注记不更名（`endpoints.summary` 若后续 Manifest Browser 需要，随 C14 一并评估） |
+| C16 | `runtime/patch.ts`（patchGlobalFetch，SDK-CG3b fetch monkey-patch fallback）无命令接线：任何 CLI/dashboard 路径都不会启用它，仅 `migrate` 命令文案提示存在（plan 语义：未全量迁移时 coverage 不断） | §42.5 SDK-CG3 | ☐ 待 SDD（小：`run`/`start` boot 时按 config 开关 patch globalThis.fetch 即可，但涉及注入面语义，不宜顺手加） |
+
+> 2026-09-29 审计同时确认：§47.1–47.7 全部逐项属实（R1–R8、F1–F6、G1–G5 在码复核通过）；
+> C7/C8/C9 open 状态不变。测试基线 695 tests / 91 files / 13 包（PR #34 合并后）。
 
 > **2026-09-25 插件 IO 对齐批注**（feat/plan-align-batch2）：CollectReport 改判别联合
 > （method/path 恒在，'GET (unknown)' 伪影消解）；原 Ruling 8 落地（manifest normalizedPath
