@@ -53,7 +53,11 @@ export function RunOverviewPage({ runId }: { runId: string }) {
         {'　'}
         <a href={`#/runs/${runId}/requests`}>{T('Requests →')}</a>
         {'　'}
+        <a href={`#/runs/${runId}/endpoints`}>{T('Endpoints →')}</a>
+        {'　'}
         <a href={`#/runs/${runId}/fields`}>{T('Fields →')}</a>
+        {'　'}
+        <a href={`#/runs/${runId}/agent`}>{T('Agent →')}</a>
         {'　'}
         <a href={`#/runs/${runId}/ignored`}>{T('Ignored →')}</a>
         {'　'}

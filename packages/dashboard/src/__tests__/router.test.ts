@@ -31,6 +31,8 @@ describe('resolvePage', () => {
     expect(resolvePage('/runs/run_a/requests/req_1')).toEqual({ page: 'request', params: { runId: 'run_a', requestId: 'req_1' } })
     expect(resolvePage('/runs/run_a/fields')).toEqual({ page: 'fields', params: { runId: 'run_a' } })
     expect(resolvePage('/runs/run_a/ignored')).toEqual({ page: 'ignored', params: { runId: 'run_a' } })
+    expect(resolvePage('/runs/run_a/endpoints')).toEqual({ page: 'endpoints', params: { runId: 'run_a' } })
+    expect(resolvePage('/runs/run_a/agent')).toEqual({ page: 'agent', params: { runId: 'run_a' } })
   })
   it('unknown → not-found', () => {
     expect(resolvePage('/nope')).toEqual({ page: 'not-found', params: {} })

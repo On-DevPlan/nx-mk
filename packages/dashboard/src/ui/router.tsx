@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 
 export type PageId =
-  | 'overview' | 'runs' | 'run' | 'pipeline' | 'requests' | 'request' | 'fields' | 'ignored' | 'manifest' | 'settings' | 'scenarios' | 'not-found'
+  | 'overview' | 'runs' | 'run' | 'pipeline' | 'requests' | 'request' | 'fields' | 'ignored' | 'manifest' | 'endpoints' | 'agent' | 'settings' | 'scenarios' | 'not-found'
 
 export const ROUTES: { pattern: string; page: PageId }[] = [
   { pattern: '/', page: 'overview' },
@@ -18,6 +18,8 @@ export const ROUTES: { pattern: string; page: PageId }[] = [
   { pattern: '/runs/:runId/fields', page: 'fields' },
   { pattern: '/runs/:runId/ignored', page: 'ignored' },
   { pattern: '/runs/:runId/manifest', page: 'manifest' },
+  { pattern: '/runs/:runId/endpoints', page: 'endpoints' },
+  { pattern: '/runs/:runId/agent', page: 'agent' },
   { pattern: '/settings/plugins', page: 'settings' },
   { pattern: '/scenarios', page: 'scenarios' },
 ]

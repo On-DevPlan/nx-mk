@@ -3084,6 +3084,7 @@ Dashboard
   kernel `turn:end` 事件承载）→ 属 v0 行为锁定，无需 backlog。
 - §30 的 `/runs/:runId/endpoints`（endpoint 覆盖页）与 `/runs/:runId/agent`（Agent Loop 页）
   未建：endpoint 数据在 metrics 路由与 DB 皆备、agent_iterations 已落库，仅缺 UI → backlog C14。
+  **（2026-09-29 C14 落地消解：两页 + 两路由已建，见 backlog C14 ☑。）**
 - **PR #34 补注（§15/§30 关系）**：dashboard 新增 `/runs/:runId/pipeline` 页（`pipeline.ts`
   路由 + `pipeline-reader.ts` 从 per-run `events.jsonl` 事后重建 phase 时间线 / turn 级 coverage
   快照 / goal verdict / plugin 状态 / raw events（cap 500））与 `/scenarios` 顶层页的回放 per-step

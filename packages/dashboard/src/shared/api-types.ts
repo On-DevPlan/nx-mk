@@ -188,6 +188,39 @@ export interface ReplaysListResponse {
   replays: ReplaySummary[]
 }
 
+// —— C14（§30 补页）：endpoints 覆盖页 + agent loop 页 ——
+
+/** GET /api/runs/:runId/endpoints —— report 命中该 run → report.endpoints 原样透出（D12 门控） */
+export interface EndpointsListResponse {
+  endpoints: Array<{
+    endpointId: string
+    method: string
+    path: string
+    called: boolean
+    fieldsTotal: number
+    fieldsCovered: number
+  }>
+}
+
+/** §25.9 agent_iterations 行投影（camelCase 直译；afterCoverage C14 恒可 null） */
+export interface AgentIterationRow {
+  id: string
+  runId: string
+  iteration: number
+  status: string
+  summary: string | null
+  beforeCoverage: number | null
+  afterCoverage: number | null
+  diffPath: string | null
+  startedAt: string | null
+  endedAt: string | null
+}
+
+/** GET /api/runs/:runId/agent —— agent_iterations 行列表（agent loop 未跑 → 空数组） */
+export interface AgentIterationsResponse {
+  iterations: AgentIterationRow[]
+}
+
 // —— Phase 4.5：plugin settings 只读（spec R6-R8/E4/E5；V5 config 语义）——
 
 export interface PluginEntryView {

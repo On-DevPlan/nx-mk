@@ -76,6 +76,7 @@ export interface DbSeed {
   hits?: { runId: string; requestId?: string | null; fieldPath: string; normalizedPath?: string; count?: number }[]
   evidence?: { runId: string; requestId?: string | null; fieldPath: string; visible?: boolean; textSample?: string | null }[]
   coverageFields?: { runId: string; fieldId?: string; fieldPath: string; policyStatus?: string; coverageState?: string; accessHit?: number; uiHit?: number }[]
+  agentIterations?: { runId: string; iteration: number; status: string; summary?: string | null; beforeCoverage?: number | null }[]
 }
 
 /**
@@ -122,6 +123,14 @@ export function seedDb(nxMkDir: string, seed: DbSeed): string {
         `cf_${c.runId}_${c.fieldPath}`, c.runId, c.fieldId ?? c.fieldPath, c.fieldPath,
         c.policyStatus ?? 'required', c.coverageState ?? 'covered',
         c.accessHit ?? 1, c.uiHit ?? 0, c.accessHit ?? 1, c.uiHit ?? 0,
+      )
+    }
+    for (const a of seed.agentIterations ?? []) {
+      db.prepare(
+        'INSERT OR REPLACE INTO agent_iterations (id, run_id, iteration, status, summary, before_coverage, after_coverage, diff_path, started_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL)',
+      ).run(
+        `ai_${a.runId}_${a.iteration}`, a.runId, a.iteration, a.status,
+        a.summary ?? null, a.beforeCoverage ?? null,
       )
     }
   } finally {

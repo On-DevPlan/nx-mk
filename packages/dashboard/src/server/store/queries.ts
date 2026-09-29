@@ -4,7 +4,7 @@
  * DbBusyError 原样上抛（路由层捕获），其余 SQL 错误上抛（fastify 500 可见）。
  */
 import type { CoverageDbReader } from './db-reader.js'
-import type { RunRow, TraceRow, FieldHitRow, UiEvidenceRow, CoverageFieldRow } from '../../shared/api-types.js'
+import type { RunRow, TraceRow, FieldHitRow, UiEvidenceRow, CoverageFieldRow, AgentIterationRow } from '../../shared/api-types.js'
 
 type Row = Record<string, unknown>
 
@@ -145,5 +145,27 @@ export class Queries {
     return this.reader
       .all<Row>('SELECT * FROM coverage_fields WHERE run_id = ? ORDER BY field_path', runId)
       .map(mapCoverageFieldRow)
+  }
+
+  listAgentIterations(runId: string): AgentIterationRow[] {
+    return this.reader
+      .all<Row>('SELECT * FROM agent_iterations WHERE run_id = ? ORDER BY iteration', runId)
+      .map(mapAgentIterationRow)
+  }
+}
+
+/** §25.9 agent_iterations → AgentIterationRow（snake→camel 直译；复用顶部 str/int 助手） */
+function mapAgentIterationRow(r: Row): AgentIterationRow {
+  return {
+    id: str(r.id) ?? '',
+    runId: str(r.run_id) ?? '',
+    iteration: int(r.iteration) ?? 0,
+    status: str(r.status) ?? '',
+    summary: str(r.summary),
+    beforeCoverage: r.before_coverage == null ? null : Number(r.before_coverage),
+    afterCoverage: r.after_coverage == null ? null : Number(r.after_coverage),
+    diffPath: str(r.diff_path),
+    startedAt: str(r.started_at),
+    endedAt: str(r.ended_at),
   }
 }
