@@ -18,6 +18,8 @@ import { IgnoredListPage } from './pages/IgnoredList'
 import { ManifestBrowserPage } from './pages/ManifestBrowser'
 import { PluginSettingsPage } from './pages/PluginSettings'
 import { ScenariosPage } from './pages/Scenarios'
+import { EndpointsListPage } from './pages/EndpointsList'
+import { AgentPage } from './pages/AgentPage'
 
 /** 语言开关（右上角）：显示目标语言，点击切换并持久化 */
 function LangToggle() {
@@ -47,6 +49,8 @@ const NAV_GROUP: Record<string, string> = {
   fields: 'runs',
   ignored: 'runs',
   manifest: 'runs',
+  endpoints: 'runs',
+  agent: 'runs',
   scenarios: 'scenarios',
   settings: 'settings',
 }
@@ -86,6 +90,8 @@ export function App() {
         {page === 'ignored' && (
           <IgnoredListPage runId={params.runId ?? ''} key={JSON.stringify(params)} />
         )}
+        {page === 'endpoints' && <EndpointsListPage runId={params.runId ?? ''} key={JSON.stringify(params)} />}
+        {page === 'agent' && <AgentPage runId={params.runId ?? ''} key={JSON.stringify(params)} />}
         {page === 'manifest' && (
           <ManifestBrowserPage runId={params.runId ?? ''} key={JSON.stringify(params)} />
         )}

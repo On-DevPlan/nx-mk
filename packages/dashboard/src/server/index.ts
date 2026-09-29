@@ -16,6 +16,8 @@ import { registerPluginRoutes } from './routes/plugins.js'
 import { registerManifestRoutes } from './routes/manifest.js'
 import { registerScenarioRoutes } from './routes/scenarios.js'
 import { registerPipelineRoutes } from './routes/pipeline.js'
+import { registerEndpointRoutes } from './routes/endpoints.js'
+import { registerAgentRoutes } from './routes/agent.js'
 import type { ReplayRules } from './replay.js'
 
 export interface BuildServerOptions {
@@ -51,6 +53,8 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
   registerManifestRoutes(app, ctx)
   registerScenarioRoutes(app, ctx)
   registerPipelineRoutes(app, ctx)
+  registerEndpointRoutes(app, ctx)
+  registerAgentRoutes(app, ctx)
   return app
 }
 
