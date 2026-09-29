@@ -104,6 +104,13 @@ export async function scanPage(
  * 从 analysis 分支 hit()/trace() 进这里；Node 侧 launchCollect 在页面工作完成后
  * 经 drainBrowserCollector 回捞进共享 collector，再清空页内缓冲。
  * 注意：shim 必须无 Node 依赖（buffer 只是普通数组），故可序列化注入。
+ *
+ * SDK-CG3b fetch 兜底（C16，plan §42.5）：shim 建立后对 window.fetch 打补丁 ——
+ * 未迁移的裸 fetch() 走 apiPrefix 的请求直接产 trace 进单通道，coverage 不丢。
+ * 去重：已迁移的 SDK analysis 分支发 fetch 前置 window.__MK_SDK_INFLIGHT__ 标记
+ * （client.ts finally 清除），shim 见标记跳过（该请求 trace 由 SDK 通路负责）。
+ * 探针纪律：patch 包装 try/catch 全吞，探针异常不影响业务请求；幂等（已 patch
+ * 不再叠层）。
  */
 export const COLLECTOR_SHIM_SCRIPT = `(() => {
   if (window.__MK_COLLECTOR__) return
@@ -112,6 +119,41 @@ export const COLLECTOR_SHIM_SCRIPT = `(() => {
     traces: [],
     hit(h) { this.hits.push(h) },
     trace(t) { this.traces.push(t) },
+  }
+  if (window.__MK_FETCH_PATCHED__ == null) {
+    window.__MK_FETCH_PATCHED__ = true
+    const original = window.fetch
+    if (typeof original === 'function') {
+      window.fetch = function (input, init) {
+        try {
+          if (!window.__MK_SDK_INFLIGHT__) {
+            const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url)
+            const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase()
+            const pathname = new URL(url, location.href).pathname
+            if (pathname === '/api' || pathname.indexOf('/api/') === 0) {
+              const startedAt = new Date().toISOString()
+              const start = Date.now()
+              const p = original.call(this, input, init)
+              p.then(function (res) {
+                try {
+                  window.__MK_COLLECTOR__.trace({
+                    method: method,
+                    url: url,
+                    path: pathname,
+                    status: res.status,
+                    startedAt: startedAt,
+                    endedAt: new Date().toISOString(),
+                    durationMs: Date.now() - start,
+                  })
+                } catch (e) {}
+              })
+              return p
+            }
+          }
+        } catch (e) {}
+        return original.apply(this, arguments.length >= 2 ? arguments : [input, init])
+      }
+    }
   }
 })()`
 

@@ -3056,9 +3056,11 @@ Dashboard
   auth/transport/normalize 三段）—— SDK Facade 实现为 fetch wrapper + tracked proxy + collector
   直连，**middleware 流水线判为 roadmap 后置**（无冻结消费方，不承认为缺口）；② `production.ts`
   → `runtime/client.ts` 非 analysis 分支（zero-overhead 语义保持）；③ `migrate/fetch-patch.ts`
-  → `runtime/patch.ts`（patchGlobalFetch，SDK-CG3b fallback；尚无命令接线，仅 migrate 文案提示，
-  见 backlog C16）；④ `react/useField.ts` 未建（Field.tsx 为 Phase 1.5 placeholder，
-  collector 经 DOM scanner 间接接入）。
+  → `runtime/patch.ts`（patchGlobalFetch，SDK-CG3b fallback；**2026-09-29 C16 裁定：
+  兜底语义由 plugin-playwright COLLECTOR_SHIM_PATCH 承载** —— Node 侧 patch 看不到浏览器
+  fetch，browser shim patch `window.fetch` + `__MK_SDK_INFLIGHT__` 去重，见 backlog C16 注记；
+  Node 版 patchGlobalFetch 保留为机制存量，无接线）；④ `react/useField.ts` 未建（Field.tsx 为
+  Phase 1.5 placeholder，collector 经 DOM scanner 间接接入）。
 
 #### 47.8.2 §10 配置键面双向同步（以 `config/src/schema.ts` 为唯一真源）
 
