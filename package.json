@@ -38,7 +38,8 @@
   },
   "pnpm": {
     "overrides": {
-      "esbuild": "^0.25.0"
+      "esbuild": "^0.25.0",
+      "fast-uri": "3.1.7"
     }
   },
   "packageManager": "pnpm@9.0.0"
