@@ -260,7 +260,125 @@ export interface ConfigWriteApplyResponse {
   yamlSha: string
 }
 
+// —— 流水线逐步报告（Pipeline 页；数据源 = run 目录 events.jsonl + manifest.json + coverage-report.json）——
+
+/** 单个 phase 步骤（phase:start / phase:end 配对；未结束 durationMs = null） */
+export interface PipelinePhaseStep {
+  phase: string
+  startedAt: string | null
+  durationMs: number | null
+}
+
+/** goal-loop 单轮覆盖快照（turn:end 事件投影） */
+export interface PipelineTurn {
+  turn: number
+  /** 覆盖率 0..1；无 coverage 载荷为 null */
+  ratio: number | null
+  covered: number | null
+  total: number | null
+  progress: string | null
+}
+
+/** run 内插件（plugin:loaded / plugin:state-change 合并投影） */
+export interface PipelinePlugin {
+  name: string
+  version: string | null
+  state: string | null
+}
+
+/** run 内 DSL 场景执行（scenario:start / scenario:done 配对） */
+export interface PipelineScenarioStep {
+  scenarioId: string
+  /** done 未到达 = null（执行中或中断） */
+  ok: boolean | null
+}
+
+/** goal 终止判定（goal:met / goal:unmet 投影） */
+export interface PipelineGoal {
+  status: 'met' | 'unmet'
+  ratio: number | null
+  turns: number | null
+  durationMs: number | null
+}
+
+/** 分析步骤（coverage-report.json，D12 runId 匹配门控后） */
+export interface PipelineAnalysis {
+  hasReport: boolean
+  requiredCoverage: number | null
+  effectiveCoverage: number | null
+  rawBackendFieldCoverage: number | null
+}
+
+/** manifest 步骤（run 目录 manifest.json 投影） */
+export interface PipelineManifest {
+  version: string | null
+  sourceType: string | null
+  endpoints: number | null
+  fields: number | null
+}
+
+export interface PipelineReportResponse {
+  runId: string
+  /** 事件流不可读（空/损坏）→ null（诚实降级，页面显空态） */
+  phases: PipelinePhaseStep[] | null
+  plugins: PipelinePlugin[]
+  turns: PipelineTurn[]
+  goal: PipelineGoal | null
+  scenarios: PipelineScenarioStep[]
+  analysis: PipelineAnalysis
+  manifest: PipelineManifest | null
+}
+
+// —— DSL 场景回放历史（GET /api/scenarios/trails；数据源 = replays/scenarios/**.json）——
+
+/** 单条 trail 的步骤（trail JSON steps 原样投影的窄化） */
+export interface ScenarioTrailStep {
+  stepId: string
+  type: string
+  ok: boolean
+  durationMs: number
+  error?: string
+}
+
+export interface ScenarioTrailSummary {
+  replayId: string
+  scenarioId: string
+  ok: boolean
+  createdAt: string | null
+  steps: ScenarioTrailStep[]
+}
+
+export interface ScenarioTrailsResponse {
+  trails: ScenarioTrailSummary[]
+}
+
+/** trail 详情步骤 = 执行结果 + DSL 输入合并（「具体 I/O」报告） */
+export interface ScenarioTrailStepDetail extends ScenarioTrailStep {
+  /** DSL 步骤输入（url/selector/urlPattern/field/path/timeoutMs 按类型取）；DSL 不可得 → null */
+  input: Record<string, unknown> | null
+}
+
+/** GET /api/scenarios/trails/:replayId —— 单条回放报告详情（结果 × DSL 输入） */
+export interface ScenarioTrailDetailResponse {
+  replayId: string
+  scenarioId: string
+  ok: boolean
+  createdAt: string | null
+  steps: ScenarioTrailStepDetail[]
+  /** DSL 源文件路径（loadScenarios 返回的 file）；场景已删除/配置不可得 → null */
+  dslFile: string | null
+}
+
+/** GET /api/runs/:runId/pipeline/events —— events.jsonl 原始事件逐条 I/O（形状门控后原样透出） */
+export interface PipelineEventsResponse {
+  runId: string
+  events: Record<string, unknown>[]
+  /** 事件数超出上限截断时 true */
+  truncated: boolean
+}
+
 // —— v1：scenario DSL 浏览页 + 回放（spec S3/S11/S12；§26/§27）——
+
 
 /** GET /api/scenarios（spec S11 —— 无 scenarios 段诚实降级） */
 export interface ScenarioView {

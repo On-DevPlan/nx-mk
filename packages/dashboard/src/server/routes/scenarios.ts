@@ -7,12 +7,14 @@ import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import type { RouteContext } from '../types.js'
-import { loadScenarios, replayScenario, ScenarioReplayError, makeScenarioReplayId, writeScenarioReplayTrail } from '@nx-mk/scenario'
+import { loadScenarios, replayScenario, ScenarioReplayError, makeScenarioReplayId, writeScenarioReplayTrail, stepIdOf } from '@nx-mk/scenario'
+import type { ScenarioStep } from '@nx-mk/scenario'
 import { loadConfig } from '@nx-mk/config'
 import { makeRunId } from '@nx-mk/kernel'
 import type { ResolvedConfig } from '@nx-mk/kernel'
 import type { ScenarioConfig } from '@nx-mk/config'
-import type { ScenarioReplayResponse, ScenariosResponse } from '../../shared/api-types.js'
+import type { ScenarioReplayResponse, ScenarioTrailDetailResponse, ScenariosResponse, ScenarioTrailsResponse } from '../../shared/api-types.js'
+import { readScenarioTrailDetail, readScenarioTrails } from '../store/trail-reader.js'
 
 // E6：模块级串行锁（单进程本地 dashboard 语义；try/finally 复位）
 let inFlight = false
@@ -31,6 +33,22 @@ async function readInclude(ctx: RouteContext): Promise<string[] | undefined> {
   }
 }
 
+/** DSL 步骤 → 输入载荷（按类型取字段；与 runner.ts 的执行输入一一对应） */
+function stepInput(step: ScenarioStep): Record<string, unknown> {
+  switch (step.type) {
+    case 'goto':
+      return { url: step.url }
+    case 'waitFor':
+      return { selector: step.selector, ...(step.timeoutMs !== undefined ? { timeoutMs: step.timeoutMs } : {}) }
+    case 'waitForRequest':
+      return { urlPattern: step.urlPattern, ...(step.timeoutMs !== undefined ? { timeoutMs: step.timeoutMs } : {}) }
+    case 'assertFieldVisible':
+      return { field: step.field, ...(step.timeoutMs !== undefined ? { timeoutMs: step.timeoutMs } : {}) }
+    case 'screenshot':
+      return step.path !== undefined ? { path: step.path } : {}
+  }
+}
+
 export function registerScenarioRoutes(app: FastifyInstance, ctx: RouteContext): void {
   app.get('/api/scenarios', async (): Promise<ScenariosResponse> => {
     const include = await readInclude(ctx)
@@ -45,6 +63,37 @@ export function registerScenarioRoutes(app: FastifyInstance, ctx: RouteContext):
         stepCount: s.scenario.steps.length,
         file: s.file,
       })),
+    }
+  })
+
+  // 回放历史（DSL 驱动报告）：只读扫描 replays/scenarios/**.json，形状门控 + 倒序
+  app.get('/api/scenarios/trails', async (): Promise<ScenarioTrailsResponse> => {
+    return { trails: readScenarioTrails(ctx.nxMkDir) }
+  })
+
+  // 单条回放报告详情：执行结果（trail JSON）× DSL 输入（stepIdOf 按 index 对齐）合并 —— 「具体 I/O」
+  app.get('/api/scenarios/trails/:replayId', async (req, reply): Promise<ScenarioTrailDetailResponse | void> => {
+    const { replayId } = req.params as { replayId: string }
+    const trail = readScenarioTrailDetail(ctx.nxMkDir, replayId)
+    if (trail === null) {
+      return reply.code(404).send({ error: `unknown trail: ${replayId}` })
+    }
+    // DSL 定义现读（与 GET /api/scenarios 同一 loader 语义）；不可得 → input 全 null、dslFile null（诚实降级）
+    const include = await readInclude(ctx)
+    const loaded = include ? loadScenarios(dirname(ctx.nxMkDir), include).scenarios.find((s) => s.scenario.id === trail.scenarioId) : undefined
+    const inputByStepId = new Map<string, Record<string, unknown>>()
+    if (loaded) {
+      loaded.scenario.steps.forEach((step, i) => {
+        inputByStepId.set(stepIdOf(loaded.scenario.id, step, i), stepInput(step))
+      })
+    }
+    return {
+      replayId: trail.replayId,
+      scenarioId: trail.scenarioId,
+      ok: trail.ok,
+      createdAt: trail.createdAt,
+      dslFile: loaded?.file ?? null,
+      steps: trail.steps.map((s) => ({ ...s, input: inputByStepId.get(s.stepId) ?? null })),
     }
   })
 
