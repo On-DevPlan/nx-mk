@@ -4,6 +4,7 @@
  * click/fill/assertVisible（§26.3 其余）后置——表单流 demo 出现再加（spec 范围声明）。
  */
 import { z } from 'zod'
+import { RequestDeclSchema, type RequestDecl } from './request-dsl.js'
 
 // 场景 id：kebab-case（与场景文件名解耦——文件可含多场景）
 const ScenarioIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, 'scenario id must be kebab-case')
@@ -42,5 +43,7 @@ export type Scenario = z.infer<typeof ScenarioSchema>
 export const ScenarioFileSchema = z.object({
   version: z.literal(1),
   scenarios: z.array(ScenarioSchema).min(1),
+  // C9（§26.2）：可选 requests 段 —— 只有 scenarios: 的既有文件解析不变（向后兼容）
+  requests: z.array(RequestDeclSchema).optional(),
 })
 export type ScenarioFile = z.infer<typeof ScenarioFileSchema>

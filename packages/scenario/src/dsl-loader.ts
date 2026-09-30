@@ -8,6 +8,7 @@ import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { parse } from 'yaml'
 import { ScenarioFileSchema, type Scenario } from './dsl-schema.js'
+import { RequestDeclFileSchema, type RequestDecl } from './request-dsl.js'
 
 /** 路径段 glob → RegExp：`**` 跨段（后随分隔符时允许零段，即直连同目录文件）、`*` 单段、其余字符转义 */
 export function globToRegExp(pattern: string): RegExp {
@@ -101,4 +102,70 @@ export function loadScenarios(cwd: string, include: ReadonlyArray<string>): Load
     }
   }
   return { scenarios, skipped }
+}
+
+export interface LoadedRequest {
+  request: RequestDecl
+  file: string
+}
+
+export interface LoadRequestsResult {
+  requests: LoadedRequest[]
+  skipped: string[]
+}
+
+/**
+ * 加载 requests: 声明（C9 §26.2）。
+ * 与 loadScenarios 同 glob 语义但独立解析：单个文件若是 RequestDeclFileSchema
+ * （顶层 requests:）则整体消费；若是 ScenarioFileSchema（顶层 scenarios:）则取
+ * 其可选 requests 段。两类文件可共存于 include 模式（同 id 去重首个胜出）。
+ */
+export function loadRequests(cwd: string, include: ReadonlyArray<string>): LoadRequestsResult {
+  const requests: LoadedRequest[] = []
+  const skipped: string[] = []
+  const seenIds = new Set<string>()
+  for (const pattern of include) {
+    const globIdx = pattern.search(/[*]/)
+    const rootRel = globIdx === -1 ? pattern : pattern.slice(0, pattern.lastIndexOf('/', globIdx) + 1) || ''
+    const re = globToRegExp(globIdx === -1 ? pattern : pattern.slice(rootRel.length))
+    const files: string[] = []
+    if (globIdx === -1) {
+      if (existsSync(join(cwd, pattern))) files.push(join(cwd, pattern))
+    } else {
+      collectFiles(join(cwd, rootRel), re, join(cwd, rootRel), files)
+    }
+    for (const file of files) {
+      let parsed: unknown
+      try {
+        parsed = parse(readFileSync(file, 'utf8'))
+      } catch (err) {
+        skipped.push(`${file}: unparseable yaml (${(err as Error).message})`)
+        continue
+      }
+      // 先试纯 requests 文件；再试混合文件（scenarios: 带 requests? 段）
+      let declared: RequestDecl[] | undefined
+      const requestGate = RequestDeclFileSchema.safeParse(parsed)
+      if (requestGate.success) {
+        declared = requestGate.data.requests
+      } else {
+        const mixed = ScenarioFileSchema.safeParse(parsed)
+        if (mixed.success && mixed.data.requests !== undefined) {
+          declared = mixed.data.requests
+        }
+      }
+      if (declared === undefined) {
+        skipped.push(`${file}: no requests: section`)
+        continue
+      }
+      for (const r of declared) {
+        if (seenIds.has(r.id)) {
+          skipped.push(`${file}: duplicate request id '${r.id}' (first wins)`)
+          continue
+        }
+        seenIds.add(r.id)
+        requests.push({ request: r, file })
+      }
+    }
+  }
+  return { requests, skipped }
 }

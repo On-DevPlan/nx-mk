@@ -193,6 +193,21 @@ export async function runMain(opts: RunMainOptions): Promise<void> {
         } catch (err) {
           console.warn(`coverage-report.json write failed: ${(err as Error).message}`)
         }
+        // 5. C9（§26.2/§11）：dsl.generated.yml —— from drained 内存 traces 反推 requests
+        // 声明（成功请求去重 by method+url）。写失败 warn 不阻断；同 per-run manifest 快照语义。
+        try {
+          const { generateRequestDslFromTraces, renderRequestDslYaml } = await import('@nx-mk/scenario')
+          const decls = generateRequestDslFromTraces(drained.traces).map((g) => g.request)
+          writeFileSync(
+            join(cwd, '.nx-mk', 'runs', runId, 'dsl.generated.yml'),
+            renderRequestDslYaml(decls),
+            'utf8',
+          )
+          const judged = decls.filter((d) => d.expect !== undefined).length
+          console.log(`  Generated DSL: .nx-mk/runs/${runId}/dsl.generated.yml (${decls.length} requests, ${judged} with status expect)`)
+        } catch (err) {
+          console.warn(`dsl.generated.yml write failed: ${(err as Error).message}`)
+        }
       } else if (collect) {
         // I1（Task 7 审查）：collect 配置而 flush 通道无 collector —— 防御性 warn。
         // Ruling 5 装配后 collect 存在即有共享实例，此行守护未来装配被破坏的场景
