@@ -95,7 +95,7 @@
 | # | 条目 | Plan 出处 | 状态 |
 |---|---|---|---|
 | C12 | §30 设置面：`GET /api/settings` + `PATCH /api/settings/policy\|agent\|replay` 四路由与 `/settings/policy\|agent\|replay` 三页未建（现仅 `/settings/plugins` 插件写回可用） | §30 | ☐ 待 SDD（优先级低于 C 组三项；policy 手编 config 文件可替代） |
-| C13 | `request_traces.replayable/replay_safety/replay_reason` 三列 flush 恒 NULL（F3/C3 只收 config + `classifyReplay()`，trace 级不落库，replay 时现算） | §23/§25.4 | ☐ 待裁定：要么采集侧回写，要么明确「replay 前现算不落库」为冻结行为并注记 §25 |
+| C13 | `request_traces.replayable/replay_safety/replay_reason` 三列 flush 恒 NULL（F3/C3 只收 config + `classifyReplay()`，trace 级不落库，replay 时现算） | §23/§25.4 | ☑ 冻结裁定（2026-09-30，§47.8.5）：「replay 前现算不落库」为设计行为非缺数据——规则可变，落库会与现行规则漂移产生账实不一致；§25.4/client.ts 注记，三列留作未来只读展示扩展位 |
 | C14 | §30 报告页缺口：`/runs/:runId/endpoints`（endpoint 覆盖页，数据在 metrics 路由与 DB 已备）与 `/runs/:runId/agent`（Agent Loop 页，`agent_iterations` 已落库）仅缺 UI | §30 | ☑ 落地（`/endpoints` 报告 endpoints 透出 + D12 门控；`/agent` 行列表 + 空态；RunOverview 双链接；路由/api-types/i18n/dashboard 测试 +8，基线 706/94/13） |
 | C15 | coverage 模块缺 plan §8 的 `trace-store/field-extractor/value-masker/ui-evidence/metrics` 文件位——职能已被 db/client.ts（flushDrained）、client 代理、privacy/mask.ts、analyzer 内联吸收；`endpoints` 表有 `tags` 无 `summary`，`manifest_fields` 为精简裁定集（无 direction/status/description/schema_name） | §8/§25 | ☑ 文件布局裁定为 R3 同类（吸收合并，语义不缺）；DB 列集属 spec 裁定，仅注记不更名（`endpoints.summary` 若后续 Manifest Browser 需要，随 C14 一并评估） |
 | C16 | `runtime/patch.ts`（patchGlobalFetch，SDK-CG3b fetch monkey-patch fallback）无命令接线：任何 CLI/dashboard 路径都不会启用它，仅 `migrate` 命令文案提示存在（plan 语义：未全量迁移时 coverage 不断） | §42.5 SDK-CG3 | ☑ 改道落地（见 fix 注记） |
