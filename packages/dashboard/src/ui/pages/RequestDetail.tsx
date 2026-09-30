@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { ApiError, postJson } from '../api'
 import { usePolling } from '../hooks'
 import { useT } from '../i18n'
+import { renderRequestDslYaml } from '@nx-mk/scenario/request-dsl'
 import type { ReplayResponse, RequestDetailResponse } from '../../shared/api-types'
 
 export function RequestDetailPage({ runId, requestId }: { runId: string; requestId: string }) {
@@ -44,6 +45,7 @@ export function RequestDetailPage({ runId, requestId }: { runId: string; request
           : <p className="empty">{T('not recorded')}</p>}
       </div>
       <CopyCurlSection method={t.method} url={t.url} />
+      <ExportDslSection method={t.method} url={t.url} status={t.status} />
       <ReplaySection runId={runId} requestId={requestId} />
       <div className="section">
         <h2>{T('Field hits')}</h2>
@@ -114,6 +116,42 @@ function CopyCurlSection({ method, url }: { method: string; url: string }) {
       <h2>{T('Copy curl')}</h2>
       <pre>{curl}</pre>
       <button onClick={() => void copy()}>{copied ? T('copied!') : T('Copy curl')}</button>
+    </div>
+  )
+}
+
+/**
+ * Export DSL（C9 §26.2，§22 的 v0 扩展）：把该请求导出为 Request DSL 单条语句
+ * （method+url，status 存在时带 expect.status）—— 同一形状可由 `nx-mk` 的
+ * loadRequests/verifyRequests 消费。复用 @nx-mk/scenario 的 renderRequestDslYaml，
+ * 不新引依赖。V3 裁定同 curl：不存原始 body，不臆造字段期望。
+ */
+function ExportDslSection({ method, url, status }: { method: string; url: string; status?: number | null }) {
+  const T = useT()
+  const [copied, setCopied] = useState(false)
+  // renderRequestDslYaml 是纯字符串模板（无 Node/浏览器差异），可安全在 UI 侧调用
+  const dsl = renderRequestDslYaml([
+    {
+      id: 'req-export',
+      method,
+      url,
+      ...(status !== undefined && status !== null ? { expect: { status } } : {}),
+    },
+  ])
+  const copy = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(dsl)
+      setCopied(true)
+      setTimeout(() => { setCopied(false) }, 2000)
+    } catch {
+      /* 剪贴板不可用——静默 */
+    }
+  }
+  return (
+    <div className="section">
+      <h2>{T('Export DSL')}</h2>
+      <pre>{dsl}</pre>
+      <button onClick={() => void copy()}>{copied ? T('copied!') : T('Export DSL')}</button>
     </div>
   )
 }

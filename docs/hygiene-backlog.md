@@ -86,7 +86,7 @@
 | C6 | `openapi.watch` / `app:`（CLI 代启用户应用）配置段 | §10/§39 | ☑ 裁定延期（Plan §47.6 归属确认，非缺口；随 watch 模式一并 SDD） |
 | C7 | Agent：补 3 个内置插件（api-client/dsl/policy，§35.2-35.4）、权限四档、rollbackOnRegression 的回滚执行 | §35/§36/§38 | 部分裁定：权限四档/回滚 = §36/D1 自裁 MVP 后置（→ Plan §47.6，非缺口）；**3 个插件 ☐ 待独立 SDD**（dsl-agent 依赖 C9） |
 | C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 | ☐ 待独立 SDD（API 面设计需 spec） |
-| C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | 部分落地：**Copy curl ☑ F6**（RequestDetail，method+url，V3 不臆造 body）；Request DSL/Export DSL ☐ 待独立 SDD |
+| C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | ☑ 核心 4 件全落地（2026-09-30，feat/c9-request-dsl；Copy curl 早于 F6 落）：① `request-dsl.ts` schema/`classifyFieldState`/`getFieldByPath` + ScenarioFile `requests:` 段向后兼容 + `loadRequests` 去重装载；② `verify-requests.ts` verifyRequests（method+pathname 匹配、status/fields 断言、no-body 记 partial 不 fail）；③ `generate-request-dsl.ts` traces 反推去重（≥400 跳过）→ run 产物 `dsl.generated.yml`（CLI warn-不阻断）+ report 路径透出；④ Export DSL（RequestDetail，纯子入口 `@nx-mk/scenario/request-dsl` 防 playwright-core 入浏览器 bundle）。新增 12 测试，基线 718/95/13 |
 | C10 | Watch 模式 / TUI 实时进度（Plan 自标后置，低优） | §39 | ☑ 裁定延期（Plan §47.6 归属确认，非缺口） |
 | C11 | 采集上限 500 字符 → 截断残片致结构化脱敏退化为正则兜底（与 C1 合并评估） | §24 | ☑ 随 F1 消解（字段级散列在浏览器内对完整值计算，不经截断） |
 
@@ -101,7 +101,7 @@
 | C16 | `runtime/patch.ts`（patchGlobalFetch，SDK-CG3b fetch monkey-patch fallback）无命令接线：任何 CLI/dashboard 路径都不会启用它，仅 `migrate` 命令文案提示存在（plan 语义：未全量迁移时 coverage 不断） | §42.5 SDK-CG3 | ☑ 改道落地（见 fix 注记） |
 
 > 2026-09-29 审计同时确认：§47.1–47.7 全部逐项属实（R1–R8、F1–F6、G1–G5 在码复核通过）；
-> C7/C8/C9 open 状态不变。测试基线 695 tests / 91 files / 13 包（PR #34 合并后）。
+> C7/C8 open 状态不变（C9 ☑）。测试基线 718 tests / 95 files / 13 包（C9 后）。
 
 **C16 落地注记（2026-09-29，feat/c16-fetch-shim-fallback）**：
 原 backlog 构想「`run`/`start` boot 时 patch globalThis.fetch」在审计中判**无效**——

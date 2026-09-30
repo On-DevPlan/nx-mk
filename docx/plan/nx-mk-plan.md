@@ -2961,7 +2961,7 @@ Dashboard
 | C6 | `openapi.watch` / `app:`（CLI 代启应用）段 | §10/§39 | → 47.6（随 watch 模式一并 SDD） |
 | C7 | Agent：3 个内置插件（~~dsl/auth/perf~~ → api-client/dsl/policy，与 §35.2-35.4/backlog 对齐，2026-09-29 勘误）、权限四档、rollbackOnRegression 回滚执行 | §35/§36/§38 | 权限四档/回滚 → 47.6（§36/D1 自裁 MVP 后置）；**插件 ☐ 待独立 SDD**（dsl-agent 依赖 Request DSL） |
 | C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 | ☐ 待独立 SDD（API 面设计需 spec） |
-| C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | Copy curl ✅ 47.5-F6；Request DSL/Export DSL ☐ 待独立 SDD |
+| C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | ✅ 47.8.4（feat/c9-request-dsl，2026-09-30：schema+loader+verify+generate+Export DSL 四件全落；Copy curl 早于 F6 落） |
 | C10 | Watch 模式 / TUI 实时进度（Plan 自标后置） | §39 | → 47.6（Plan 自标后置，裁定延期） |
 | C11 | 采集上限 500 → 截断残片致结构化脱敏退化（配合 C1 一并评估） | §24 | ✅ 随 47.5-F1 消解（字段级散列在浏览器内对完整值计算，不经截断） |
 
@@ -2983,6 +2983,25 @@ Dashboard
 - **F5（C5）**：per-run `.nx-mk/runs/{runId}/config.resolved.json` 快照（runId/configPath/recordedAt/
   resolved config）；写者归 CLI（run 产物目录既有写面，铁律不破）；失败 warn 不阻断。
 - **F6（C9 部分）**：dashboard RequestDetail「Copy curl」区（method+url；V3 裁定不臆造 body/headers）。
+
+### 47.8.4 C9 Request DSL 落地记录（2026-09-30，feat/c9-request-dsl）
+
+- **schema/装载**：`scenario/request-dsl.ts` `RequestDeclSchema`（id kebab-case、from{scenarioId,stepId?}、
+  method/url、auth?、expect{status?, fields[].path/state}；state ∈ present/null/undefined/empty，
+  与 §23.2 valueState 同空间）；`ScenarioFileSchema` 增可选 `requests:` 段（向后兼容）；
+  `loadRequests(cwd, include)` 双形状装载（RequestDeclFileSchema 直载 / 混合 ScenarioFile 取段），
+  同 id 去重（首个胜出，skip reason 'duplicate request id'）。
+- **校验**：`verify-requests.ts` `verifyRequests` —— matchesTrace（method 大小写不敏感 + pathname
+  归一匹配）绑定首个未用 trace；无 body trace 记 'no-body' 实测值 + partialCount++，**诚实部分**不
+  fail（§20 部分≠失败语义）；status/fields 断言独立 verdict，passed/failed/skipped 三态。
+- **生成**：`generate-request-dsl.ts` 从 drained traces 反推（METHOD+pathname 去重、≥400 跳过、
+  id seq req_001…）→ run 产物 `.nx-mk/runs/{runId}/dsl.generated.yml`（CLI warn-不阻断，同 manifest
+  快照语义）；`report` 子命令透出路径。
+- **Export DSL**：RequestDetail 单条语句复制到剪贴板（status 存在带 expect.status）；V3 同款裁定
+  不臆造 body 期望。关键工程点：**纯子入口 `@nx-mk/scenario/request-dsl`**（request-dsl-entry），
+  dashboard 从子入口导入 —— 主 index 链路引 playwright-core（原生依赖 kerberos），直引会毒化
+  浏览器 bundle；单一事实来源不变（symbols 同源，仅隔离副作用）。
+- 测试：scenario +12（基线 718/95/13）；cli/dashboard 回归绿。
 
 ### 47.6 延期裁定（Plan 自标后置项的归属确认，非缺口）
 

@@ -10,9 +10,15 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./request-dsl": {
+      "types": "./dist/request-dsl-entry.d.ts",
+      "import": "./dist/request-dsl-entry.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

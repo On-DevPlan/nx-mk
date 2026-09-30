@@ -62,6 +62,13 @@ export async function reportMain(opts: ReportMainOptions = {}): Promise<void> {
   )
   console.log(`  Endpoints: ${m.endpointsCalled ?? '(n/a)'}/${m.endpointsTotal ?? '(n/a)'} called`)
   console.log('  Artifacts: .nx-mk/coverage.db · .nx-mk/coverage-report.json · .nx-mk/runs/')
+  // C9（§26.2）：若最新 run 生成过 Request DSL，打印路径（best-effort 只读）
+  if (report.runId) {
+    const dslPath = join(cwd, '.nx-mk', 'runs', report.runId, 'dsl.generated.yml')
+    if (existsSync(dslPath)) {
+      console.log(`  Request DSL: ${resolve(dslPath)}`)
+    }
+  }
 
   if (opts.open) {
     const opener = opts.deps?.openPath ?? openPathBestEffort

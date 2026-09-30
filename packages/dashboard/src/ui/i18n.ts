@@ -64,6 +64,7 @@ const zh: Record<string, string> = {
   'value type': '值类型',
   'value hash': '值散列',
   'Copy curl': '复制 curl',
+  'Export DSL': '导出 Request DSL',
   'copied!': '已复制',
   'visible': '可见',
   'text sample': '文本样本',
