@@ -30,7 +30,7 @@ export async function planTasks(ctx: AgentContext): Promise<AgentPlan> {
 
 // prompt 组装（spec §3.5）：§44.4 硬约束 + 字段上下文 + manifestSummary + policySummary + 输出格式指令
 // v1 质量杠杆（4.5 备忘）：policySummary 进入 prompt —— 具体枚举 ignored 字段路径（原 v0 只给泛化规则）
-export function buildPrompt(task: AgentTask, ctx: AgentContext): string {
+export function buildPrompt(task: AgentTask & { type: 'render-field' }, ctx: AgentContext): string {
   const endpoint = task.endpointId ?? 'unknown endpoint'
   return [
     'You are improving API/UI coverage of a frontend project.',
@@ -53,6 +53,7 @@ export function buildPrompt(task: AgentTask, ctx: AgentContext): string {
 export async function applyTasks(ctx: AgentContext, plan: AgentPlan): Promise<AgentApplyResult> {
   const results: TaskApplyResult[] = []
   for (const task of plan.tasks) {
+    if (task.type !== 'render-field') continue // 非本 agent 任务类型跳过（协议宽容，不抛）
     try {
       const out = await ctx.ai.edit({
         instructions: buildPrompt(task, ctx),

@@ -2964,7 +2964,7 @@ Dashboard
 | C4 | CLI `report` / `replay` 子命令 | §5.1 | ✅ 47.5-F4 |
 | C5 | `config.resolved.json` 落盘（写盘面扩展，需走铁律评审） | §10 | ✅ 47.5-F5 |
 | C6 | `openapi.watch` / `app:`（CLI 代启应用）段 | §10/§39 | → 47.6（随 watch 模式一并 SDD） |
-| C7 | Agent：3 个内置插件（~~dsl/auth/perf~~ → api-client/dsl/policy，与 §35.2-35.4/backlog 对齐，2026-09-29 勘误）、权限四档、rollbackOnRegression 回滚执行 | §35/§36/§38 | 权限四档/回滚 → 47.6（§36/D1 自裁 MVP 后置）；**插件 ☐ 待独立 SDD**（dsl-agent 依赖 Request DSL） |
+| C7 | Agent：3 个内置插件（~~dsl/auth/perf~~ → api-client/dsl/policy，与 §35.2-35.4/backlog 对齐，2026-09-29 勘误）、权限四档、rollbackOnRegression 回滚执行 | §35/§36/§38 | 插件 ✅ 47.8.6（api-client/dsl/policy 三 agent 落，dsl 确定性）；权限四档/回滚 → 47.6（§36/D1 自裁 MVP 后置）；**多 agent 循环接线 ☐ 随 C8 SDD** |
 | C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 | ☐ 待独立 SDD（API 面设计需 spec） |
 | C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | ✅ 47.8.4（feat/c9-request-dsl，2026-09-30：schema+loader+verify+generate+Export DSL 四件全落；Copy curl 早于 F6 落） |
 | C10 | Watch 模式 / TUI 实时进度（Plan 自标后置） | §39 | → 47.6（Plan 自标后置，裁定延期） |
@@ -3020,13 +3020,32 @@ Dashboard
 - §25.4 DDL 已内联注记；`coverage/src/db/client.ts` flush 注释同步。三列保留为未来
   只读展示扩展位（若动，随独立 SDD）。
 
+### 47.8.6 C7 三内置 agent 插件落地记录（2026-09-30，feat/c7-agent-plugins）
+
+- **AgentTask 升级**：单形状 → 四成员联合（render-field / add-api-call / add-request-dsl /
+  suggest-policy）；新增 `taskIdOf(task)` 稳定标识（render-field 保持 fieldId，其余
+  type+key 组合）—— runtime R6 尝试状态机改按 taskIdOf 键控，行为对 api-ui loop 零变化。
+- **api-client-agent（§35.2）**：plan 投影 endpoints[].called=false → add-api-call 任务；
+  apply 走 provider.edit 产 suggest-diff（prompt 硬约束：真实调用消费真实数据、禁伪造/
+  dump/探针）。
+- **dsl-agent（§35.3）**：**确定性，无 provider 调用**（C9 解锁）——plan 枚举捕获 trace 候选；
+  apply 直接以 generateRequestDslFromTraces + renderRequestDslYaml 现算（去重/≥400 剔除/
+  批内跨任务 duplicate 裁定），产 DSL YAML 的「diff 形状」文本（review guard 静态
+  G2/G3/G4 天然通过）。第一个可离线 dry-run 的 agent。
+- **policy-agent（§35.4）**：observations 按 matchedRule 归组（suspicious / ignored 分组）；
+  每组 suggest-policy 任务 → provider.edit 产建议 diff（指令含 advice-only 铁律）——
+  **只建议，不自动修改 config**（§35.4 逐字）。
+- **有意收口（非遗漏）**：runtime v0 循环仍只接 api-ui-agent（LoopDeps.apiUiAgent 单槽）；
+  多 agent 接线需先裁定循环信号面（R6 状态机按 taskIdOf 已通用、随时可扩），随 C8 协议面
+  或独立 SDD 一并裁定。三 agent plan/apply 单元覆盖（agent 包 +8 测试，基线 720/96/13）。
+
 ### 47.6 延期裁定（Plan 自标后置项的归属确认，非缺口）
 
 | 项 | Plan 出处 | 裁定 |
 |---|---|---|
 | Watch 模式 / TUI 实时进度 | §39 | Plan 自标后置；与 C6（openapi.watch/app: 段）合并待独立 SDD |
 | Agent 权限四档（read-only/workspace-write/auto-apply）与 rollback 执行 | §36/§38 | D1 决策明示「MVP 默认 suggest-diff，不实现 workspace-write/auto-apply（Phase 5+）」；rollbackOnRegression 依赖 workspace-write 语义，随之 Phase 5+ |
-| api-client-agent / dsl-agent / policy-agent 插件 | §35.2/35.3/35.4 | 待独立 SDD（dsl-agent 依赖 Request DSL C9；policy-agent 依赖 §33 协议面） |
+| api-client-agent / dsl-agent / policy-agent 插件 | §35.2/35.3/35.4 | ✅ 47.8.6（三 agent 实体落；多 agent runtime 接线随 C8 协议面 SDD；policy-agent 依赖 §33 协议面仅指自动写 config —— 建议通道已通） |
 
 ### 47.7 插件 IO 对齐落地记录（2026-09-25，feat/plan-align-batch2；对齐 dsh/ReactLoopAgent IO 惯例）
 
