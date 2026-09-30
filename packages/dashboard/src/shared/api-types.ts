@@ -442,3 +442,13 @@ export interface ScenarioReplayResponse {
   createdAt: string
   trailWritten: boolean
 }
+
+/** GET /api/settings（C12，§30.2）：三段现值 + sha（null = 段不存在，写回复位语义一致） */
+export interface SettingsResponse {
+  sections: {
+    coverage: Record<string, unknown> | null
+    agent: Record<string, unknown> | null
+    replay: Record<string, unknown> | null
+  }
+  yamlSha: string
+}

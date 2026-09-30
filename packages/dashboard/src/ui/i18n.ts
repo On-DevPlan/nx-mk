@@ -196,6 +196,16 @@ const zh: Record<string, string> = {
   '#': '#',
   'time': '时间',
   'payload': '载荷',
+  // —— Settings（C12 policy/agent/replay 三页）——
+  'Policy': '覆盖策略',
+  'Agent': 'Agent',
+  'Replay safety': '回放安全',
+  'Coverage policy': '覆盖率策略',
+  'failed to load settings': '设置加载失败',
+  'Coverage policy glob rules: required / optional / ignored lists. Entries are strings or {pattern, reason} objects.': '覆盖率策略 glob 规则：required / optional / ignored 清单。条目为字符串或 {pattern, reason} 对象。',
+  'Agent provider (claude-code timeoutMs/maxTurns) and loop (maxIterations / stopIfNoImprovementRounds / maxTasksPerIteration).': 'Agent provider（claude-code timeoutMs/maxTurns）与 loop（maxIterations / stopIfNoImprovementRounds / maxTasksPerIteration）。',
+  'Replay safety rules: allowMethods / requireConfirmation lists and block patterns. Semantics are fail-closed (deny unless allowed).': '回放安全规则：allowMethods / requireConfirmation 清单与 block 模式。语义 fail-closed（未列一律拒绝）。',
+  'Edit config as JSON — Preview shows the YAML diff; Apply writes nx-mk.config.yml (a .bak backup is kept). Takes effect on the next run. Empty text removes the section (back to safe defaults).': '以 JSON 编辑配置 —— Preview 预览 YAML diff；Apply 写回 nx-mk.config.yml（保留 .bak 备份）。下次 run 生效。留空即删除该段（回到安全默认）。',
 }
 
 function loadStoredLang(): Lang {

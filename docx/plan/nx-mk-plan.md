@@ -3149,3 +3149,30 @@ Dashboard
 - §8 中 `plugin-coverage`/`plugin-agent` 为 relic：git 全历史零 commit；职责分别被 `coverage`、
   `agent` 包吸收。§8 另外三个未载包（`manifest-schema`、`schema`、`plugin-playwright`）来自
   2026-08-28 foundation-modification-plan（M2/M4/Ruling 5），plan §8 不回写，以此注记为准。
+
+### 47.8.7 C12 settings 面落地记录（2026-10-01，feat/c12-settings-pages）
+
+> X2（§30.2）消解：`GET /api/settings` + `PATCH /api/settings/:section`（section ∈ coverage /
+> agent / replay 白名单，§30.1/§30.2 三段）与 `/settings/policy|agent|replay` 三页落地。
+
+**Server（`dashboard/src/server/routes/settings.ts`）**
+
+- `GET /api/settings`：`configPath` 未接线 → 409 诚实降级（其余路由同法）；读盘三段现值
+  （段缺失 = null，UI 显示「空 = 安全默认」）+ `yamlSha`（sha256Text，抄盘前复核用）。
+- `PATCH /api/settings/:section`：`dryRun = mode !== 'apply'`，复用 plugins 写回两段式——
+  preview 返回 naiveLineDiff + 当前盘 sha；apply 带回 `yamlSha`，盘内容已变 → 409 SHA_MISMATCH
+  （互斥防脏写）；`value: null` = 段整删（yaml `deleteIn`，rest 原样、注释保留，W5）。
+- 载荷 zod 白名单段级 schema（`SECTION_SCHEMAS`：coverage/agent/replay 既有 schema），
+  非法 → 400 + `errors: ["path: message"]`；值域门（object-or-null）先行 400。
+- `config/src/section-writeback.ts`：`TOP_LEVEL_SECTIONS` 白名单 + readSettings /
+  previewSectionWrite / applySectionWrite，与 plugin writeback 共用车 E6 引擎
+  （yaml parseDocument round-trip、tmp+rename、.bak 单代、yaml self-harm 复解析门）。
+
+**UI（`ui/pages/SettingsSection.tsx`）**
+
+- 三页共用：GET 现值 → JSON textarea（空文本 = null = 段删除回安全默认）→ Preview → Apply；
+  状态机与 PluginSettings 同模型；无轮询（低频读，mount-once）。
+- `#/settings/policy|agent|replay` 路由 + nav 直链 + i18n zh 三段文案。
+
+**测试**：dashboard +7（c12-settings.test.ts 路由级：409/whitelist/zod/两段式/sha 复核/
+段删除/注释保留），基线 727/97/13。
