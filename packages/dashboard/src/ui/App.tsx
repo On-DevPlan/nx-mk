@@ -20,6 +20,7 @@ import { PluginSettingsPage } from './pages/PluginSettings'
 import { ScenariosPage } from './pages/Scenarios'
 import { EndpointsListPage } from './pages/EndpointsList'
 import { AgentPage } from './pages/AgentPage'
+import { SettingsSectionPage } from './pages/SettingsSection'
 
 /** 语言开关（右上角）：显示目标语言，点击切换并持久化 */
 function LangToggle() {
@@ -53,6 +54,9 @@ const NAV_GROUP: Record<string, string> = {
   agent: 'runs',
   scenarios: 'scenarios',
   settings: 'settings',
+  'settings-policy': 'settings',
+  'settings-agent': 'settings',
+  'settings-replay': 'settings',
 }
 
 export function App() {
@@ -69,6 +73,9 @@ export function App() {
         <a href="#/runs" {...nav('runs')}>{T('Runs')}</a>
         <a href="#/scenarios" {...nav('scenarios')}>{T('Scenarios')}</a>
         <a href="#/settings/plugins" {...nav('settings')}>{T('Plugins')}</a>
+        <a href="#/settings/policy">{T('Policy')}</a>
+        <a href="#/settings/agent">{T('Agent')}</a>
+        <a href="#/settings/replay">{T('Replay safety')}</a>
         <LangToggle />
       </nav>
       <main>
@@ -96,6 +103,9 @@ export function App() {
           <ManifestBrowserPage runId={params.runId ?? ''} key={JSON.stringify(params)} />
         )}
         {page === 'settings' && <PluginSettingsPage key="settings" />}
+        {page === 'settings-policy' && <SettingsSectionPage section="coverage" key="settings-policy" />}
+        {page === 'settings-agent' && <SettingsSectionPage section="agent" key="settings-agent" />}
+        {page === 'settings-replay' && <SettingsSectionPage section="replay" key="settings-replay" />}
         {page === 'scenarios' && <ScenariosPage key="scenarios" />}
         {page === 'not-found' && <p className="empty">{T('Not found — pick a page above.')}</p>}
       </main>
