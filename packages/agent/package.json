@@ -21,7 +21,8 @@
   "dependencies": {
     "@nx-mk/kernel": "workspace:*",
     "@nx-mk/coverage": "workspace:*",
-    "better-sqlite3": "^11.10.0"
+    "better-sqlite3": "^11.10.0",
+    "@nx-mk/scenario": "workspace:*"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

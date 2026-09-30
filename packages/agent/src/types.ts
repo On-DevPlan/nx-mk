@@ -10,13 +10,54 @@ import type { CoverageReport } from '@nx-mk/coverage'
 // 消费方（含 T7 runtime）应能从本模块取到该类型，不必直依赖 @nx-mk/coverage。
 export type { CoverageReport } from '@nx-mk/coverage'
 
-// 任务：v0 只有 render-field 一种；字段级 diff 粒度
-export interface AgentTask {
-  type: 'render-field'
-  fieldId: string           // FieldCoverageItem.fieldId
-  fieldPath: string
-  endpointId: string | null // FieldCoverageItem.endpointId ?? null
-  reason: string            // missing / weak-evidence 等人读理由
+// 任务：render-field（api-ui）/ add-api-call（api-client，C7）/ add-request-dsl（dsl-agent，C7，
+// 确定性无 AI）/ suggest-policy（policy-agent，C7，建议不自动改）。
+// runtime v0 循环仍仅消费 render-field（多 agent 接线属后续裁定，见 backlog C7）。
+export type AgentTask =
+  | {
+      type: 'render-field'
+      fieldId: string           // FieldCoverageItem.fieldId
+      fieldPath: string
+      endpointId: string | null // FieldCoverageItem.endpointId ?? null
+      reason: string            // missing / weak-evidence 等人读理由
+    }
+  | {
+      type: 'add-api-call'      // §35.2：未被调用 endpoint 的调用点任务
+      endpointId: string
+      method: string
+      path: string
+      reason: string
+    }
+  | {
+      type: 'add-request-dsl'   // §35.3：捕获 trace 的 Request DSL 候选
+      requestId: string
+      endpointId: string | null
+      method: string
+      path: string
+      status: number | null
+      reason: string
+    }
+  | {
+      type: 'suggest-policy'    // §35.4：ignored/suspicious 按 matchedRule 归组的建议
+      groupKey: string
+      summary: string
+      fields: string[]
+      reason: string
+    }
+
+// 任务稳定标识（runtime 尝试状态机键）：render-field 用 fieldId（spec §3.7），
+// 其余类型用 type+key 组合 —— 同型任务天然去重，且与 slug 白名单兼容（'/' 保留）。
+export function taskIdOf(task: AgentTask): string {
+  switch (task.type) {
+    case 'render-field':
+      return task.fieldId
+    case 'add-api-call':
+      return `add-api-call:${task.endpointId}`
+    case 'add-request-dsl':
+      return `add-request-dsl:${task.requestId}`
+    case 'suggest-policy':
+      return `suggest-policy:${task.groupKey}`
+  }
 }
 
 export interface AgentPlan { tasks: AgentTask[] }

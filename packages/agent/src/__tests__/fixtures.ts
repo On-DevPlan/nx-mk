@@ -4,7 +4,7 @@
  * 在导入方文件下重复注册一遍（曾致 runtime-terminate 多计 5 条重复测试），
  * 共享替身一律放本文件，禁止测试文件互相 import。
  */
-import type { AgentProvider, AgentTask, AgentVerifyResult, CoverageAgentPlugin, CoverageReport } from '../types.js'
+import { taskIdOf, type AgentProvider, type AgentTask, type AgentVerifyResult, type CoverageAgentPlugin, type CoverageReport } from '../types.js'
 
 export function makeReport(missing: number, ignoredIds: string[] = []): CoverageReport {
   return {
@@ -30,14 +30,14 @@ export function makeReport(missing: number, ignoredIds: string[] = []): Coverage
 export const OK_PROVIDER: AgentProvider = { name: 'fake', edit: async () => ({ diffText: '--- a\n+++ b\n@@ -1 +1 @@\n-a\n+b' }) }
 
 // 可编程 verdict 的 review-agent 替身：按 fieldId 前缀决定 pass/reject
-export function scriptedReview(rule: (task: AgentTask) => 'pass' | 'reject'): CoverageAgentPlugin {
+export function scriptedReview(rule: (taskId: string) => 'pass' | 'reject'): CoverageAgentPlugin {
   return {
     name: 'scripted-review', version: '0.0.1', capabilities: ['verify'],
     plan: async () => ({ tasks: [] }),
     apply: async () => ({ results: [] }),
     verify: async (_ctx, result): Promise<AgentVerifyResult> => {
       const r = result.results[0]
-      const verdict = r && rule(r.task) === 'reject' ? 'reject' : 'pass'
+      const verdict = r && rule(taskIdOf(r.task)) === 'reject' ? 'reject' : 'pass'
       return { verdict, checks: [{ name: 'scripted', outcome: verdict === 'pass' ? 'pass' : 'reject' }] }
     },
   }

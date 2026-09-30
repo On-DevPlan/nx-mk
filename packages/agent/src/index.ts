@@ -3,6 +3,7 @@
  */
 export {
   defineCoverageAgent,
+  taskIdOf,
   type AgentTask,
   type AgentPlan,
   type TaskApplyResult,
@@ -55,6 +56,27 @@ export {
   applyTasks,
   createApiUiAgent,
 } from './agents/api-ui.js'
+
+export {
+  planApiCallTasks,
+  buildApiCallPrompt,
+  applyApiCallTasks,
+  createApiClientAgent,
+} from './agents/api-client.js'
+
+export {
+  planDslTasks,
+  applyDslTasks,
+  createDslAgent,
+} from './agents/dsl.js'
+
+export {
+  collectPolicyObservations,
+  planPolicyTasks,
+  buildPolicyPrompt,
+  applyPolicyTasks,
+  createPolicyAgent,
+} from './agents/policy.js'
 
 export {
   AGENT_DEFAULTS,

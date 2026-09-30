@@ -78,7 +78,7 @@ describe('runAgentLoop — retry machine (R6, PLN-5)', () => {
     // field_0 恒 reject；其余 pass
     const summary = await runAgentLoop(
       { projectRoot: root, report: makeReport(3), config: { loop: { maxTasksPerIteration: 2, maxIterations: 5 } } },
-      { provider: OK_PROVIDER, apiUiAgent: createApiUiAgent(), reviewAgent: scriptedReview((t) => (t.fieldId === 'field_0' ? 'reject' : 'pass')) },
+      { provider: OK_PROVIDER, apiUiAgent: createApiUiAgent(), reviewAgent: scriptedReview((id) => (id === 'field_0' ? 'reject' : 'pass')) },
     )
     expect(summary.produced).toBe(2)
     expect(summary.givenUp).toBe(1)

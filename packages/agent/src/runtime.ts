@@ -9,10 +9,7 @@ import { join, dirname } from 'node:path'
 import { KernelError } from '@nx-mk/kernel'
 import { openCoverageDb, type CoverageDb, type CoverageReport } from '@nx-mk/coverage'
 import { sanitizeFieldSlug, toPosixRel, writePatchFile } from './patches.js'
-import type {
-  AgentConfig, AgentContext, AgentTask,
-  LoopDeps, LoopOptions, LoopSummary, TaskApplyResult,
-} from './types.js'
+import { taskIdOf, type AgentConfig, type AgentContext, type AgentTask, type LoopDeps, type LoopOptions, type LoopSummary, type TaskApplyResult } from './types.js'
 
 // 默认值（spec §3.8：§38 逐字 + provider 默认；CLI 装配层也复用 provider 项）
 export const AGENT_DEFAULTS = {
@@ -70,7 +67,7 @@ export function renderPolicySummary(report: CoverageReport): string {
   ].join('\n')
 }
 
-// 跨轮尝试状态（R6）：一个 fieldId 至多两次尝试；produced / 二次失败即 done
+// 跨轮尝试状态（R6）：一个 taskIdOf 键（render-field 即 fieldId）至多两次尝试；produced / 二次失败即 done
 interface AttemptState { tries: number; done: 'produced' | 'given-up' | null }
 
 // agent_iterations 逐 task 一行（spec §3.7；status 枚举 PLN-5）
@@ -152,7 +149,7 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
       const batch: AgentTask[] = []
       for (const t of backlog) {
         if (batch.length >= cfg.maxTasksPerIteration) break
-        const st = attempts.get(t.fieldId)
+        const st = attempts.get(taskIdOf(t))
         if (st && (st.done !== null || st.tries >= 2)) continue
         batch.push(t)
       }
@@ -165,9 +162,9 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
 
       for (let i = 0; i < applied.results.length; i++) {
         const r: TaskApplyResult = applied.results[i]!
-        const st: AttemptState = attempts.get(r.task.fieldId) ?? { tries: 0, done: null }
+        const st: AttemptState = attempts.get(taskIdOf(r.task)) ?? { tries: 0, done: null }
         st.tries += 1
-        attempts.set(r.task.fieldId, st)
+        attempts.set(taskIdOf(r.task), st)
 
         let status: IterationRow['status']
         let summary: string
@@ -176,10 +173,10 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
         if (r.status === 'failed') {
           // E5/E6：task 级失败，继续其余 task（PLN-5：二次失败即 given-up）
           if (st.tries >= 2) { status = 'given-up'; givenUp += 1 } else { status = 'failed'; failed += 1 }
-          summary = `${r.task.fieldId}: ${r.error ?? 'provider failed'}`
+          summary = `${taskIdOf(r.task)}: ${r.error ?? 'provider failed'}`
         } else {
           // PLN-2：先写终稿路径（G1 需要落盘文件），reject 再 rename 留档
-          const slug = sanitizeFieldSlug(r.task.fieldId)
+          const slug = sanitizeFieldSlug(taskIdOf(r.task))
           let abs: string
           try {
             abs = writePatchFile(patchDir, `iter-${iterations}-${slug}.patch`, r.diffText ?? '')
@@ -195,7 +192,7 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
             iterProduced += 1
             st.done = 'produced'
             diffPath = r.patchRelPath
-            summary = `${r.task.fieldId}: accepted`
+            summary = `${taskIdOf(r.task)}: accepted`
           } else {
             try {
               // EXEC-7：嵌套 slug（白名单含 '/'）在 rename 目标侧同样要建父目录 —— 与
@@ -208,7 +205,7 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
             }
             if (st.tries >= 2) { status = 'given-up'; givenUp += 1 } else { status = 'rejected'; rejected += 1 }
             const why = vr.checks.filter((c) => c.outcome === 'reject').map((c) => `${c.name}: ${c.detail ?? 'rejected'}`).join('; ')
-            summary = `${r.task.fieldId}: ${why}`
+            summary = `${taskIdOf(r.task)}: ${why}`
           }
         }
         try {
@@ -219,7 +216,7 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
         } catch (err) {
           throw wrapInternal('failed to persist agent_iterations row', err) // E10
         }
-        log(`  iter ${iterations} [${i + 1}/${applied.results.length}] ${r.task.fieldId} → ${status}`)
+        log(`  iter ${iterations} [${i + 1}/${applied.results.length}] ${taskIdOf(r.task)} → ${status}`)
       }
 
       // §38：连续 stopIfNoImprovementRounds 轮零 produced → 提前终止

@@ -44,7 +44,7 @@ describe('planTasks', () => {
       endpointId: 'getUsers',
       reason: expect.stringContaining('missing'),
     })
-    expect(plan.tasks[1]?.endpointId).toBeNull()
+    expect((plan.tasks[1] as { endpointId: string | null }).endpointId).toBeNull()
   })
 })
 
@@ -53,7 +53,7 @@ describe('buildPrompt', () => {
     const ctx = makeCtx()
     const agent = createApiUiAgent()
     const plan = await agent.plan(ctx) // EXEC-5：从 plan() 派生 AgentTask（报告项缺 type/reason，不是任务）
-    const p = buildPrompt(plan.tasks[0]!, ctx)
+    const p = buildPrompt(plan.tasks[0] as Parameters<typeof buildPrompt>[0], ctx)
     expect(p).toContain('data.name')
     expect(p).toContain('getUsers')
     expect(p).toContain('data-mk-field="GET /users.200.data.name"')
