@@ -1757,11 +1757,16 @@ CREATE TABLE request_traces (
   duration_ms INTEGER,
   started_at TEXT,
   ended_at TEXT,
-  replayable INTEGER,
-  replay_safety TEXT,
-  replay_reason TEXT
+  replayable INTEGER,           -- C13 冻结裁定：flush 恒 NULL，replay 前用 classifyReplay 现算（见下）
+  replay_safety TEXT,           -- 同上（用户 replay: 规则可变，快照会与现行规则漂移）
+  replay_reason TEXT            -- 同上；仅未来只读展示扩展才可能回写
 );
 ```
+
+> **C13 冻结裁定（2026-09-30，§47.8.5）**：`replayable/replay_safety/replay_reason` 三列
+> **不落库是设计行为，非缺数据**。replay 安全面由 CLI `replay` 与 dashboard replay 路由经
+> `classifyReplay(method, url, replay: 规则)` 请求时现算（F3 规则用户可配且 play 期间可变），
+> 落库快照会造成「上次说安全这次拒绝」的账实不一致；拦截永远以现算法为准。
 
 ### 25.5 request_fields
 
@@ -3003,6 +3008,18 @@ Dashboard
   浏览器 bundle；单一事实来源不变（symbols 同源，仅隔离副作用）。
 - 测试：scenario +12（基线 718/95/13）；cli/dashboard 回归绿。
 
+### 47.8.5 C13 冻结裁定（2026-09-30，chore/c13-replay-cols-freeze）
+
+`request_traces.replayable/replay_safety/replay_reason` 三列 **flush 恒 NULL 是设计行为，
+非缺数据**（裁定裁决，无功能代码变更）：
+
+- replay 安全面由 CLI `replay` 与 dashboard replay 路由经 `classifyReplay(method, url,
+  replay: 规则)` **请求时现算**（F3 规则用户可配，且 play 期间可变）。
+- 落库快照会与现行规则漂移，产生「上次说安全这次拒绝」的账实不一致；replay 拦截永远
+  以现算法为准 —— fail-closed 语义依赖每次评估都基于最新规则。
+- §25.4 DDL 已内联注记；`coverage/src/db/client.ts` flush 注释同步。三列保留为未来
+  只读展示扩展位（若动，随独立 SDD）。
+
 ### 47.6 延期裁定（Plan 自标后置项的归属确认，非缺口）
 
 | 项 | Plan 出处 | 裁定 |
@@ -3099,6 +3116,7 @@ Dashboard
 - `request_traces.replayable/replay_safety/replay_reason` 三列 flush 恒 NULL —— F3/C3 只收了
   config + `classifyReplay()` 纯函数，trace 级回写未做（dashboard/CLI replay 时按请求现算，
   不落库）→ backlog C13。
+  **（2026-09-30 C13 裁定消解：现算不落库为冻结行为，§25.4 已注记，见 §47.8.5。）**
 - `agent_iterations.after_coverage` 恒 NULL（loop 内不做 mid-loop 重测，coverage 变化由
   kernel `turn:end` 事件承载）→ 属 v0 行为锁定，无需 backlog。
 - §30 的 `/runs/:runId/endpoints`（endpoint 覆盖页）与 `/runs/:runId/agent`（Agent Loop 页）

@@ -90,7 +90,12 @@ export class CoverageDb {
           h.valueState ?? null, h.valueType ?? null, h.valueHash ?? null,
         )
       }
-      // request_traces：§25.4 列（scenario_id/dsl_step_id/replayable/replay_safety/replay_reason Phase 2 无数据 → NULL/默认）
+      // request_traces：§25.4 列（scenario_id/dsl_step_id 现无数据 → NULL；
+      // **replayable/replay_safety/replay_reason 冻结为不落库**（C13 裁定，§47.8.5）：
+      // replay 安全面由 CLI replay/dashboard replay 路由经 classifyReplay(method,url,replay:
+      // 规则) **请求时现算** —— 用户规则 play 期间可变（F3 可配），落库快照会与现行规则漂移
+      // 产生「上次说安全这次拒绝」的账实不一致；replay 拦截永远以现算为准，DB 此三列仅供
+      // 未来只读展示扩展使用（当前恒 NULL 是设计行为，非缺数据）。
       // response_preview 为 §3.1 演进列（响应值预览，≤500 字符）
       const insTrace = this.db.prepare(
         `INSERT OR REPLACE INTO request_traces
