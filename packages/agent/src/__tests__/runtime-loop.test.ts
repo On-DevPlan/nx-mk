@@ -29,7 +29,7 @@ describe('runAgentLoop — progression to backlog-empty (R6/R7)', () => {
     const root = makeProject()
     const summary = await runAgentLoop(
       { projectRoot: root, report: makeReport(6), config: { loop: { maxTasksPerIteration: 2, maxIterations: 5 } } },
-      { provider: OK_PROVIDER, apiUiAgent: createApiUiAgent(), reviewAgent: scriptedReview(() => 'pass') },
+      { provider: OK_PROVIDER, agents: [createApiUiAgent()], reviewAgent: scriptedReview(() => 'pass') },
     )
     expect(summary.stoppedBy).toBe('backlog-empty')
     expect(summary.iterations).toBe(3)
@@ -59,7 +59,7 @@ describe('runAgentLoop — retry machine (R6, PLN-5)', () => {
     const root = makeProject()
     const summary = await runAgentLoop(
       { projectRoot: root, report: makeReport(1), config: {} },
-      { provider: OK_PROVIDER, apiUiAgent: createApiUiAgent(), reviewAgent: scriptedReview(() => 'reject') },
+      { provider: OK_PROVIDER, agents: [createApiUiAgent()], reviewAgent: scriptedReview(() => 'reject') },
     )
     expect(summary.stoppedBy).toBe('no-improvement') // stopIfNoImprovementRounds=2 默认
     expect(summary.rejected).toBe(1)
@@ -78,7 +78,7 @@ describe('runAgentLoop — retry machine (R6, PLN-5)', () => {
     // field_0 恒 reject；其余 pass
     const summary = await runAgentLoop(
       { projectRoot: root, report: makeReport(3), config: { loop: { maxTasksPerIteration: 2, maxIterations: 5 } } },
-      { provider: OK_PROVIDER, apiUiAgent: createApiUiAgent(), reviewAgent: scriptedReview((id) => (id === 'field_0' ? 'reject' : 'pass')) },
+      { provider: OK_PROVIDER, agents: [createApiUiAgent()], reviewAgent: scriptedReview((id) => (id === 'field_0' ? 'reject' : 'pass')) },
     )
     expect(summary.produced).toBe(2)
     expect(summary.givenUp).toBe(1)

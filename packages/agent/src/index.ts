@@ -79,6 +79,12 @@ export {
 } from './agents/policy.js'
 
 export {
+  builtinAgentFactories,
+  BUILTIN_AGENT_NAMES,
+  type BuiltinAgentFactory,
+} from './agents/index.js'
+
+export {
   AGENT_DEFAULTS,
   resolveAgentConfig,
   makeAgentRunId,

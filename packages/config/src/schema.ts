@@ -106,6 +106,9 @@ export type AgentLoopConfig = z.infer<typeof AgentLoopConfigSchema>
 export const AgentConfigSchema = z.object({
   provider: AgentProviderConfigSchema.optional(),
   loop: AgentLoopConfigSchema.optional(),
+  // C8：builtin agent 白名单（名字组参考 @nx-mk/agent builtinAgentFactories）；
+  // 未知名在 CLI 装配层报 CONFIG_INVALID —— schema 层只校验形状（非空字符串）。
+  agents: z.array(z.string().min(1)).optional(),
 })
 export type AgentConfig = z.infer<typeof AgentConfigSchema>
 

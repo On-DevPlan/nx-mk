@@ -9,7 +9,7 @@ import { KernelError, makeRunId, type LogLevel } from '@nx-mk/kernel'
 import { loadConfig, type AgentConfig } from '@nx-mk/config'
 import {
   AGENT_DEFAULTS,
-  createApiUiAgent,
+  builtinAgentFactories,
   createClaudeCodeProvider,
   createReviewAgent,
   runAgentLoop,
@@ -77,6 +77,17 @@ export async function loopMain(opts: LoopMainOptions): Promise<void> {
 
   const report = readCoverageReport(join(cwd, '.nx-mk'))
 
+  // C8/§33：agent 白名单按 config.agent.agents 构造（builtin 注册表查名；未知名 → 配置错误）。
+  // 默认 ['api-ui-agent'] 与 v0 单 agent 行为逐字一致。
+  const agentNames = agentCfg.agents ?? ['api-ui-agent']
+  const agents = agentNames.map((n) => {
+    const factory = builtinAgentFactories[n]
+    if (!factory) {
+      throw new KernelError('CONFIG_INVALID', `unknown builtin agent '${n}' in config.agent.agents (expected one of: api-ui-agent | api-client-agent | dsl-agent | policy-agent)`)
+    }
+    return factory()
+  })
+
   const deps = opts.deps ?? { runLoop: runAgentLoop }
   const summary: LoopSummary = await deps.runLoop(
     { projectRoot: cwd, report, config: mergedCfg, log: (msg) => console.log(msg) },
@@ -86,7 +97,7 @@ export async function loopMain(opts: LoopMainOptions): Promise<void> {
         timeoutMs: agentCfg.provider?.timeoutMs ?? AGENT_DEFAULTS.provider.timeoutMs,
         maxTurns: agentCfg.provider?.maxTurns ?? AGENT_DEFAULTS.provider.maxTurns,
       }),
-      apiUiAgent: createApiUiAgent(),
+      agents,
       reviewAgent: createReviewAgent(),
     },
   )

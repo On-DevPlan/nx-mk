@@ -9,7 +9,7 @@ import { join, dirname } from 'node:path'
 import { KernelError } from '@nx-mk/kernel'
 import { openCoverageDb, type CoverageDb, type CoverageReport } from '@nx-mk/coverage'
 import { sanitizeFieldSlug, toPosixRel, writePatchFile } from './patches.js'
-import { taskIdOf, type AgentConfig, type AgentContext, type AgentTask, type LoopDeps, type LoopOptions, type LoopSummary, type TaskApplyResult } from './types.js'
+import { taskIdOf, type AgentConfig, type AgentApplyResult, type AgentContext, type AgentTask, type CoverageAgentPlugin, type LoopDeps, type LoopOptions, type LoopSummary, type TaskApplyResult } from './types.js'
 
 // 默认值（spec §3.8：§38 逐字 + provider 默认；CLI 装配层也复用 provider 项）
 export const AGENT_DEFAULTS = {
@@ -141,8 +141,24 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
   let stoppedBy: LoopSummary['stoppedBy'] = 'max-iterations'
 
   try {
-    // PLN-1：plan 渲染全量待办；切片与重试判定在 runtime
-    const backlog: AgentTask[] = (await deps.apiUiAgent.plan(ctx)).tasks
+    // C8：多 agent plan 合并 backlog（保序：agent 顺序 × 各自任务序）；
+    // owner 按来源 agent 记账（apply 路由依据）。单 agent plan 失败 → 跳过该 agent（E 容错）。
+    const ownerByTask = new Map<string, CoverageAgentPlugin>()
+    const backlog: AgentTask[] = []
+    if (deps.agents.length === 0) {
+      throw new KernelError('KERNEL_INTERNAL', 'no agents configured for agent loop', null)
+    }
+    for (const agent of deps.agents) {
+      let plan
+      try {
+        plan = await agent.plan(ctx)
+      } catch (err) {
+        log(`[agent] ${agent.name} plan failed, skipped: ${err instanceof Error ? err.message : String(err)}`)
+        continue
+      }
+      for (const t of plan.tasks) ownerByTask.set(taskIdOf(t), agent)
+      backlog.push(...plan.tasks)
+    }
 
     while (true) {
       // R7：每轮取待办切片（R6：produced / given-up 除外；重试至多一次）
@@ -157,7 +173,19 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
       if (iterations >= cfg.maxIterations) { stoppedBy = 'max-iterations'; break }
       iterations += 1
 
-      const applied = await deps.apiUiAgent.apply(ctx, { tasks: batch })
+      // C8：批次 task 按来源 agent 分组路由（同批跨 agent 混合不串线）；逐 owner apply 依序合并
+      const byOwner = new Map<CoverageAgentPlugin, AgentTask[]>()
+      for (const t of batch) {
+        const owner = ownerByTask.get(taskIdOf(t)) ?? deps.agents[0]!
+        const list = byOwner.get(owner) ?? []
+        list.push(t)
+        byOwner.set(owner, list)
+      }
+      const applied: AgentApplyResult = { results: [] }
+      for (const [owner, tasks] of byOwner) {
+        const r = await owner.apply(ctx, { tasks })
+        applied.results.push(...r.results)
+      }
       let iterProduced = 0
 
       for (let i = 0; i < applied.results.length; i++) {

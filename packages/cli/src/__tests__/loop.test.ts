@@ -87,4 +87,20 @@ describe('loopMain', () => {
     await loopMain({ configPath: join(root, 'nx-mk.config.yml'), cwd: root, deps })
     expect(calls[0]?.config.loop?.maxIterations).toBe(7)
   })
+
+  // C8：agent.agents 白名单 —— 未知名装配层报 CONFIG_INVALID；合法名走 builtin 注册表
+  it('C8: unknown name in config.agent.agents → CONFIG_INVALID', async () => {
+    const root = makeProject()
+    writeFileSync(join(root, 'nx-mk.config.yml'), 'agent:\n  agents:\n    - nope\n', 'utf8')
+    await expect(loopMain({ configPath: join(root, 'nx-mk.config.yml'), cwd: root, deps: makeDeps().deps }))
+      .rejects.toMatchObject({ code: 'CONFIG_INVALID' })
+  })
+
+  it('C8: explicit agents list passes merged config through (default wiring unchanged)', async () => {
+    const root = makeProject()
+    writeFileSync(join(root, 'nx-mk.config.yml'), 'agent:\n  agents:\n    - api-ui-agent\n', 'utf8')
+    const { deps, calls } = makeDeps()
+    await loopMain({ configPath: join(root, 'nx-mk.config.yml'), cwd: root, deps })
+    expect(calls[0]?.config.agents).toEqual(['api-ui-agent'])
+  })
 })

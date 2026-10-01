@@ -85,7 +85,7 @@
 | C5 | `config.resolved.json` 落盘（新增写盘面，需按铁律评审落点） | §10 | ☑ F5（per-run runs/{runId}/config.resolved.json，写者归 CLI，铁律不破） |
 | C6 | `openapi.watch` / `app:`（CLI 代启用户应用）配置段 | §10/§39 | ☑ 裁定延期（Plan §47.6 归属确认，非缺口；随 watch 模式一并 SDD） |
 | C7 | Agent：补 3 个内置插件（api-client/dsl/policy，§35.2-35.4）、权限四档、rollbackOnRegression 的回滚执行 | §35/§36/§38 | 部分裁定：权限四档/回滚 = §36/D1 自裁 MVP 后置（→ Plan §47.6，非缺口）；**3 个插件 ☑ 落地（2026-09-30，feat/c7-agent-plugins）**——api-client（add-api-call 任务，未调用 endpoint）、dsl（§35.3 确定性，无 provider，C9 解锁）、policy（suggest-policy 只建议）；AgentTask 升联合 + taskIdOf 稳定键 + api-client/policy 产 suggest-diff（provider.edit）；**runtime 循环仍只接 api-ui-agent，多 agent 接线 ☐ 待裁定**（循环状态机按 taskIdOf 已通用） |
-| C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 | ☐ 待独立 SDD（API 面设计需 spec） |
+| C8 | §33 用户级 `@mk/agent-sdk` 协议暴露 | §33 | ☑ 裁定+落地（2026-10-01，feat/c8-agent-sdk，§47.8.8）：`@mk/agent-sdk` 不建新包（D2）—— `@nx-mk/agent` 即 SDK 导出面（§33 类型 verbatim），类型别名裁定归档；**多 agent 接线落地**：`LoopDeps.agents: CoverageAgentPlugin[]`（plan 合并 backlog 保序，apply 按来源 agent 路由，plan 失败单 agent 容错跳过）；config `agent.agents: string[]` 白名单（CLI loop.ts 按 builtin 注册表构造，默认 `['api-ui-agent']` 行为不回归；未知名 CONFIG_INVALID）；基线 740/99/13 |
 | C9 | Request DSL（`requests:` 段 + `dsl.generated.yml`）、Export DSL、Copy curl | §26.2/§22 | ☑ 核心 4 件全落地（2026-09-30，feat/c9-request-dsl；Copy curl 早于 F6 落）：① `request-dsl.ts` schema/`classifyFieldState`/`getFieldByPath` + ScenarioFile `requests:` 段向后兼容 + `loadRequests` 去重装载；② `verify-requests.ts` verifyRequests（method+pathname 匹配、status/fields 断言、no-body 记 partial 不 fail）；③ `generate-request-dsl.ts` traces 反推去重（≥400 跳过）→ run 产物 `dsl.generated.yml`（CLI warn-不阻断）+ report 路径透出；④ Export DSL（RequestDetail，纯子入口 `@nx-mk/scenario/request-dsl` 防 playwright-core 入浏览器 bundle）。新增 12 测试，基线 718/95/13 |
 | C10 | Watch 模式 / TUI 实时进度（Plan 自标后置，低优） | §39 | ☑ 裁定延期（Plan §47.6 归属确认，非缺口） |
 | C11 | 采集上限 500 字符 → 截断残片致结构化脱敏退化为正则兜底（与 C1 合并评估） | §24 | ☑ 随 F1 消解（字段级散列在浏览器内对完整值计算，不经截断） |
@@ -102,7 +102,7 @@
 | C17 | 插件中心真实安装：dashboard upload zip（解压到 .nx-mk/plugins/）与 npm 安装指令执行 —— 新运行时功能，带安全面（路径穿越防护、包校验、npm registry 依赖），UI 已置 disabled 占位（3-tab 重构安装区） | §30 | ☐ 待独立 SDD（安全面大；本轮 UI 只做展示+提示词引导） |
 
 > 2026-09-29 审计同时确认：§47.1–47.7 全部逐项属实（R1–R8、F1–F6、G1–G5 在码复核通过）；
-> C7 部分落地（3 插件 ☑，多 agent 循环接线 ☐）、C8 open（其余 ☑：C9/C12/C13/C14/C15/C16 已清）。测试基线 727 tests / 97 files / 13 包（C12 后）。
+> C 组全清（C1–C16 ☑；C17 待独立 SDD）。测试基线 740 tests / 99 files / 13 包（C8 后）。
 >
 > **2026-10-01 UI 优化定版（dashboard 3-tab 重构）**：用户主导的界面重构 —— ① 视觉改版
 > 纯白背景 + 极简 + 边框分割主义（无阴影/直角/语义色仅文字着色/代码块白底）；② 信息架构
