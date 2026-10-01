@@ -3211,4 +3211,4 @@ Dashboard
 **测试**：agent +4（c8-multi-agent.test.ts：双 agent 合并路由不串线 / plan 失败容错 /
 空 agents fail-fast / builtin 注册表白名单）；既有 runtime-loop/runtime-terminate 共
 8 处 `apiUiAgent:` 装配改 `agents: [createApiUiAgent()]`；cli +2（未知名 CONFIG_INVALID /
-显式 agents 透传）。基线 740/99/13。
+显式 agents 透传）。基线 747/96/13（全量回归实测）。
