@@ -12,7 +12,7 @@ export type { CoverageReport } from '@nx-mk/coverage'
 
 // 任务：render-field（api-ui）/ add-api-call（api-client，C7）/ add-request-dsl（dsl-agent，C7，
 // 确定性无 AI）/ suggest-policy（policy-agent，C7，建议不自动改）。
-// runtime v0 循环仍仅消费 render-field（多 agent 接线属后续裁定，见 backlog C7）。
+// C8：runtime 消费全部类型 —— task owner 由 plan 来源 agent 标定（apply 路由依据）。
 export type AgentTask =
   | {
       type: 'render-field'
@@ -133,6 +133,7 @@ export interface AgentLoopConfig {
 export interface AgentConfig {
   provider?: AgentProviderConfig
   loop?: AgentLoopConfig
+  agents?: string[]                    // C8：builtin 白名单（CLI 装配层消费；review-agent 不可选）
 }
 
 // ---------------------------------------------------------------------
@@ -140,7 +141,7 @@ export interface AgentConfig {
 // ---------------------------------------------------------------------
 export interface LoopDeps {
   provider: AgentProvider
-  apiUiAgent: CoverageAgentPlugin
+  agents: CoverageAgentPlugin[]       // C8：多 agent（plan 合并 backlog；apply 按 owner 路由）
   reviewAgent: CoverageAgentPlugin    // 其 verify() 即 guard
 }
 export interface LoopOptions {

@@ -23,7 +23,7 @@ describe('termination', () => {
     const root = makeProject()
     const summary = await runAgentLoop(
       { projectRoot: root, report: makeReport(5), config: { loop: { maxIterations: 1, maxTasksPerIteration: 2 } } },
-      { provider: OK_PROVIDER, apiUiAgent: createApiUiAgent(), reviewAgent: scriptedReview(() => 'pass') },
+      { provider: OK_PROVIDER, agents: [createApiUiAgent()], reviewAgent: scriptedReview(() => 'pass') },
     )
     expect(summary.stoppedBy).toBe('max-iterations')
     expect(summary.iterations).toBe(1)
@@ -34,7 +34,7 @@ describe('termination', () => {
     const root = makeProject()
     const summary = await runAgentLoop(
       { projectRoot: root, report: makeReport(4), config: { loop: { maxTasksPerIteration: 2, stopIfNoImprovementRounds: 2 } } },
-      { provider: OK_PROVIDER, apiUiAgent: createApiUiAgent(), reviewAgent: scriptedReview(() => 'reject') },
+      { provider: OK_PROVIDER, agents: [createApiUiAgent()], reviewAgent: scriptedReview(() => 'reject') },
     )
     // iter1: f0,f1 rejected；iter2: f0,f1 given-up → 连续 2 轮零 produced → 提前终止（f2/f3 未触达）
     expect(summary.stoppedBy).toBe('no-improvement')
@@ -49,7 +49,7 @@ describe('termination', () => {
     const failing: AgentProvider = { name: 'fake', edit: async () => { throw new Error('claude exited with code 1') } }
     const summary = await runAgentLoop(
       { projectRoot: root, report: makeReport(1), config: {} },
-      { provider: failing, apiUiAgent: createApiUiAgent(), reviewAgent: scriptedReview(() => 'pass') },
+      { provider: failing, agents: [createApiUiAgent()], reviewAgent: scriptedReview(() => 'pass') },
     )
     expect(summary.failed).toBe(1)
     expect(summary.givenUp).toBe(1)
@@ -64,7 +64,7 @@ describe('termination', () => {
     const failing: AgentProvider = { name: 'fake', edit: async () => { throw classifyClaudeSpawnError(enoent) } }
     await expect(runAgentLoop(
       { projectRoot: root, report: makeReport(1), config: {} },
-      { provider: failing, apiUiAgent: createApiUiAgent(), reviewAgent: scriptedReview(() => 'pass') },
+      { provider: failing, agents: [createApiUiAgent()], reviewAgent: scriptedReview(() => 'pass') },
     )).rejects.toMatchObject({ code: 'PROVIDER_UNAVAILABLE' })
     const db = openCoverageDb(join(root, '.nx-mk', 'coverage.db'))
     const iters = db.prepare('SELECT * FROM agent_iterations').all()
@@ -91,7 +91,7 @@ describe('termination', () => {
     try {
       await expect(runAgentLoop(
         { projectRoot: root, report: makeReport(1), config: {} },
-        { provider: lockHolder, apiUiAgent: createApiUiAgent(), reviewAgent: scriptedReview(() => 'pass') },
+        { provider: lockHolder, agents: [createApiUiAgent()], reviewAgent: scriptedReview(() => 'pass') },
       )).rejects.toMatchObject({ code: 'KERNEL_INTERNAL' })
     } finally {
       holder.exec('ROLLBACK')

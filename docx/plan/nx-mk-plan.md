@@ -3176,3 +3176,39 @@ Dashboard
 
 **测试**：dashboard +7（c12-settings.test.ts 路由级：409/whitelist/zod/两段式/sha 复核/
 段删除/注释保留），基线 727/97/13。
+
+### 47.8.8 C8 @mk/agent-sdk 裁定 + 多 agent 接线落地（2026-10-01，feat/c8-agent-sdk）
+
+> C8（§33）消解。两项裁定：
+> ① **`@mk/agent-sdk` = `@nx-mk/agent` 导出别名，不建新包**（D2：零新 runtime 依赖、
+> 零新包面）。§33 协议类型（`CoverageAgentPlugin`/`AgentContext`/`AgentPlan`/
+> `TaskApplyResult`/`AgentVerifyResult`/`defineCoverageAgent`）已在 types.ts 逐字落定并
+> 从 `@nx-mk/agent` re-export —— 用户级 SDK 面 = 该包导出面本身；`@mk/agent-sdk` 仅作为
+> 文档/计划中的别名记法（不落 npm name）。
+> ② **多 agent 接线**补齐 C7 遗留裁定（runtime 循环消费全部四类任务）。
+
+**runtime（`agent/src/runtime.ts` + types.ts）**
+
+- `LoopDeps.agents: CoverageAgentPlugin[]`（替代单 `apiUiAgent`）；空数组 →
+  KERNEL_INTERNAL fail-fast（`no agents configured`）。
+- plan：全 agent 依序 plan 合并 backlog（保序 = agent 顺序 × 各自任务序）；
+  owner 按来源 agent 记账（`ownerByTask: Map<taskIdOf, agent>`）；单 agent plan 抛错 →
+  容错跳过（log + 该 agent 本轮缺席，不废整轮 —— E 容错风格）。
+- apply：每轮批次按 owner 分组路由（`byOwner` 保序遍历），同批跨 agent 混合任务不串线；
+  未知 owner（不应发生）兜底到 `agents[0]`。
+- review guard / patch 落盘 / agent_iterations 落库 / 终止判定（R6/R7/§38）不动 ——
+  状态机早已按 `taskIdOf` 通用化。
+
+**config + CLI 装配**
+
+- config schema：`agent.agents: string[]` optional（只校验形状非空串；未知名语义在
+  装配层报错）。types.ts `AgentConfig` 镜像同步。
+- CLI `loop.ts`：`agentCfg.agents ?? ['api-ui-agent']` → builtin 注册表
+  （`builtinAgentFactories`，api-ui/api-client/dsl/policy 四名成表；review-agent verify-only
+  不进表）查名构造；未知名 → CONFIG_INVALID 报可选用名。默认路径与 v0 单 agent
+  行为逐字一致（不回归）。
+
+**测试**：agent +4（c8-multi-agent.test.ts：双 agent 合并路由不串线 / plan 失败容错 /
+空 agents fail-fast / builtin 注册表白名单）；既有 runtime-loop/runtime-terminate 共
+8 处 `apiUiAgent:` 装配改 `agents: [createApiUiAgent()]`；cli +2（未知名 CONFIG_INVALID /
+显式 agents 透传）。基线 740/99/13。
