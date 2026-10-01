@@ -7,6 +7,9 @@
  */
 import { useHashRoute } from './router'
 import { useT, useLang } from './i18n'
+import { ProgressPage } from './pages/Progress'
+import { RequestsPage, RequestsHomePage } from './pages/Requests'
+import { PluginCenterPage } from './pages/PluginCenter'
 import { OverviewPage } from './pages/Overview'
 import { RunsListPage } from './pages/RunsList'
 import { RunOverviewPage } from './pages/RunOverview'
@@ -41,22 +44,24 @@ function LangToggle() {
  * 只注入 aria-current 与 class，不改任何文案（页面测试按文本锚定）。
  */
 const NAV_GROUP: Record<string, string> = {
-  overview: 'overview',
+  progress: 'progress',
+  overview: 'progress',
+  plugins: 'plugins',
   runs: 'runs',
   run: 'runs',
   pipeline: 'runs',
-  requests: 'runs',
-  request: 'runs',
-  fields: 'runs',
-  ignored: 'runs',
-  manifest: 'runs',
-  endpoints: 'runs',
-  agent: 'runs',
-  scenarios: 'scenarios',
-  settings: 'settings',
-  'settings-policy': 'settings',
-  'settings-agent': 'settings',
-  'settings-replay': 'settings',
+  requests: 'requests',
+  request: 'requests',
+  fields: 'requests',
+  ignored: 'requests',
+  manifest: 'requests',
+  endpoints: 'requests',
+  agent: 'progress',
+  scenarios: 'progress',
+  settings: 'plugins',
+  'settings-policy': 'plugins',
+  'settings-agent': 'plugins',
+  'settings-replay': 'plugins',
 }
 
 export function App() {
@@ -69,17 +74,21 @@ export function App() {
     <>
       <nav>
         <a className="brand" href="#/">nx-mk</a>
-        <a href="#/" {...nav('overview')}>{T('Overview')}</a>
-        <a href="#/runs" {...nav('runs')}>{T('Runs')}</a>
-        <a href="#/scenarios" {...nav('scenarios')}>{T('Scenarios')}</a>
-        <a href="#/settings/plugins" {...nav('settings')}>{T('Plugins')}</a>
+        <a href="#/progress" {...nav('progress')}>{T('Progress')}</a>
+        <a href="#/requests" {...nav('requests')}>{T('Requests')}</a>
+        <a href="#/plugins" {...nav('plugins')}>{T('Plugins')}</a>
+        <a href="#/runs">{T('Runs')}</a>
+        <a href="#/scenarios">{T('Scenarios')}</a>
         <a href="#/settings/policy">{T('Policy')}</a>
         <a href="#/settings/agent">{T('Agent')}</a>
         <a href="#/settings/replay">{T('Replay safety')}</a>
         <LangToggle />
       </nav>
       <main>
+        {page === 'progress' && <ProgressPage key={JSON.stringify(params)} />}
         {page === 'overview' && <OverviewPage key={JSON.stringify(params)} />}
+        {page === 'plugins' && <PluginCenterPage key="plugins" />}
+        {page === 'requests-home' && <RequestsHomePage key="requests-home" />}
         {page === 'runs' && <RunsListPage key={JSON.stringify(params)} />}
         {page === 'run' && <RunOverviewPage runId={params.runId ?? ''} key={JSON.stringify(params)} />}
         {page === 'pipeline' && <PipelinePage runId={params.runId ?? ''} key={JSON.stringify(params)} />}
