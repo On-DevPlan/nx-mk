@@ -1,65 +1,50 @@
-/* nx-mk dashboard —— 单份手写样式（spec §2.1）；本地分析台，浅色为主，暗色跟随系统。
-   度量规约（UI 优化定版）：表格 12px 字体 / 表头行高 30px / 数据行高 35px / 按钮统一 28px 高 12px 字体。
-   设计令牌驱动：暗色模式只覆写 :root 令牌，不写第二套选择器。 */
+/* nx-mk dashboard —— 单份手写样式（spec §2.1）；本地分析台。
+   3-tab 重构定版（2026-10-01）：纯白背景 + 极简 + 边框分割主义 ——
+   无阴影（--shadow-* 归零仅保留变量位，组件不引用）、直角（--radius: 0）、
+   分层全靠 1px 边框与留白；语义色仅文字着色（-soft 变量收敛为纯白）。
+   度量规约沿用：表格 12px 字体 / 表头行高 30px / 数据行高 35px / 按钮统一 28px 高 12px 字体。
+   暗色偏好：仅边框加深（面板/背景仍白），机制不删。 */
 
 :root {
   /* 表面与边框 */
-  --bg: #f4f6f9;
+  --bg: #ffffff;
   --panel: #ffffff;
-  --border: #e4e8ef;
-  --border-strong: #cbd5e1;
+  --border: #d4d9e0;
+  --border-strong: #9aa4b2;
   /* 文本 */
   --text: #0f172a;
   --muted: #64748b;
-  /* 主色与语义色（文字色 / 柔和底色成对出现） */
-  --accent: #2563eb;
-  --accent-strong: #1d4ed8;
-  --accent-soft: #eff6ff;
+  /* 主色与语义色：仅文字着色，无软底 */
+  --accent: #1d4ed8;
+  --accent-strong: #1e40af;
+  --accent-soft: #ffffff;
   --ok: #15803d;
-  --ok-soft: #ecfdf3;
+  --ok-soft: #ffffff;
   --warn: #b45309;
-  --warn-soft: #fff8eb;
+  --warn-soft: #ffffff;
   --bad: #b91c1c;
-  --bad-soft: #fef2f2;
-  --soft: #eef2f7;
+  --bad-soft: #ffffff;
+  --soft: #ffffff;
   /* 表格/行 */
-  --th-bg: #f3f4f6;
-  --row-hover: #f8fafc;
+  --th-bg: #ffffff;
+  --row-hover: #ffffff;
   /* 度量 */
   --th-h: 30px;
   --row-h: 35px;
   --btn-h: 28px;
   --fs-table: 12px;
-  --radius: 6px;
-  --radius-lg: 10px;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --radius: 0px;
+  --radius-lg: 0px;
+  --shadow-sm: none;
+  --shadow-md: none;
   --font-mono: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
 }
 
-/* 暗色：仅覆写令牌（浅色仍是默认基准） */
+/* 暗色偏好：仍白底，边框/文字加深增强对比（机制保留，令牌覆写） */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0b1220;
-    --panel: #121b2d;
-    --border: #24324a;
-    --border-strong: #35486b;
-    --text: #e2e8f0;
-    --muted: #8fa1b8;
-    --accent: #60a5fa;
-    --accent-strong: #93c5fd;
-    --accent-soft: #1b2a44;
-    --ok: #4ade80;
-    --ok-soft: #12291f;
-    --warn: #fbbf24;
-    --warn-soft: #2d2310;
-    --bad: #f87171;
-    --bad-soft: #2d1518;
-    --soft: #1a2740;
-    --th-bg: #16223a;
-    --row-hover: #182640;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+    --border: #cbd5e1;
+    --border-strong: #7c8698;
   }
 }
 
@@ -114,9 +99,9 @@ nav a:not(.brand) {
   border-radius: var(--radius);
   transition: color 0.12s, background 0.12s;
 }
-nav a:not(.brand):hover { color: var(--accent); background: var(--accent-soft); text-decoration: none; }
-/* 当前页高亮（App 按路由组注入 aria-current + .active） */
-nav a[aria-current="page"] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+nav a:not(.brand):hover { color: var(--accent); text-decoration: none; }
+/* 当前页高亮（App 按路由组注入 aria-current）：底部 2px 实线（边框分割主义） */
+nav a[aria-current="page"] { color: var(--accent); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
 nav .lang-toggle { margin-left: auto; }
 
 main { padding: 24px 20px 48px; max-width: 1100px; margin: 0 auto; }
@@ -182,17 +167,19 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-top: 3px solid var(--accent);
   border-radius: var(--radius-lg);
   padding: 14px 22px;
   min-width: 160px;
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.15s, transform 0.15s;
 }
-.card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
-/* 三张指标卡顶部分色：主色 / 达标绿 / 原始琥珀 */
-.cards .card:nth-child(2) { border-top-color: var(--ok); }
-.cards .card:nth-child(3) { border-top-color: var(--warn); }
+.card:hover { border-color: var(--border-strong); }
+/* span 版卡片（RequestsStats 统计条）：inline 呈现 */
+p.cards { display: flex; gap: 16px; margin: 8px 0; flex-wrap: wrap; }
+p.cards .card { display: inline-flex; flex-direction: column; }
+
+/* 三张指标卡顶部分色改为左侧 3px 竖线（边框分割主义） */
+.cards .card, p.cards .card { border-left: 3px solid var(--accent); }
+.cards .card:nth-child(2), p.cards .card:nth-child(2) { border-left-color: var(--ok); }
+.cards .card:nth-child(3), p.cards .card:nth-child(3) { border-left-color: var(--warn); }
 .card .num { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
 .card .label { color: var(--muted); font-size: 12px; margin-top: 2px; }
 
@@ -276,10 +263,10 @@ a.badge:hover { text-decoration: underline; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- 代码 / 响应体 ---------- */
-/* 响应体用深色代码块：JSON 大段内容在浅色页面上更聚焦 */
+/* 代码块：白底 + 边框（极简定版），不再用深色底 */
 pre {
-  background: #0f172a;
-  color: #e2e8f0;
+  background: var(--panel);
+  color: var(--text);
   padding: 12px 14px;
   border-radius: var(--radius);
   overflow-x: auto;
@@ -288,8 +275,10 @@ pre {
   line-height: 1.6;
   font-family: var(--font-mono);
   margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
-code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 11px; font-family: var(--font-mono); }
+code { background: var(--soft); border: 1px solid var(--border); border-radius: 0; padding: 1px 5px; font-size: 11px; font-family: var(--font-mono); }
 pre code { background: transparent; padding: 0; font-size: inherit; }
 
 details { margin: 2px 0; }

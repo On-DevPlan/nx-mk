@@ -25,7 +25,7 @@ describe('parseHash', () => {
 
 describe('resolvePage', () => {
   it('matches route table', () => {
-    expect(resolvePage('/')).toEqual({ page: 'overview', params: {} })
+    expect(resolvePage('/')).toEqual({ page: 'progress', params: {} })
     expect(resolvePage('/runs')).toEqual({ page: 'runs', params: {} })
     expect(resolvePage('/runs/run_a')).toEqual({ page: 'run', params: { runId: 'run_a' } })
     expect(resolvePage('/runs/run_a/requests/req_1')).toEqual({ page: 'request', params: { runId: 'run_a', requestId: 'req_1' } })
