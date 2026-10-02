@@ -64,4 +64,10 @@ describe('agent.style', () => {
     expect(ConfigSchema.safeParse({ agent: { style: { id: '' } } }).success).toBe(false)
     expect(ConfigSchema.safeParse({ agent: { style: { overrides: { a: 1 } } } }).success).toBe(false)
   })
+
+  it('overrides without id or path is rejected (final-review Important #1)', () => {
+    // 仅 overrides 没有模板引用 → 静默吞掉是配置脚枪，schema 层早 fail-fast
+    const r = ConfigSchema.safeParse({ agent: { style: { overrides: { color: '蓝' } } } })
+    expect(r.success).toBe(false)
+  })
 })
