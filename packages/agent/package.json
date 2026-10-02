@@ -19,10 +19,11 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@nx-mk/kernel": "workspace:*",
     "@nx-mk/coverage": "workspace:*",
+    "@nx-mk/kernel": "workspace:*",
+    "@nx-mk/scenario": "workspace:*",
     "better-sqlite3": "^11.10.0",
-    "@nx-mk/scenario": "workspace:*"
+    "yaml": "^2.4.5"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

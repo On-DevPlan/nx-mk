@@ -93,3 +93,10 @@ export {
   runAgentLoop,
   type ResolvedAgentConfig,
 } from './runtime.js'
+
+export {
+  parseStyleMarkdown,
+  StyleTemplateError,
+  type StyleTemplate,
+  type StyleConfigInput,
+} from './style/index-pub.js'
