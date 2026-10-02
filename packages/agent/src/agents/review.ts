@@ -1,10 +1,12 @@
 /**
  * review-agent（spec §3.6 / U3）—— v0 纯静态规则引擎，不调 AI：
- * G1 git apply --check；G2 ignored-render；G3 json-dump；G4 console-probe。
+ * G1 git apply --check；G2 ignored-render；G3 json-dump；G4 console-probe；G5 classname-whitelist（spec 2026-10-02 §2.5）。
  * 只检查 diff 新增行（'+' 开头、非 '+++'）；任一 reject 即该 diff 不进 accepted 清单。
  */
 import { join } from 'node:path'
 import { gitApplyCheck } from '../patches.js'
+import { checkClassNames, extractClassTokens } from '../style/guard-classname.js'
+import { collectHostClasses } from '../style/host-classes.js'
 import {
   defineCoverageAgent,
   type AgentApplyResult,
@@ -30,7 +32,7 @@ export type ApplyCheckFn = (patchAbsPath: string, cwd: string) => Promise<'pass'
 export async function verifyDiff(
   ctx: AgentContext,
   result: AgentApplyResult,
-  inject?: { applyCheck?: ApplyCheckFn },
+  inject?: { applyCheck?: ApplyCheckFn; hostClasses?: Set<string> },
 ): Promise<AgentVerifyResult> {
   const checkGit: ApplyCheckFn = inject?.applyCheck ?? ((p, c) => gitApplyCheck(p, c))
   const checks: AgentVerifyResult['checks'] = []
@@ -76,6 +78,20 @@ export async function verifyDiff(
     for (const line of lines) {
       if (CONSOLE_LOG.test(line) && FIELD_WORD.test(line)) {
         reject('console-probe', 'console.log probe mentioning field/coverage (R5)')
+      }
+    }
+    // G5：classname-whitelist（spec 2026-10-02 §2.5）—— 仅 ctx.style 存在时运行；
+    // 未配置不产生任何 classname-whitelist 条目（DS3 兼容铁律）。模板白名单或宿主既有 class
+    // 任一命中即放行；宿主零命中时附中文提示（全新项目或扫描路径有误）。
+    if (ctx.style) {
+      const host = inject?.hostClasses ?? collectHostClasses(ctx.projectRoot)
+      const tokens = lines.flatMap((l) => extractClassTokens(l))
+      const violations = checkClassNames(tokens, ctx.style, host)
+      if (violations.length > 0) {
+        const hint = host.size === 0 ? '（宿主未检出任何既有 class —— 全新项目或扫描路径有误）' : ''
+        reject('classname-whitelist', `class tokens not allowed by style template "${ctx.style.id}": ${violations.join(', ')}${hint}`)
+      } else {
+        checks.push({ name: 'classname-whitelist', outcome: 'pass' })
       }
     }
   }

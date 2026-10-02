@@ -103,9 +103,31 @@ export const AgentLoopConfigSchema = z.object({
 })
 export type AgentLoopConfig = z.infer<typeof AgentLoopConfigSchema>
 
+// 风格模板选择段（spec 2026-10-02 §2.2）：内置 id 或自定义 markdown path；strict 拒未知键。
+// 语义校验（未知 id / 文件存在性）归 @nx-mk/agent loadStyleTemplate 启动期 fail-fast —— schema 只管形状。
+// overrides 必须配 id 或 path：单给 overrides 是配置脚枪（final-review Important #1），schema 层早 fail。
+export const AgentStyleConfigSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    path: z.string().min(1).optional(),
+    overrides: z.record(z.string()).optional(),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    if (v.overrides && !v.id && !v.path) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['overrides'],
+        message: 'overrides requires agent.style.id or agent.style.path to identify the template',
+      })
+    }
+  })
+export type AgentStyleConfig = z.infer<typeof AgentStyleConfigSchema>
+
 export const AgentConfigSchema = z.object({
   provider: AgentProviderConfigSchema.optional(),
   loop: AgentLoopConfigSchema.optional(),
+  style: AgentStyleConfigSchema.optional(), // 风格模板选择（spec §2.6 接线 1）
   // C8：builtin agent 白名单（名字组参考 @nx-mk/agent builtinAgentFactories）；
   // 未知名在 CLI 装配层报 CONFIG_INVALID —— schema 层只校验形状（非空字符串）。
   agents: z.array(z.string().min(1)).optional(),

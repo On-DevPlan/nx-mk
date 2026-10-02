@@ -5,6 +5,7 @@
  * E4：PROVIDER_UNAVAILABLE 上抛（进程级）；其余 provider 失败 → task failed（E5/E6）。
  */
 import { KernelError } from '@nx-mk/kernel'
+import type { StyleTemplate } from '../style/types.js'
 import {
   defineCoverageAgent,
   type AgentApplyResult,
@@ -28,14 +29,27 @@ export async function planTasks(ctx: AgentContext): Promise<AgentPlan> {
   }
 }
 
-// prompt 组装（spec §3.5）：§44.4 硬约束 + 字段上下文 + manifestSummary + policySummary + 输出格式指令
-// v1 质量杠杆（4.5 备忘）：policySummary 进入 prompt —— 具体枚举 ignored 字段路径（原 v0 只给泛化规则）
-export function buildPrompt(task: AgentTask & { type: 'render-field' }, ctx: AgentContext): string {
+// prompt 组装（spec §3.5）：§44.4 硬约束 + 风格段（spec 2026-10-02 §2.4）+ 字段上下文 + manifestSummary + policySummary
+// 风格段渲染规则（§2.4/DS3）：style 缺省或 id==='auto-detect' → 不渲染（与现网逐字节兼容）
+export function buildPrompt(task: AgentTask & { type: 'render-field' }, ctx: AgentContext, style?: StyleTemplate): string {
   const endpoint = task.endpointId ?? 'unknown endpoint'
-  return [
+  const head = [
     'You are improving API/UI coverage of a frontend project.',
     `Task: make the API field "${task.fieldPath}" (endpoint: ${endpoint}) visibly rendered in the UI, so the coverage analyzer can observe real evidence.`,
     '',
+  ]
+  if (style && style.id !== 'auto-detect') {
+    head.push(
+      `Style guidelines (template: ${style.id}):`,
+      style.description,
+      '',
+      'Hard rules:',
+      ...style.rules.map((r) => `- ${r}`),
+      '',
+    )
+  }
+  return [
+    ...head,
     'Hard constraints:',
     '- Never render fields that the policy marks as ignored.',
     '- Never dump a response object with JSON.stringify as a substitute for real UI rendering.',
@@ -56,7 +70,7 @@ export async function applyTasks(ctx: AgentContext, plan: AgentPlan): Promise<Ag
     if (task.type !== 'render-field') continue // 非本 agent 任务类型跳过（协议宽容，不抛）
     try {
       const out = await ctx.ai.edit({
-        instructions: buildPrompt(task, ctx),
+        instructions: buildPrompt(task, ctx, ctx.style),
         context: {
           fieldId: task.fieldId,
           fieldPath: task.fieldPath,

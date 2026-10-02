@@ -50,3 +50,24 @@ function joinFixture(): string {
   writeFileSync(path, 'openapi: ./swagger.json\n', 'utf8')
   return path
 }
+
+describe('agent.style', () => {
+  it('accepts id / path / overrides forms', () => {
+    expect(ConfigSchema.safeParse({ agent: { style: { id: 'tailwind-lite' } } }).success).toBe(true)
+    expect(ConfigSchema.safeParse({ agent: { style: { path: './styles/my.md' } } }).success).toBe(true)
+    expect(ConfigSchema.safeParse({ agent: { style: { id: 'x', overrides: { color: '蓝' } } } }).success).toBe(true)
+    expect(ConfigSchema.safeParse({ agent: { style: {} } }).success).toBe(true) // 空 = auto-detect
+  })
+
+  it('rejects unknown keys (strict) and wrong types', () => {
+    expect(ConfigSchema.safeParse({ agent: { style: { template: 'x' } } }).success).toBe(false)
+    expect(ConfigSchema.safeParse({ agent: { style: { id: '' } } }).success).toBe(false)
+    expect(ConfigSchema.safeParse({ agent: { style: { overrides: { a: 1 } } } }).success).toBe(false)
+  })
+
+  it('overrides without id or path is rejected (final-review Important #1)', () => {
+    // 仅 overrides 没有模板引用 → 静默吞掉是配置脚枪，schema 层早 fail-fast
+    const r = ConfigSchema.safeParse({ agent: { style: { overrides: { color: '蓝' } } } })
+    expect(r.success).toBe(false)
+  })
+})

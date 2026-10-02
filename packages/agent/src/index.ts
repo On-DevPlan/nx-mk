@@ -17,6 +17,7 @@ export {
   type AgentConfig,
   type AgentProviderConfig,
   type AgentLoopConfig,
+  type AgentStyleConfig,
   type LoopDeps,
   type LoopOptions,
   type LoopSummary,
@@ -93,3 +94,12 @@ export {
   runAgentLoop,
   type ResolvedAgentConfig,
 } from './runtime.js'
+
+export {
+  parseStyleMarkdown,
+  StyleTemplateError,
+  loadStyleTemplate,
+  BUILTIN_STYLE_IDS,
+  type StyleTemplate,
+  type StyleConfigInput,
+} from './style/index-pub.js'

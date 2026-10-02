@@ -111,6 +111,16 @@ nx-mk run          # 验证 requiredCoverage 真实提升
 
 前置：本地已安装并登录 `claude` CLI（loop 只授 Read/Grep/Glob 只读工具，agent 无写文件通道）。可选配置（provider 超时 / 轮数 / 批次）见 demo `nx-mk.config.yml` 尾部注释。注意：含 `/` 的字段 id 生成的补丁文件名可能带子目录，shell 通配用 `find .nx-mk/patches/<id> -name '*.patch'` 更稳。
 
+### agent.style：前端补丁风格模板
+
+```yaml
+agent:
+  style:
+    id: tailwind-lite   # 或 path: ./styles/my-corp.md（自定义 markdown 模板）
+```
+
+模板格式、内置清单与 G5 className 校验行为见 [`docs/style-templates.md`](./docs/style-templates.md)。
+
 ## §26 Scenario DSL（套件采集 + 场景回放）
 
 config 加 `scenarios:` 段，`nx-mk run` 就从「自由探索采集」切成「按场景套件采集」（无此段 → legacy collect 行为分毫不差）：

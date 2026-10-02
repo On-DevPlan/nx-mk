@@ -9,6 +9,8 @@ import { join, dirname } from 'node:path'
 import { KernelError } from '@nx-mk/kernel'
 import { openCoverageDb, type CoverageDb, type CoverageReport } from '@nx-mk/coverage'
 import { sanitizeFieldSlug, toPosixRel, writePatchFile } from './patches.js'
+import { loadStyleTemplate } from './style/loader.js'
+import type { StyleTemplate } from './style/types.js'
 import { taskIdOf, type AgentConfig, type AgentApplyResult, type AgentContext, type AgentTask, type CoverageAgentPlugin, type LoopDeps, type LoopOptions, type LoopSummary, type TaskApplyResult } from './types.js'
 
 // 默认值（spec §3.8：§38 逐字 + provider 默认；CLI 装配层也复用 provider 项）
@@ -96,6 +98,13 @@ function persistIteration(db: CoverageDb, row: IterationRow): void {
 export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<LoopSummary> {
   const log = opts.log ?? (() => {})
   const cfg = resolveAgentConfig(opts.config)
+  // 风格模板启动期解析（spec 2026-10-02 §3：进程级 fail-fast —— config 错误不烧 LLM 轮次、不落任何 run 产物）。
+  // DS3 关键：仅在 id 或 path **显式配置**时回填 ctx.style —— 未配置必须保持 undefined，
+  // 否则 G5 会对未配置用户生效（宿主扫描可能拒绝其合法 patch），破坏现网兼容铁律。
+  const style: StyleTemplate | undefined =
+    opts.config.style?.id || opts.config.style?.path
+      ? loadStyleTemplate(opts.config.style, { projectRoot: opts.projectRoot, log })
+      : undefined
   const agentRunId = makeAgentRunId()
   const nxMkDir = join(opts.projectRoot, '.nx-mk')
 
@@ -129,6 +138,7 @@ export async function runAgentLoop(opts: LoopOptions, deps: LoopDeps): Promise<L
     projectRoot: opts.projectRoot,
     ai: deps.provider,
     log,
+    style, // spec 2026-10-02 §2.4/§2.5：prompt 注入 + G5 共用；undefined = 完全现网行为
   }
 
   const attempts = new Map<string, AttemptState>()

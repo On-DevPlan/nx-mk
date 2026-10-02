@@ -105,7 +105,7 @@ describe('Phase 5 integration — real git + real guard', () => {
     const root = makeGitProject()
     const summary = await runAgentLoop(
       { projectRoot: root, report: makeReport(), config: {} },
-      { provider: providerReturning(GOOD_DIFF), apiUiAgent: createApiUiAgent(), reviewAgent: createReviewAgent() },
+      { provider: providerReturning(GOOD_DIFF), agents: [createApiUiAgent()], reviewAgent: createReviewAgent() },
     )
     expect(summary.produced).toBe(1)
     expect(summary.stoppedBy).toBe('backlog-empty')
@@ -130,7 +130,7 @@ describe('Phase 5 integration — real git + real guard', () => {
     const root = makeGitProject()
     const summary = await runAgentLoop(
       { projectRoot: root, report: makeReport(), config: {} },
-      { provider: providerReturning(BAD_DIFF), apiUiAgent: createApiUiAgent(), reviewAgent: createReviewAgent() },
+      { provider: providerReturning(BAD_DIFF), agents: [createApiUiAgent()], reviewAgent: createReviewAgent() },
     )
     expect(summary.produced).toBe(0)
     expect(summary.rejected).toBe(1)
@@ -145,7 +145,7 @@ describe('Phase 5 integration — real git + real guard', () => {
     const summary = await runAgentLoop(
       // EXEC-7：ignored 集合须与 data-mk-field 标记值同命名空间（完整 fieldId，G2 整串比对）
       { projectRoot: root, report: makeReport(['GET /users.200.data.internalRiskScore']), config: {} },
-      { provider: providerReturning(ignoredDiff), apiUiAgent: createApiUiAgent(), reviewAgent: createReviewAgent() },
+      { provider: providerReturning(ignoredDiff), agents: [createApiUiAgent()], reviewAgent: createReviewAgent() },
     )
     expect(summary.produced).toBe(0)
     expect(summary.givenUp).toBe(1)
@@ -161,7 +161,7 @@ describe('Phase 5 integration — real git + real guard', () => {
     writeFileSync(join(root, 'src.tsx'), SRC)
     const summary = await runAgentLoop(
       { projectRoot: root, report: makeReport(), config: {} },
-      { provider: providerReturning(GOOD_DIFF), apiUiAgent: createApiUiAgent(), reviewAgent: createReviewAgent() },
+      { provider: providerReturning(GOOD_DIFF), agents: [createApiUiAgent()], reviewAgent: createReviewAgent() },
     )
     expect(summary.produced).toBe(1) // verdict 仅由 G2-G4 决定
   })
