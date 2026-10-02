@@ -117,3 +117,55 @@ describe('verifyDiff', () => {
     expect(vr.checks[0]?.outcome).toBe('skipped')
   })
 })
+
+// ---- G5 classname-whitelist（spec 2026-10-02 §2.5）----
+// makeCtx / oneResult / PASS_G1 复用上方既有定义；宿主集合走 inject.hostClasses 注入替身（不落盘扫描）
+import type { StyleTemplate } from '../style/types.js'
+
+const TPL: StyleTemplate = {
+  id: 'tailwind-lite', source: 'built-in',
+  classNameWhitelist: ['flex', 'px-*', 'text-sm'],
+  description: 'd', rules: ['r'],
+}
+
+function ctxWithStyle(style: StyleTemplate | undefined): AgentContext {
+  return { ...makeCtx(), style }
+}
+
+const HOST = { hostClasses: new Set(['legacy-btn']) }
+
+describe('verifyDiff — G5 classname-whitelist', () => {
+  it('no ctx.style → no classname-whitelist check entries at all (DS3)', async () => {
+    const vr = await verifyDiff(ctxWithStyle(undefined), oneResult('+<div className="anything-goes">x</div>'), { applyCheck: PASS_G1 })
+    expect(vr.verdict).toBe('pass')
+    expect(vr.checks.find((c) => c.name === 'classname-whitelist')).toBeUndefined()
+  })
+
+  it('tokens in template whitelist or host classes pass, check entry recorded', async () => {
+    const vr = await verifyDiff(ctxWithStyle(TPL), oneResult('+<div className="flex px-4">x</div>'), { applyCheck: PASS_G1, ...HOST })
+    expect(vr.verdict).toBe('pass')
+    expect(vr.checks.find((c) => c.name === 'classname-whitelist')?.outcome).toBe('pass')
+    const withHost = await verifyDiff(ctxWithStyle(TPL), oneResult('+<button className="legacy-btn">x</button>'), { applyCheck: PASS_G1, ...HOST })
+    expect(withHost.verdict).toBe('pass')
+  })
+
+  it('off-whitelist token rejects with token list and zero-host hint (spec §3)', async () => {
+    const vr = await verifyDiff(ctxWithStyle(TPL), oneResult('+<div className="flex frobnicate">x</div>'), { applyCheck: PASS_G1, hostClasses: new Set() })
+    expect(vr.verdict).toBe('reject')
+    const g5 = vr.checks.find((c) => c.name === 'classname-whitelist')
+    expect(g5?.outcome).toBe('reject')
+    expect(g5?.detail).toContain('frobnicate')
+    expect(g5?.detail).toContain('（宿主未检出任何既有 class')
+    // 宿主非空时不附提示
+    const vr2 = await verifyDiff(ctxWithStyle(TPL), oneResult('+<div className="frobnicate">x</div>'), { applyCheck: PASS_G1, ...HOST })
+    expect(vr2.checks.find((c) => c.name === 'classname-whitelist')?.detail).not.toContain('宿主未检出')
+  })
+
+  it('template without whitelist → host-only oracle (all off-host tokens reject)', async () => {
+    const NO_WL: StyleTemplate = { ...TPL, classNameWhitelist: undefined }
+    const ok = await verifyDiff(ctxWithStyle(NO_WL), oneResult('+<div className="legacy-btn">x</div>'), { applyCheck: PASS_G1, ...HOST })
+    expect(ok.verdict).toBe('pass')
+    const bad = await verifyDiff(ctxWithStyle(NO_WL), oneResult('+<div className="tailwind-class">x</div>'), { applyCheck: PASS_G1, ...HOST })
+    expect(bad.verdict).toBe('reject')
+  })
+})
