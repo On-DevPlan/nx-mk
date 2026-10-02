@@ -103,3 +103,48 @@ describe('renderPolicySummary — ignored ids 枚举（4.5 备忘 v1 杠杆）',
     expect(s).toContain('Ignored field paths observed this run (never render any of them): (none).')
   })
 })
+
+// ---- spec 2026-10-02 §3：style 解析 fail-fast（config 错误不落任何 run 产物） ----
+// OK_PROVIDER / makeReport / scriptedReview 复用文件头部既有 import
+import { rmSync } from 'node:fs'
+
+describe('style fail-fast (spec 2026-10-02 §3)', () => {
+  it('unknown style id aborts the loop before any .nx-mk artifact is created', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'nx-mk-style-fastfail-'))
+    try {
+      await expect(runAgentLoop(
+        { projectRoot: root, report: makeReport(2), config: { style: { id: 'nope' } } },
+        { provider: OK_PROVIDER, agents: [createApiUiAgent()], reviewAgent: scriptedReview(() => 'pass') },
+      )).rejects.toThrow(/nope/)
+      expect(existsSync(join(root, '.nx-mk'))).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('unconfigured style keeps prompt free of style sections (DS3) while configured id injects it', async () => {
+    const seen: string[] = []
+    const root = mkdtempSync(join(tmpdir(), 'nx-mk-style-prompt-'))
+    const captureProvider = {
+      name: 'capture',
+      edit: async (input: { instructions: string }) => {
+        seen.push(input.instructions)
+        return { diffText: 'diff --git a/x b/x' }
+      },
+    }
+    try {
+      await runAgentLoop(
+        { projectRoot: root, report: makeReport(1), config: {} },
+        { provider: captureProvider, agents: [createApiUiAgent()], reviewAgent: scriptedReview(() => 'pass') },
+      )
+      await runAgentLoop(
+        { projectRoot: root, report: makeReport(1), config: { style: { id: 'tailwind-lite' } } },
+        { provider: captureProvider, agents: [createApiUiAgent()], reviewAgent: scriptedReview(() => 'pass') },
+      )
+      expect(seen[0]).not.toContain('Style guidelines')
+      expect(seen[1]).toContain('Style guidelines (template: tailwind-lite):')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})

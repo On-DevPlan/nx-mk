@@ -88,3 +88,43 @@ describe('applyTasks', () => {
       .rejects.toMatchObject({ code: 'PROVIDER_UNAVAILABLE' })
   })
 })
+
+// ---- spec 2026-10-02 §2.4：buildPrompt 风格段注入 ----
+import type { StyleTemplate } from '../style/types.js'
+
+const STYLE: StyleTemplate = {
+  id: 'tailwind-lite',
+  source: 'built-in',
+  classNameWhitelist: ['flex', 'px-*'],
+  description: 'Utility-first Tailwind styling.',
+  rules: ['Use Tailwind utility classes for all styling.', 'Never use inline style attributes.'],
+}
+
+describe('buildPrompt style section (spec §2.4)', () => {
+  const ctx = makeCtx()
+  const taskOf = async () => (await planTasks(ctx)).tasks[0] as Parameters<typeof buildPrompt>[0]
+
+  it('byte-identical output when style is undefined (DS3 compat anchor)', async () => {
+    const task = await taskOf()
+    expect(buildPrompt(task, ctx)).toBe(buildPrompt(task, ctx, undefined))
+  })
+
+  it('injects the style section between task line and Hard constraints', async () => {
+    const p = buildPrompt(await taskOf(), ctx, STYLE)
+    const taskIdx = p.indexOf('Task: make the API field')
+    const styleIdx = p.indexOf('Style guidelines (template: tailwind-lite):')
+    const hardIdx = p.indexOf('Hard constraints:')
+    expect(styleIdx).toBeGreaterThan(taskIdx)
+    expect(styleIdx).toBeLessThan(hardIdx)
+    expect(p).toContain('Utility-first Tailwind styling.')
+    expect(p).toContain('- Use Tailwind utility classes for all styling.')
+    expect(p).toContain('- Never use inline style attributes.')
+  })
+
+  it('auto-detect id renders NO style section (spec §2.4)', async () => {
+    const task = await taskOf()
+    const p = buildPrompt(task, ctx, { ...STYLE, id: 'auto-detect', description: '', rules: [] })
+    expect(p).not.toContain('Style guidelines')
+    expect(p).toBe(buildPrompt(task, ctx))
+  })
+})
