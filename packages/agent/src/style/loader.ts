@@ -3,9 +3,15 @@
  * parseStyleMarkdown：markdown 契约文本 → StyleTemplate（纯函数）。
  * loadStyleTemplate / 内置注册表见本文件后半（Task 2）。
  */
+import { readFileSync } from 'node:fs'
+import { isAbsolute, resolve } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { KernelError } from '@nx-mk/kernel'
-import type { StyleTemplate } from './types.js'
+import { tailwindLiteTemplate } from './templates/tailwind-lite.js'
+import { semanticCssTemplate } from './templates/semantic-css.js'
+import { muiStyleTemplate } from './templates/mui-style.js'
+import { unstyledTemplate } from './templates/unstyled.js'
+import type { StyleConfigInput, StyleTemplate } from './types.js'
 
 // style 专用错误别名：config 语义错误统一 CONFIG_INVALID（spec §3 fail-fast）
 export class StyleTemplateError extends KernelError {
@@ -68,4 +74,73 @@ export function parseStyleMarkdown(text: string, source: 'built-in' | 'custom', 
     description,
     rules,
   }
+}
+
+// ---------------------------------------------------------------------
+// 内置注册表 + loadStyleTemplate（spec §2.3/§3）
+// ---------------------------------------------------------------------
+
+// 4 个 markdown 契约模板（经同一解析器走查，契约即范例）+ auto-detect 字面对象
+// （DS3：不渲染 prompt 段，G5 按白名单缺省语义走宿主扫描）。
+const BUILTIN_TEMPLATES: Record<string, StyleTemplate> = {
+  'tailwind-lite': parseStyleMarkdown(tailwindLiteTemplate, 'built-in', 'tailwind-lite'),
+  'semantic-css': parseStyleMarkdown(semanticCssTemplate, 'built-in', 'semantic-css'),
+  'mui-style': parseStyleMarkdown(muiStyleTemplate, 'built-in', 'mui-style'),
+  unstyled: parseStyleMarkdown(unstyledTemplate, 'built-in', 'unstyled'),
+  'auto-detect': { id: 'auto-detect', source: 'built-in', description: '', rules: [] },
+}
+
+export const BUILTIN_STYLE_IDS: readonly string[] = Object.keys(BUILTIN_TEMPLATES)
+
+const PLACEHOLDER = /\{\{(\w+)\}\}/g
+
+// 解析优先级（spec §2.2）：path > id > auto-detect；语义错误全部 StyleTemplateError（§3 fail-fast）
+export function loadStyleTemplate(
+  cfg: StyleConfigInput | undefined,
+  opts?: { projectRoot?: string; log?: (msg: string) => void },
+): StyleTemplate {
+  const log = opts?.log ?? (() => {})
+
+  // 未配置 / 空配置 → auto-detect 字面对象（调用方 runtime 对「未显式配置」回填 undefined —— DS3）
+  if (!cfg || (!cfg.id && !cfg.path)) return { ...BUILTIN_TEMPLATES['auto-detect']! }
+
+  let template: StyleTemplate
+  if (cfg.path) {
+    if (cfg.id) log(`[style] both id and path configured — path wins (${cfg.path})`) // §3
+    const abs = isAbsolute(cfg.path) ? cfg.path : resolve(opts?.projectRoot ?? process.cwd(), cfg.path)
+    let text: string
+    try {
+      text = readFileSync(abs, 'utf8')
+    } catch (err) {
+      throw new StyleTemplateError(
+        `style template file not readable: ${abs}（应为相对 nx-mk.config.yml 的路径，或绝对路径）: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+    // path 模式 id 以 frontmatter id（缺省 stem）为准；cfg.id 不参与覆盖（仅触发 path-wins 警告）
+    const stem = cfg.path.replace(/\\/g, '/').split('/').pop()!.replace(/\.md$/i, '')
+    template = { ...parseStyleMarkdown(text, 'custom', stem) }
+  } else {
+    const builtin = BUILTIN_TEMPLATES[cfg.id!]
+    if (!builtin) {
+      throw new StyleTemplateError(
+        `unknown style template id: "${cfg.id}". available built-ins: ${BUILTIN_STYLE_IDS.join(', ')}（自定义模板请改用 agent.style.path）`,
+      )
+    }
+    template = { ...builtin }
+  }
+
+  // §3：空白名单（非 auto-detect）→ 警告（等效宿主扫描兜底）
+  if (template.classNameWhitelist !== undefined && template.classNameWhitelist.length === 0 && template.id !== 'auto-detect') {
+    log(`[style] template "${template.id}" has an empty classNameWhitelist — G5 falls back to host-project class scan (auto-detect semantics)`)
+  }
+
+  // overrides：description {{key}} 插值；未提供的占位符保留原样 + 警告（spec §2.2）
+  const overrides = cfg.overrides ?? {}
+  template.description = template.description.replace(PLACEHOLDER, (raw, key: string) => {
+    if (key in overrides) return overrides[key]!
+    log(`[style] template "${template.id}" placeholder {{${key}}} has no override — left as-is`)
+    return raw
+  })
+
+  return template
 }

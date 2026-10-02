@@ -97,6 +97,8 @@ export {
 export {
   parseStyleMarkdown,
   StyleTemplateError,
+  loadStyleTemplate,
+  BUILTIN_STYLE_IDS,
   type StyleTemplate,
   type StyleConfigInput,
 } from './style/index-pub.js'
