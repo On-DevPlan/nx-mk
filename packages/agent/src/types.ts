@@ -5,6 +5,7 @@
  * 落盘目标仅 .nx-mk/patches/；可应用性验证 = git apply --check（不落盘）。
  */
 import type { CoverageReport } from '@nx-mk/coverage'
+import type { StyleTemplate } from './style/types.js'
 
 // 协议再出口（EXEC-4）：AgentContext.report 内嵌 CoverageReport —— types.ts 是 SDK 唯一事实源，
 // 消费方（含 T7 runtime）应能从本模块取到该类型，不必直依赖 @nx-mk/coverage。
@@ -88,6 +89,7 @@ export interface AgentContext {
   projectRoot: string         // nx-mk.config.yml 所在目录（claude cwd / git apply cwd）
   ai: AgentProvider
   log: (msg: string) => void
+  style?: StyleTemplate       // 风格模板（spec 2026-10-02 §2.4/§2.5：prompt 注入 + G5 共用；undefined = 关闭）
 }
 
 // §33 逐字形状（capabilities 收为 string 别名；verify 可选 —— PLN-6）
@@ -130,9 +132,16 @@ export interface AgentLoopConfig {
   stopIfNoImprovementRounds?: number
   maxTasksPerIteration?: number
 }
+// 风格模板选择（spec 2026-10-02 §2.6 接线）：与 @nx-mk/config AgentStyleConfigSchema 逐字镜像（PLN-3）
+export interface AgentStyleConfig {
+  id?: string
+  path?: string
+  overrides?: Record<string, string>
+}
 export interface AgentConfig {
   provider?: AgentProviderConfig
   loop?: AgentLoopConfig
+  style?: AgentStyleConfig             // 风格模板选择（镜像 config AgentStyleConfigSchema）
   agents?: string[]                    // C8：builtin 白名单（CLI 装配层消费；review-agent 不可选）
 }
 

@@ -17,6 +17,7 @@ export {
   type AgentConfig,
   type AgentProviderConfig,
   type AgentLoopConfig,
+  type AgentStyleConfig,
   type LoopDeps,
   type LoopOptions,
   type LoopSummary,
