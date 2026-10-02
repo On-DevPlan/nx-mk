@@ -57,14 +57,16 @@ packages/agent/src/style/
 ├── __tests__/
 │   ├── loader.test.ts
 │   └── guard-classname.test.ts     # G5 纯函数测试（实现可在 agents/review.ts 同域新文件）
-├── loader.ts                       # loadStyleTemplate() → StyleTemplate（含内置注册表与缓存）
-├── types.ts                        # StyleTemplate / StyleTemplateFrontmatter
-└── templates/                      # 内置模板（import.meta.url 相对定位，随包发布）
-    ├── tailwind-lite.md
-    ├── semantic-css.md
-    ├── mui-style.md
-    ├── unstyled.md
-    └── auto-detect.md              # 默认兜底：不携带白名单，G5 退化为宿主 CSS 扫描
+├── loader.ts                       # parseStyleMarkdown() + loadStyleTemplate()（含内置注册表）
+├── types.ts                        # StyleTemplate / StyleConfigInput
+├── guard-classname.ts              # extractClassTokens / whitelistMatches / checkClassNames（G5 纯函数）
+├── host-classes.ts                 # collectHostClasses(projectRoot)（模块级缓存；node:fs 递归，无新 glob 依赖）
+└── templates/                      # 内置模板：*.ts 导出 markdown 契约字符串（tsup 不拷贝 .md 资产，
+    │                               #   import.meta.url 在 ESM dist/Windows 下路径脆 —— 实现修订，契约不变）
+    ├── tailwind-lite.ts            #   frontmatter + 正文与 §2.2 契约逐字同构；auto-detect 例外：
+    ├── semantic-css.ts             #   以字面对象入注册表（不渲染 prompt 段，见 §2.4）
+    ├── mui-style.ts
+    └── unstyled.ts
 ```
 
 ### 2.2 数据结构
@@ -113,7 +115,7 @@ classNameWhitelist: ["flex","grid","px-*","text-*"]   # 可选；YAML 数组；�
 | `semantic-css` | 复用宿主语义 class，禁 utility | 缺省（= 宿主扫描），rules 强制「新建 class 必须在宿主 styles 定义」 |
 | `mui-style` | Material UI 组件与 sx prop | 白名单不适用 → 缺省；rules 约束「优先 MUI 组件，不引第三方 UI 库」 |
 | `unstyled` | 纯结构渲染，最小 div/text | 缺省；rules 禁装饰性 class |
-| `auto-detect` | **默认兜底**：prompt 指令 agent 先 Read 宿主 styles/页面再模仿 | 缺省（= 现网行为 + 明确指令） |
+| `auto-detect` | **默认兜底**：不渲染 prompt 段（§2.4/DS3——「先读宿主再模仿」本就是 LLM 默认行为），G5 走宿主 CSS 扫描兜底 | 缺省（= 现网行为 + 宿主扫描） |
 
 ### 2.4 prompt 注入（目标 3）
 
