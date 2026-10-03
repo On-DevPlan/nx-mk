@@ -7,8 +7,9 @@
 ## 当前状态
 
 **Phase 0-5 全部完成** —— 含 Phase 1.5（SDK Facade Codegen）、Phase 4.5（Dashboard 可操作化）、
-v1（插件配置写回链）、§26（Scenario DSL 运行器 + Replay Scenario）。
-测试基线：**93 文件 / 699 测试全绿**；`pnpm -r typecheck` 覆盖 **15 个目标（13 包 + 2 example）零报错**。
+v1（插件配置写回链）、§26（Scenario DSL 运行器 + Replay Scenario）、§24（响应值隐私脱敏）、
+agent 风格模板（§47.9）。
+测试基线：**104 文件 / 812 测试全绿**（2026-10-03 实测）；`pnpm -r typecheck` 覆盖 **15 个目标（13 包 + 2 example）零报错**。
 
 已完成能力一览：
 
@@ -18,14 +19,20 @@ v1（插件配置写回链）、§26（Scenario DSL 运行器 + Replay Scenario�
 - **demo 闭环**：`pnpm demo:codegen` 一键跑 `demo:openapi` → `nx-mk run` → codegen → `app/src/generated-sdk.ts`。存量代码迁移：`nx-mk migrate`（静态 fetch 替换）+ `patchGlobalFetch()`（兜底）。
 - **§26 Scenario DSL + Replay Scenario**：方案 §26/§27 落地 —— 新包 `@nx-mk/scenario`（dsl-schema / dsl-loader / runner / playwright-runner / scenario-replay）、config `scenarios:` 段、`nx-mk run` 套件执行模式、dashboard `GET /api/scenarios` + 单场景回放 + `/scenarios` 页。5 种 step（goto / waitFor / waitForRequest / assertFieldVisible / screenshot）全 read-only，replay 恒 safe 无 confirm 门；`click` / `fill` / `assertVisible` 后置。详见 [`packages/scenario/README.md`](./packages/scenario/README.md) 与 [设计 spec](./docs/superpowers/specs/2026-09-21-nx-mk-scenario-dsl-replay-design.md)。
 
-§26 之后另有 6 个 PR 合入：hygiene 清账（#25）、backlog 4.5 备忘清零（#26）、Agent 测试 fixture 抽离（#27）、
-spec 实现裁定记录补写（#28）、**套件 context 注入 collector shim**（#29 —— 修套件页无 shim 通道导致每步 drain 恒空、
-归因列恒 NULL）、**Dashboard UI 中英双语 + 请求响应值展示**（#30）、spec demo 物料字段路径勘误（#31）。
+§26 之后持续演进（PR #25–#45，全部已合入 master）：
+
+| PR | 内容 |
+|---|---|
+| #25–#31 | hygiene 清账 / backlog 4.5 备忘清零 / Agent 测试 fixture 抽离 / spec 裁定记录补写 / **套件 context 注入 collector shim**（修套件页每步 drain 恒空）/ **Dashboard UI 中英双语 + 请求响应值展示** / spec demo 物料字段路径勘误 |
+| #32–#34 | plugin-playwright 优化 + dashboard UI 打磨 / **流水线逐步报告**（`/runs/:runId/pipeline` 五段时间线 + 原始事件 I/O 透出 + 回放历史 I/O 明细） |
+| #35–#42 | Plan §47.8 全仓审计裁定 / dependabot fast-uri / fetch-shim fallback（C16）/ **endpoints 与 Agent Loop 页**（C14）/ **Request DSL**（C9）/ replay 列冻结裁定（C13）/ **3 个内置 agent 插件**（C7：api-client / dsl / policy）/ **settings 设置页**（C12：policy / agent / replay 三段写回） |
+| #43–#45 | **Dashboard 3-tab 重构**（进度 / 请求 / 插件，纯白极简定版）/ **C8 多 agent 接线**（`LoopDeps.agents[]` + config `agent.agents` 白名单）/ **Agent 风格模板**（StyleTemplate + markdown 契约 + prompt 注入 + G5 className guard，见 §47.9） |
 
 完整方案见 [`docx/plan/nx-mk-plan.md`](./docx/plan/nx-mk-plan.md)（§编号是各期 spec 的引用锚点）；
 各期 SDD 产物在 [`docs/superpowers/specs/`](./docs/superpowers/specs/) 与 [`docs/superpowers/plans/`](./docs/superpowers/plans/)；
 非阻塞遗留项台账 [`docs/hygiene-backlog.md`](./docs/hygiene-backlog.md)（A 组 7 + B 组 8 + 4.5 备忘 4 全部清零；
-C 组为 Plan × 实现对照缺口：C1–C5/C11 与 Copy curl 已落地，C6/C10 裁定延期，C7 插件与 C8 待独立 SDD）。
+C 组为 Plan × 实现对照缺口：**C1–C16 全部落地**，C6/C10（watch 模式 / `app:` 段）裁定延期，
+**C17（插件中心真实安装）待独立 SDD** —— 目前唯一未落地项）。
 
 ### Phase 3 手动验收步骤（goal 闭环 + coverage 报告三点互证）
 

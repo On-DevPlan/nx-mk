@@ -3212,3 +3212,44 @@ Dashboard
 空 agents fail-fast / builtin 注册表白名单）；既有 runtime-loop/runtime-terminate 共
 8 处 `apiUiAgent:` 装配改 `agents: [createApiUiAgent()]`；cli +2（未知名 CONFIG_INVALID /
 显式 agents 透传）。基线 747/96/13（全量回归实测）。
+
+### 47.9 Agent 风格模板落地记录（2026-10-03，feat/agent-style-templates → PR #45）
+
+> 来源：spec `docs/superpowers/specs/2026-10-02-nx-mk-agent-style-templates-design.md`
+> + plan `docs/superpowers/plans/2026-10-02-agent-style-templates.md`（6 task TDD）。
+> merge `35a5354`（2026-10-03 01:29）。本条为 **§35.2 内置插件面的横向扩展**
+> （风格模板作用于 api-ui-agent 的产出），不计入 C 组缺口（backlog 明确「不涉及」）。
+
+**落点**
+
+- `packages/agent/src/style/`：`types.ts`（StyleTemplate / StyleConfigInput）、`loader.ts`
+  （parseStyleMarkdown 纯函数 + loadStyleTemplate 注册表）、`guard-classname.ts`（G5 纯函数
+  extractClassTokens / whitelistMatches / checkClassNames）、`host-classes.ts`（宿主 class 扫描）、
+  `index-pub.ts`（**实现新增**：style 子模块单一 re-export 出口，避免深层路径扩散）；
+  `templates/` 4 个 markdown 契约模板以 **TS 字符串承载**（tsup 不拷贝 `.md` 资产 —— spec §2.1 已载明
+  为实现修订，契约不变）。
+- config：`AgentStyleConfigSchema`（`id?/path?/overrides?`，`.strict()`）；`AgentConfigSchema.style` 接线。
+- agent：`api-ui.ts` `buildPrompt(task, ctx, style?)` 第三参（风格段渲染在硬约束**之前**）；
+  `review.ts` 检查链追加 G5 `classname-whitelist`；`runtime.ts` 启动期解析缓存 `AgentContext.style`。
+
+**实现期裁定（相对 spec 的偏离）**
+
+| # | 裁定 | 理由 |
+|---|---|---|
+| R1 | 单测落在 `src/__tests__/style-loader.test.ts` / `style-guard.test.ts`，非 spec §2.1 的 `style/__tests__/` | 根 `vitest.config.ts` include 只收 `src/__tests__` 平铺 —— 目录位移是仓库既有裁定，非新决定 |
+| R2 | schema 增 `superRefine`：`overrides` 必须配 `id` 或 `path`，否则 schema 层即 fail | final-review Important #1 —— 单给 overrides 是配置脚枪（静默无效果），spec §2.2 未覆盖此形状组合 |
+| R3 | 内置 id 定版 5 个：`tailwind-lite` / `semantic-css` / `mui-style` / `unstyled`（4 个 markdown 契约）+ `auto-detect`（字面对象，不渲染 prompt 段） | spec §2.3 + DS3 逐字落地；`auto-detect` 不入模板文件（其语义全由 G5 宿主扫描兜底） |
+| R4 | `loadStyleTemplate` 的 `path` 模式下 config 的 `id` 不参与命名（仅触发 path-wins 警告） | 命名真源收敛到「frontmatter id → 文件名 stem」单链，避免双源漂移 |
+| R5 | DS1–DS5（spec §6）全部按原裁定执行，无修订 | 实现未暴露需要翻案的设计问题 |
+
+**测试与基线**
+
+- 新增/扩展：`style-loader.test.ts`（契约解析 6 例 + 注册表/优先级/overrides 9 例）、`style-guard.test.ts`
+  （白名单/通配/宿主扫描/动态 className 跳过）、`api-ui.test.ts`（风格段位置 + undefined/auto-detect
+  逐字节兼容锚）、`review.test.ts`（G5 仅在 `ctx.style` 存在时产 check 条目 —— DS3 兼容）、
+  `runtime-loop.test.ts`（启动期解析失败 fail-fast 不烧轮次）、config `agent-schema.test.ts`（strict 拒未知键）。
+- **全量回归 812 tests / 104 files / 13 包全绿**（2026-10-03 实测）；typecheck 15 目标（13 包 + 2 example）零报错。
+
+**文档**：新增 `docs/style-templates.md`（模板作者指南：三段式契约、白名单通配语义、G5 判定序、
+5 内置模板对照表、自定义 path 示例）；README 加 `agent.style` 配置示例（spec §5 落实）。
+

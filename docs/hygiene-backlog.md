@@ -129,3 +129,13 @@ coverage 采集通路在浏览器侧 `__MK_COLLECTOR__`，Node 侧 patch 看不�
 > → goal-loop `all-done` 早停）。已知残余：插件 `configSchema` 校验仅覆盖 config 声明路径
 > （plugin-registry loadPlugins），CLI `extraPlugins` 代码装配不经此门 —— 属装配语义而非
 > 缺口，随未来 per-plugin config 收敛一并评估。
+
+---
+
+> **2026-10-03 复核**：全仓逐条复核 + 全量回归实测。
+> **基线刷新：812 tests / 104 files / 13 包全绿**（typecheck 15 目标零报错）—— 文中 747/96/13
+> 为 C8 时点数据，C12–C16 与风格模板落地后已增长。
+> **C 组状态收敛：C1–C16 全 ☑，C17 是唯一 ☐**（插件中心真实安装，安全面需独立 SDD）。
+> 同期落地的 **Agent 风格模板**（PR #45）不计入 C 组 —— 属 §35.2 内置插件面横向扩展，
+> 落地记录见 Plan **§47.9**（含 5 项实现期裁定 R1–R5）。
+
