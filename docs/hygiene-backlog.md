@@ -99,7 +99,7 @@
 | C14 | §30 报告页缺口：`/runs/:runId/endpoints`（endpoint 覆盖页，数据在 metrics 路由与 DB 已备）与 `/runs/:runId/agent`（Agent Loop 页，`agent_iterations` 已落库）仅缺 UI | §30 | ☑ 落地（`/endpoints` 报告 endpoints 透出 + D12 门控；`/agent` 行列表 + 空态；RunOverview 双链接；路由/api-types/i18n/dashboard 测试 +8，基线 706/94/13） |
 | C15 | coverage 模块缺 plan §8 的 `trace-store/field-extractor/value-masker/ui-evidence/metrics` 文件位——职能已被 db/client.ts（flushDrained）、client 代理、privacy/mask.ts、analyzer 内联吸收；`endpoints` 表有 `tags` 无 `summary`，`manifest_fields` 为精简裁定集（无 direction/status/description/schema_name） | §8/§25 | ☑ 文件布局裁定为 R3 同类（吸收合并，语义不缺）；DB 列集属 spec 裁定，仅注记不更名（`endpoints.summary` 若后续 Manifest Browser 需要，随 C14 一并评估） |
 | C16 | `runtime/patch.ts`（patchGlobalFetch，SDK-CG3b fetch monkey-patch fallback）无命令接线：任何 CLI/dashboard 路径都不会启用它，仅 `migrate` 命令文案提示存在（plan 语义：未全量迁移时 coverage 不断） | §42.5 SDK-CG3 | ☑ 改道落地（见 fix 注记） |
-| C17 | 插件中心真实安装：dashboard upload zip（解压到 .nx-mk/plugins/）与 npm 安装指令执行 —— 新运行时功能，带安全面（路径穿越防护、包校验、npm registry 依赖），UI 已置 disabled 占位（3-tab 重构安装区） | §30 | ☐ 待独立 SDD（安全面大；本轮 UI 只做展示+提示词引导） |
+| C17 | 插件中心真实安装：dashboard upload zip（解压到 .nx-mk/plugins/）与 npm 安装指令执行 —— 新运行时功能，带安全面（路径穿越防护、包校验、npm registry 依赖），UI 已置 disabled 占位（3-tab 重构安装区） | §30 | ☐ 待独立 SDD —— **spec 已出（`docs/superpowers/specs/2026-10-03-nx-mk-plugin-install-center-design.md`），待裁定 Q1–Q4（npm 线范围 / 依赖破例 / 加载通路 / 覆盖与 pin）后进 plan** |
 
 > 2026-09-29 审计同时确认：§47.1–47.7 全部逐项属实（R1–R8、F1–F6、G1–G5 在码复核通过）；
 > C 组全清（C1–C16 ☑；C17 待独立 SDD）。测试基线 747 tests / 96 files / 13 包（C8 后实测）。
