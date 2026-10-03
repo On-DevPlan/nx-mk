@@ -176,13 +176,18 @@ packages/plugin-install/                 # @nx-mk/plugin-install —— 唯一�
 
 ---
 
-## 6. 开放问题（需用户裁定后才进 plan）
+## 6. 决策记录（Q1–Q4，2026-10-03 用户裁定：全部采纳建议项）
 
-| # | 问题 | 选项 | 建议 |
+> 裁定结果：**Q1 = 只做 zip**（npm 线整体延后 v2，UI 保留按钮 + 文案说明）；
+> **Q2 = 自写 ZIP reader**（不破 D2，`node:zlib.inflateRaw` + 自实现 central directory 与安全校验）；
+> **Q3 = kernel `loadPlugins` 增 `dirs[]`**（.nx-mk/plugins 优先、未命中回落 npm 解析）；
+> **Q4 = fail-closed 覆盖确认**（同名已装需 UI/CLI 显式确认；sha256 记入 lock，pin 校验留 v2）。
+
+| # | 问题 | 选项 | 建议（已采纳） |
 |---|---|---|---|
 | Q1 | **npm 安装线本轮做不做？** | ① 只做 zip（离线/内网，零外部依赖）② 做 `npm pack` 拉 tarball（不跑脚本）③ 直接 `npm install`（脚本 + registry 依赖面） | **①**：③ 是任意代码执行面，与「不执行包内代码」直接冲突；② 需要自写 tar 解析（见 Q2 成本），价值低于 zip。npm 线整体延后到 v2，UI 保留 disabled + 文案说明 |
 | Q2 | **为 ZIP/TAR 解析破 D2 铁律引入依赖？** | ① 自写最小 ZIP reader（约 200 行 + `node:zlib`）② 破例引 `yauzl`/`fflate`（约 20-30 KB，成熟） | **①**：D2 是跨期铁律，破例需专门裁定；ZIP 的 stored/deflate 两法与 central directory 解析成本可控，且安全校验本就必须自实现（库多半不做 zip-slip/ratio 校验） |
 | Q3 | **加载通路** | A：kernel `loadPlugins` 增 `dirs`（推荐）｜B：CLI `extraPlugins` 注入｜C：装进 node_modules | **A**：单一解析入口、三命令共用；B 装配面分叉，C 破坏 zip 隔离 |
 | Q4 | **覆盖安装与 sha pin** | ① 默认 fail-closed + UI 二次确认覆盖（推荐）② 允许静默覆盖 ③ 强制 `sha256` pin 才能装 | **①**；③ 作为可选字段（lock 已记 sha，允许用户把期望 sha 写进 config 做校验，v2 再启用） |
 
-> **本 spec 只到设计为止**：Q1–Q4 裁定后另起 plan（TDD 任务分解），实现按仓库既有约定（单文件 ≤400 行、ESM `.js` 后缀、中文注释 + 英文标识符、D2、逐 Task 提交）。
+> **裁定已收（§6）**：下一步另起 plan（TDD 任务分解，落 `docs/superpowers/plans/2026-10-03-plugin-install-center.md`），实现按仓库既有约定（单文件 ≤400 行、ESM `.js` 后缀、中文注释 + 英文标识符、D2、逐 Task 提交）。
