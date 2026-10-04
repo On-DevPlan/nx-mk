@@ -92,8 +92,16 @@ const m = JSON.parse(readFileSync(new URL('./.nx-mk/manifest.json', import.meta.
 /** 与 coverage-analyzer.ts:57-63 同构：同一路径多条 evidence 取最差质量 */
 const RANK = { valid: 0, weak: 1, suspicious: 2, invalid: 3 }
 
-/** 本任务负责的两个 endpoint（Task 3 负责 createPatient 的 201 回显） */
-const OWNED_OPERATIONS = new Set(['getPatient', 'listPatientVisits'])
+/**
+ * 医疗记录项目的全部三个 endpoint —— 含 createPatient 的 201 回显。
+ *
+ * 第三个 operation 是 Task 3 补入的：此前分母刻意只含前两个，
+ * 于是「回显渲染 data.createdAt」这条本任务唯一的增量路径在运行期**零 evidence** ——
+ * 静态检查（verify-pages.mjs）能证明 field 字面量写对，证明不了它真渲染出非空可见文本。
+ * 现分母为 28 条唯一路径（createPatient 的 data.id / data.name 与 getPatient 同名，
+ * 按 A4 共享最差质量，故唯一路径 28 而非 30）。
+ */
+const OWNED_OPERATIONS = new Set(['getPatient', 'listPatientVisits', 'createPatient'])
 
 function worstByPath(evidence) {
   const worst = new Map()
@@ -196,7 +204,7 @@ for (const p of ownedPaths) {
 
 console.log(`APP_URL            ${APP_URL}`)
 console.log(`扫描 [data-mk-field] ${scanned} 个 → 有效 evidence ${evidence.length} 条`)
-console.log(`本任务分母          ${ownedPaths.length} 条路径（getPatient + listPatientVisits）`)
+console.log(`本任务分母          ${ownedPaths.length} 条路径（getPatient + listPatientVisits + createPatient）`)
 console.log(`requiredCoverage   ${(covered / ownedPaths.length).toFixed(4)}（${covered}/${ownedPaths.length}）`)
 console.log(`weak 路径           ${weak.length ? weak.join(', ') : '无'}`)
 console.log(`visible=false      ${invisible.length ? [...new Set(invisible)].join(', ') : '无'}`)

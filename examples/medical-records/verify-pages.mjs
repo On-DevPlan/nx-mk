@@ -11,8 +11,8 @@
  *      （A3：textSample === 末段 → weak，见 packages/coverage/src/anti-cheat/classify.ts:22）
  *   4. 自闭合 <Field /> 一律判错 —— 渲染空 span，必然 suspicious（A1）
  *
- * 外加反向断言：manifest 里 getPatient / listPatientVisits 的每个 normalizedPath
- * 都必须至少被某个 Field 渲染。正向只查「没写错」，反向查「没漏写」——
+ * 外加反向断言：manifest 里三个 endpoint（getPatient / listPatientVisits / createPatient）
+ * 的每个 normalizedPath 都必须至少被某个 Field 渲染。正向只查「没写错」，反向查「没漏写」——
  * 漏写的字段要等 nx-mk run 跑完才暴露成 missing，这里提前拦。
  *
  * children 判定走 TypeScript AST（createSourceFile + 遍历），不靠正则 ——
@@ -30,7 +30,14 @@ import ts from 'typescript'
 const m = JSON.parse(readFileSync(new URL('./.nx-mk/manifest.json', import.meta.url), 'utf8'))
 const paths = new Set(m.fields.map((f) => f.normalizedPath))
 
-const PAGES = ['./app/src/PatientDetail.tsx', './app/src/VisitHistory.tsx']
+/**
+ * 被扫描的页面源码 —— 每个文件里的 field="..." 字面量与 children 都受下列检查。
+ *
+ * 三个页面各覆盖一个 endpoint：PatientDetail → getPatient（16 路径）、
+ * VisitHistory → listPatientVisits（11 路径）、NewPatientForm → createPatient 的 201 回显（3 路径）。
+ * 新增页面必须登记到这里，否则它的 Field 字面量完全不受静态检查（漏写是静默的）。
+ */
+const PAGES = ['./app/src/PatientDetail.tsx', './app/src/VisitHistory.tsx', './app/src/NewPatientForm.tsx']
 const ENTRY = './app/src/main.tsx'
 const problems = []
 const rendered = new Set()
@@ -358,10 +365,11 @@ for (const rel of PAGES) {
   }
 }
 
-// 反向断言：范围 = 本任务两个 endpoint。fields[].endpointId → endpoints[].id → operationId
+// 反向断言：范围 = 医疗记录项目的三个 endpoint。fields[].endpointId → endpoints[].id → operationId
 // （operationId 只挂在 endpoint 上，不在 field 上）。
-// Task 3 的 POST 201 回显（createPatient）不在本任务范围，其 data.createdAt 由 NewPatientForm 渲染。
-const OWNED_OPERATIONS = new Set(['getPatient', 'listPatientVisits'])
+// createPatient 的 201 回显自 Task 3 起纳入本断言 —— 它此前被刻意排除，
+// 于是 NewPatientForm 的三条 field 完全不受「漏写」检查（漏了也不报错）。
+const OWNED_OPERATIONS = new Set(['getPatient', 'listPatientVisits', 'createPatient'])
 const operationByEndpointId = new Map(m.endpoints.map((e) => [e.id, e.operationId]))
 const ownedPaths = new Set(
   m.fields
@@ -374,7 +382,7 @@ if (ownedPaths.size === 0) {
   const missing = [...ownedPaths].filter((p) => !rendered.has(p)).sort()
   if (missing.length) {
     problems.push(
-      `以下 manifest 字段在本任务的两个页面里都没有 Field → 运行时必为 missing（${missing.length}/${ownedPaths.size}）：\n    ` +
+      `以下 manifest 字段在本任务的三个页面里都没有 Field → 运行时必为 missing（${missing.length}/${ownedPaths.size}）：\n    ` +
         missing.join('\n    '),
     )
   }
@@ -438,7 +446,7 @@ if (problems.length) {
 }
 console.log(
   `[verify-pages] 页面 Field 字面量全部合法（${PAGES.length} 个文件，` +
-    `渲染 ${rendered.size} 个唯一路径，本任务分母 ${ownedPaths.size} 个全命中` +
+    `渲染 ${rendered.size} 个唯一路径，本项目分母 ${ownedPaths.size} 个全命中` +
     (mountedPatients ? `，main.tsx 覆盖 ${mountedPatients.length} 个 fixture 患者` : '') +
     `）`,
 )

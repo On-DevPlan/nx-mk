@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { HomePage } from './HomePage.js'
+import { NewPatientForm } from './NewPatientForm.js'
 import { PatientDetail } from './PatientDetail.js'
 import { VisitHistory } from './VisitHistory.js'
 
@@ -15,8 +16,9 @@ import { VisitHistory } from './VisitHistory.js'
  * 同一路径渲染两次是安全的：analyzer 按 normalizedPath 索引并取最差质量
  * （coverage-analyzer.ts:57-63），两个实例都是 valid。
  *
- * Task 3 会新增 NewPatientForm（POST 201 回显 data.createdAt）。当前刻意不 import 它 ——
- * 那个文件还不存在，import 会让 vite dev 对 /src/main.tsx 返 500、整页所有 Field 不可达。
+ * NewPatientForm（POST 201 回显）无需 props：S2 自驱动，mount 即提交，
+ * 故挂一次就够。它的 data.id / data.name 与上方 PatientDetail 共享 normalizedPath
+ * （A4 跨 endpoint 取最差），两处 children 均为 valid，无相互拖累。
  */
 function App() {
   return (
@@ -26,6 +28,7 @@ function App() {
       <PatientDetail patientId="p_002" />
       <VisitHistory patientId="p_001" />
       <VisitHistory patientId="p_002" />
+      <NewPatientForm />
     </div>
   )
 }
