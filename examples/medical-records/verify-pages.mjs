@@ -18,6 +18,7 @@
  * 正则的 [^{}]* 会失配并错配到后面的 Field 上，产生假阴性。
  */
 import { readFileSync } from 'node:fs'
+import ts from 'typescript'
 
 const m = JSON.parse(readFileSync(new URL('./.nx-mk/manifest.json', import.meta.url), 'utf8'))
 const paths = new Set(m.fields.map((f) => f.normalizedPath))
@@ -25,6 +26,24 @@ const paths = new Set(m.fields.map((f) => f.normalizedPath))
 const PAGES = ['./app/src/PatientDetail.tsx', './app/src/VisitHistory.tsx']
 const problems = []
 const rendered = new Set()
+
+/**
+ * 剥掉注释 —— 扫描前必做。
+ * 否则文档注释里提到的 field="..." 字面量会被当成渲染点，反向断言被顶替：
+ * 删掉真正的 <Field> 仍能通过（已实测）。用 TypeScript 自己的 scanner，
+ * 不用正则（正则分不清字符串里的 "//"）。
+ */
+function stripComments(src) {
+  const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.JSX, src)
+  let out = ''
+  for (let k = scanner.scan(); k !== ts.SyntaxKind.EndOfFileToken; k = scanner.scan()) {
+    const t = scanner.getToken()
+    if (t === ts.SyntaxKind.SingleLineCommentTrivia || t === ts.SyntaxKind.MultiLineCommentTrivia) continue
+    // 模板字符串原样保留（children 的插值表达式在里面），其余按原文透传
+    out += src.slice(scanner.getTokenPos(), scanner.getTextPos())
+  }
+  return out
+}
 
 /** Field 开标签的 '>' 或自闭合 '/>' 之后，提取第一个 children。 */
 function readChildren(src, from) {
@@ -74,13 +93,14 @@ function readChildren(src, from) {
 }
 
 for (const rel of PAGES) {
-  let src
+  let raw
   try {
-    src = readFileSync(new URL(rel, import.meta.url), 'utf8')
+    raw = readFileSync(new URL(rel, import.meta.url), 'utf8')
   } catch {
     problems.push(`${rel}: 文件不存在 —— 先写页面再跑本脚本`)
     continue
   }
+  const src = stripComments(raw)
   for (const match of src.matchAll(/field="([^"]+)"/g)) {
     const field = match[1]
     rendered.add(field)
