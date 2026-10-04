@@ -25,6 +25,9 @@
  * generateSdk 丢弃可空性（spec 声明 notes: string | null，生成类型却是 notes: string），
  * 故 TS 不会提醒 null 防护 —— server 对 p_002 的 notes 真的返回 null，
  * React 渲染 null 得到空 span。下面的兜底是刻意写的，不依赖类型系统兜底。
+ *
+ * patientId 由 main.tsx 传入且两个患者都渲染：p_002 是 notes=null 分支的唯一载体，
+ * 固定请求 p_001 会让该分支在运行时不可达（场景 DSL 无 click，无法切路由）。
  */
 import { useEffect, useState } from 'react'
 import { Field } from '@nx-mk/client/react'
@@ -37,19 +40,21 @@ const DASH = '—'
 const GENDER_LABEL: Record<string, string> = { male: '男', female: '女', other: '其他' }
 const BLOOD_LABEL: Record<string, string> = { A: 'A 型', B: 'B 型', O: 'O 型', AB: 'AB 型' }
 
-export function PatientDetail() {
+export function PatientDetail({ patientId }: { patientId: string }) {
   const [patient, setPatient] = useState<Patient | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    setPatient(null)
+    setError(null)
     api.patients
-      .getPatient({ patientId: 'p_001' })
+      .getPatient({ patientId })
       .then(setPatient)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-  }, [])
+  }, [patientId])
 
-  if (error) return <section data-page="patient-error">加载失败：{error}</section>
-  if (!patient) return <section data-page="patient-loading">加载中…</section>
+  if (error) return <section data-page={`patient-error-${patientId}`}>加载失败：{error}</section>
+  if (!patient) return <section data-page={`patient-loading-${patientId}`}>加载中…</section>
 
   // 每个值只兜底一次，叶子 Field 与对象摘要共用同一个串 —— 结构上杜绝两者不一致。
   const nameText = patient.name || DASH
@@ -64,14 +69,14 @@ export function PatientDetail() {
   const policyNumberText = patient.insurance?.policyNumber || DASH
   const expiryDateText = patient.insurance?.expiryDate || DASH
   const lastVisitAtText = patient.lastVisitAt || DASH
-  // A1/A2 关键点：server 对 p_002 的 notes 返回 null —— 此处仍兜底成 DASH 而非空 span。
-  // 页面固定请求 p_001（notes 非 null），但兜底保证换 patientId 也不出空 span。
+  // A1/A2 关键点：p_002 的 notes 是 null —— 兜底成 DASH 而非空 span（visible:false → suspicious）。
+  // 该分支由 main.tsx 渲染 PatientDetail patientId="p_002" 保证在运行时真实走到。
   // generateSdk 丢了 notes 的可空性，TS 视其为非空 string，不会提醒这里的 null 防护。
   const notesText = patient.notes || DASH
 
   return (
-    <section data-page="patient-detail">
-      <h2>患者详情</h2>
+    <section data-page={`patient-detail-${patientId}`}>
+      <h2>患者详情（{patientId}）</h2>
       <dl>
         <dt>姓名</dt>
         <dd><Field field="data.name">{nameText}</Field></dd>

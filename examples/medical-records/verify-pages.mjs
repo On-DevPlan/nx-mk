@@ -4,8 +4,9 @@
  * 四类机检，全部对应 runtime 的一条判定，但提前到静态期：
  *   1. 每个 field="..." 字面量必须存在于 manifest 的 normalizedPath 集合
  *      （P2 逐字不匹配 / P3 数组路径形态写错）
- *   2. 每个 Field 的 children 必须带兜底 —— 成员访问型表达式里出现 ?? / || / ?: 三者之一
- *      （A1/A2：null/空串渲染成空 span → visible:false → suspicious，或 textSample 空 → weak）
+ *   2. 每个 Field 的 children 必须自带兜底 —— AST 上存在真正的 ?? / || / 三元
+ *      （A1/A2：null/空串渲染成空 span → visible:false → suspicious，或 textSample 空 → weak）。
+ *      刻意排除 `?.`：a?.b 在 a=null 时求值为 undefined，渲染不出内容，正是 A1 的靶心。
  *   3. 每个 Field 的 children 不得恰好等于字段路径的最后一段
  *      （A3：textSample === 末段 → weak，见 packages/coverage/src/anti-cheat/classify.ts:22）
  *   4. 自闭合 <Field /> 一律判错 —— 渲染空 span，必然 suspicious（A1）
@@ -14,10 +15,16 @@
  * 都必须至少被某个 Field 渲染。正向只查「没写错」，反向查「没漏写」——
  * 漏写的字段要等 nx-mk run 跑完才暴露成 missing，这里提前拦。
  *
- * children 提取用手写括号配平而非正则：模板字符串 `${a.b}` 内含花括号，
- * 正则的 [^{}]* 会失配并错配到后面的 Field 上，产生假阴性。
+ * children 判定走 TypeScript AST（createSourceFile + 遍历），不靠正则 ——
+ * 正则版曾有三处假阴性：`?.` 被误当兜底、`{"name"}` 引号未解、空模板字面量被跳过。
+ * 详见 inspectFields 的注释。
  */
 import { readFileSync } from 'node:fs'
+// typescript 解析路径：本文件在 examples/medical-records/ 下，该目录没有自己的
+// package.json（pnpm workspace 的 examples/** 只匹配到 app/ 与 server/ 两个包），
+// 故 Node 逐级向上命中**仓库根** node_modules —— 根 devDependencies 已声明
+// "typescript": "^5.3.3"，app 工作区也声明了一份，两处皆已显式，非隐式依赖。
+// 实际解析到 node_modules/.pnpm/typescript@5.9.3/...（pnpm 提升后的版本）。
 import ts from 'typescript'
 
 const m = JSON.parse(readFileSync(new URL('./.nx-mk/manifest.json', import.meta.url), 'utf8'))
@@ -45,53 +52,182 @@ function stripComments(src) {
   return out
 }
 
-/** Field 开标签的 '>' 或自闭合 '/>' 之后，提取第一个 children。 */
-function readChildren(src, from) {
-  let i = from
-  while (i < src.length) {
-    const c = src[i]
-    // 跳过属性值里的引号串（className="..."）
-    if (c === '"' || c === "'") {
-      const q = c
-      i++
-      while (i < src.length && src[i] !== q) i++
-      i++
-      continue
+/**
+ * 找出页面里所有 <Field field="..."> 的 children 形态，用 TypeScript AST 而非正则。
+ *
+ * 为什么不用正则（前三版都栽在这）：
+ *   - `?.` 会被「兜底算子」正则里的裸 `?` 命中 —— 但 `a?.b` 在 a=null 时求值为
+ *     undefined，React 渲染不出任何东西，正是 A1 要防的空 span（Finding 3）。
+ *   - A3 只比字符串字面量文本，`{"name"}` 的文本是带引号的 `"name"`，与末段 `name`
+ *     不相等 → 漏判（Finding 5）。而 classifyEvidence 拿到的是运行时 textContent 'name'。
+ *   - 模板字面量 `{`（${a} · ${b}）`}` 不含 '.'，被 `includes('.')` 前置条件跳过，
+ *     四个对象级字段等于完全没有守卫（Finding 4）。
+ * 改成走 AST 后，这三类都能按节点类型精确判定，且 `?.`（QuestionDotToken）
+ * 天然与真正的 `??`（QuestionQuestionToken）区分开。
+ */
+function inspectFields(src, rel) {
+  const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, /* setParentNodes */ true, ts.ScriptKind.TSX)
+  const found = []
+
+  /**
+   * 局部 const 初始化表：变量名 → initializer，用于穿透「兜底一次、引用多处」。
+   * 收集全部作用域（组件函数体内的 const 不在 sf.statements 里，只扫顶层会漏）。
+   */
+  const bindings = new Map()
+  const collectBindings = (node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      bindings.set(node.name.text, node.initializer)
     }
-    if (c === '/' && src[i + 1] === '>') return { kind: 'selfClosing' }
-    if (c === '>') {
-      i++
-      break
+    ts.forEachChild(node, collectBindings)
+  }
+  collectBindings(sf)
+
+  /** 模块内定义的函数体：名字 → body，供穿透 formatVital 这类纯函数 */
+  const localFns = new Map()
+  for (const st of sf.statements) {
+    if (ts.isFunctionDeclaration(st) && st.name && st.body) localFns.set(st.name.text, st.body)
+  }
+
+  /**
+   * A1/A2：children 是否保证产出非空可见文本。
+   *
+   * 穿透两类间接层（页面把它们放在声明处兜底一次、Field 处只引用）：
+   *   1. 局部 const 引用 —— `const nameText = patient.name || DASH` 后 `{nameText}`
+   *   2. 模块内函数调用 —— `const heartRateText = formatVital(v)` 而 formatVital 内部 `?? DASH`
+   *      函数体一旦自身不可判定就不穿透（宁可误报也不漏判，见 formatVital 的 ?? DASH）。
+   *   3. 模板字面量 —— 对象级字段的摘要 `` {`（${a} · ${b}）`} ``：模板恒有非空字面量
+   *      前后缀（'（' 与 '）'），且插值逐个判定 —— 任一插值不安全即整体不安全。
+   *
+   * 关键：`?.`（QuestionDotToken）刻意不算兜底 —— a?.b 在 a=null 时求值为 undefined，
+   * React 渲染不出内容，正是 A1 要防的空 span（Finding 3）。
+   */
+  function hasFallbackGuarantee(node, depth = 0) {
+    if (!node || depth > 6) return false
+    if (ts.isIdentifier(node) && bindings.has(node.text)) {
+      return hasFallbackGuarantee(bindings.get(node.text), depth + 1)
     }
-    i++
-  }
-  while (i < src.length && /\s/.test(src[i])) i++
-  if (src[i] !== '{') {
-    // 纯 JSX 文本 children，取到下一个 '<' 为止
-    const end = src.indexOf('<', i)
-    return { kind: 'text', text: src.slice(i, end === -1 ? i + 120 : end).trim() }
-  }
-  // 花括号配平；引号串（含模板字符串）整体跳过 —— ${...} 与其配平的 '}' 一并消费，
-  // 不影响深度计数
-  let depth = 0
-  const start = i + 1
-  for (; i < src.length; i++) {
-    const c = src[i]
-    if (c === '"' || c === "'" || c === '`') {
-      const q = c
-      i++
-      while (i < src.length && src[i] !== q) {
-        if (src[i] === '\\') i++
-        i++
+    // 本文件内定义的纯函数调用：函数体自身可判定才认
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && localFns.has(node.expression.text)) {
+      const body = localFns.get(node.expression.text)
+      return stmtsHaveGuarantee(body.statements, depth + 1)
+    }
+    // 模板字面量：前后缀非空 且 每个插值都安全
+    if (ts.isTemplateExpression(node)) {
+      if (node.head.text === '') return false
+      for (const span of node.templateSpans) {
+        if (!hasFallbackGuarantee(span.expression, depth + 1)) return false
       }
-      continue
+      return true
     }
-    if (c === '{') depth++
-    else if (c === '}' && --depth === 0) return { kind: 'expr', text: src.slice(start, i) }
+    if (ts.isBinaryExpression(node)) {
+      if (
+        node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+        node.operatorToken.kind === ts.SyntaxKind.BarBarToken
+      ) {
+        return true
+      }
+    }
+    if (ts.isConditionalExpression(node)) return true
+    // String(x) / Number(x) 等：递归进参数
+    return ts.forEachChild(node, (c) => hasFallbackGuarantee(c, depth + 1)) ?? false
   }
-  return { kind: 'unterminated' }
+
+  /** 一组语句里是否存在兜底（用于穿透函数体） */
+  function stmtsHaveGuarantee(stmts, depth) {
+    let ok = false
+    const scan = (n) => {
+      if (ok) return
+      if (
+        ts.isBinaryExpression(n) &&
+        (n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+          n.operatorToken.kind === ts.SyntaxKind.BarBarToken)
+      ) {
+        ok = true
+        return
+      }
+      if (ts.isConditionalExpression(n)) {
+        ok = true
+        return
+      }
+      ts.forEachChild(n, scan)
+    }
+    for (const s of stmts) scan(s)
+    return ok
+  }
+
+  /** A3：children 是否是纯字面量；取其运行时文本（解掉 {"name"} 的引号） */
+  function literalValueOf(node, depth = 0) {
+    if (depth > 2) return undefined
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text
+    if (ts.isJsxExpression(node) && node.expression) return literalValueOf(node.expression, depth + 1)
+    if (ts.isIdentifier(node) && bindings.has(node.text)) return literalValueOf(bindings.get(node.text), depth + 1)
+    return undefined
+  }
+
+  const visit = (node) => {
+    if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
+      if (node.tagName?.getText(sf) === 'Field') {
+        const attrs = node.attributes?.properties ?? []
+        const fieldAttr = attrs.find((p) => p.name && ts.isIdentifier(p.name) && p.name.text === 'field')
+        const init = fieldAttr?.initializer
+        const field = init && ts.isStringLiteral(init) ? init.text : undefined
+        if (field !== undefined) {
+          const children =
+            ts.isJsxSelfClosingElement(node) || !node.parent?.children
+              ? []
+              : node.parent.children.filter((c) => !ts.isJsxText(c) || c.text.trim() !== '')
+          found.push({ field, selfClosing: ts.isJsxSelfClosingElement(node), children })
+        }
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sf)
+
+  return found.map((e) => {
+    const at = `${rel}: field="${e.field}"`
+    const leaf = (e.field ?? '').split('.').pop() ?? ''
+    if (e.selfClosing) {
+      return { field: e.field, problem: `${at} 是自闭合 <Field />，渲染空 span → visible:false → suspicious（A1）` }
+    }
+    if (e.children.length === 0) {
+      return { field: e.field, problem: `${at} 没有 children，会渲染空 span → suspicious（A1）` }
+    }
+    // 纯 JSX 文本 children：非空即可（文本不会等于字段名，除非字面写了末段）
+    const onlyText = e.children.every((c) => ts.isJsxText(c))
+    if (onlyText) {
+      const joined = e.children.map((c) => c.text).join('').trim()
+      if (joined === '') return { field: e.field, problem: `${at} 的 children 是空 JSX 文本 → 空 span（A1/A2）` }
+      if (joined === leaf) return { field: e.field, problem: `${at} 的 children 恰为末段 "${leaf}" → weak（A3）` }
+      return { field: e.field }
+    }
+    // 表达式 children：逐个判 A3 与 A1/A2
+    const problems = []
+    for (const child of e.children) {
+      const expr = ts.isJsxExpression(child) ? child.expression : undefined
+      if (!expr) continue
+      const lit = literalValueOf(expr)
+      if (lit !== undefined) {
+        // A3：字面量字符串（含 {"name"} 形态）等于末段 → weak
+        if (lit === leaf) problems.push(`${at} 的 children 字面量 "${lit}" 恰为末段 → weak（A3）`)
+        if (lit.trim() === '') problems.push(`${at} 的 children 是空字面量 → 空 span（A1/A2）`)
+        continue
+      }
+      // A1/A2：非字面量表达式必须自带兜底。模板字面量（含对象摘要）也算，
+      // 故不再用 includes('.') 前置 —— 四个对象级字段同样受守卫。
+      if (!hasFallbackGuarantee(expr)) {
+        const text = expr.getText(sf)
+        problems.push(
+          `${at} 的 children {${text}} 无 ?? / || / 三元兜底 —— 可能渲染成空 span → suspicious（A1/A2）。` +
+            `注意 a?.b 不算兜底（null 时求值为 undefined）`,
+        )
+      }
+    }
+    return problems.length ? { field: e.field, problem: problems.join('\n    ') } : { field: e.field }
+  })
 }
 
+const inspected = []
 for (const rel of PAGES) {
   let raw
   try {
@@ -101,32 +237,11 @@ for (const rel of PAGES) {
     continue
   }
   const src = stripComments(raw)
-  for (const match of src.matchAll(/field="([^"]+)"/g)) {
-    const field = match[1]
+  for (const { field, problem } of inspectFields(src, rel)) {
     rendered.add(field)
     const at = `${rel}: field="${field}"`
     if (!paths.has(field)) problems.push(`${at} 不在 manifest 的 normalizedPath 集合中`)
-
-    const child = readChildren(src, match.index + match[0].length)
-    if (child.kind === 'selfClosing') {
-      problems.push(`${at} 是自闭合 <Field />，渲染空 span → visible:false → suspicious（A1）`)
-      continue
-    }
-    if (child.kind === 'unterminated') {
-      problems.push(`${at} 的 children 花括号未配平，脚本无法判定`)
-      continue
-    }
-
-    const text = child.text.trim()
-    const leaf = field.split('.').pop() ?? field
-    // A3：children 恰为字段名末段 → classifyEvidence 判 weak
-    if (text === leaf) {
-      problems.push(`${at} 的 children 恰为字段名末段 "${leaf}" → 会被 classifyEvidence 判 weak（A3）`)
-    }
-    // A1/A2：成员访问型表达式必须带兜底算子（?? / || / ?: 三者语义等价，都能在空值时产出可见文本）
-    if (child.kind === 'expr' && text.includes('.') && !/(\?\?|\|\||\?)/.test(text)) {
-      problems.push(`${at} 的 children 是裸成员访问 {${text}}，可能为空 → 需 ?? / || / 三元兜底（A1/A2）`)
-    }
+    if (problem) problems.push(problem)
   }
 }
 

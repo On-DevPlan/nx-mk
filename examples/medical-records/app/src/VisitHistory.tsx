@@ -17,6 +17,10 @@
  *
  * generateSdk 丢弃可空性（vitals/medications 生成类型均为非空），TS 不会提醒 null 防护；
  * server 的 not-found 分支返回空数组，故 ?. 与 ?? [] 兜底是刻意写的。
+ *
+ * patientId 由 main.tsx 传入且两个患者都渲染：p_002 的 v_003 是 medications: [] 的
+ * 唯一载体（空数组兜底分支），固定请求 p_001 会让该分支在运行时不可达
+ * （场景 DSL 无 click，无法切路由）。
  */
 import { useEffect, useState } from 'react'
 import { Field } from '@nx-mk/client/react'
@@ -34,23 +38,25 @@ function formatVital(v: number | undefined): string {
   return String(v ?? DASH)
 }
 
-export function VisitHistory() {
+export function VisitHistory({ patientId }: { patientId: string }) {
   const [visits, setVisits] = useState<Visit[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    setVisits(null)
+    setError(null)
     api.visits
-      .listPatientVisits({ patientId: 'p_001' })
+      .listPatientVisits({ patientId })
       .then(setVisits)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-  }, [])
+  }, [patientId])
 
-  if (error) return <section data-page="visits-error">加载失败：{error}</section>
-  if (!visits) return <section data-page="visits-loading">加载中…</section>
+  if (error) return <section data-page={`visits-error-${patientId}`}>加载失败：{error}</section>
+  if (!visits) return <section data-page={`visits-loading-${patientId}`}>加载中…</section>
 
   return (
-    <section data-page="visit-history">
-      <h2>就诊记录（{visits.length} 次）</h2>
+    <section data-page={`visit-history-${patientId}`}>
+      <h2>就诊记录（{patientId} · {visits.length} 次）</h2>
       {visits.length === 0 && <p>暂无就诊记录</p>}
       <ol>
         {visits.map((visit) => {
