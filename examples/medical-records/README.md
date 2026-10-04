@@ -19,13 +19,18 @@
 # 0. 依赖
 pnpm install && npx playwright install chromium
 
-# 1. 后端（8801）
+# 1. 生成 OpenAPI spec —— 必须先跑！
+#    swagger/openapi.json 是派生产物（项目 .gitignore 忽略了它），不入库。
+#    少了这一步，step 3 会以 PLUGIN_HOOK_FAILED 退出（ENOENT）。
+pnpm medical:openapi
+
+# 2. 后端（8801）
 pnpm --filter @nx-mk-example/medical-server dev
 
-# 2. 前端（5201）—— MK_ANALYSIS 必须给 vite 进程，不是给 CLI
+# 3. 前端（5201）—— MK_ANALYSIS 必须给 vite 进程，不是给 CLI
 MK_ANALYSIS=true pnpm --filter @nx-mk-example/medical-app dev
 
-# 3. 采集 + 验收（项目目录内）
+# 4. 采集 + 验收（项目目录内）
 cd examples/medical-records
 node ../../packages/cli/dist/index.js run
 node verify-coverage.mjs
@@ -39,12 +44,12 @@ node verify-coverage.mjs
 采集（`node ../../packages/cli/dist/index.js run`，退出码 **0**）：
 
 ```
-✔ Run run_20261005_045222 completed in 3963ms
-  Logs: .nx-mk/runs/run_20261005_045222/
+✔ Run run_20261005_050129 completed in 4015ms
+  Logs: .nx-mk/runs/run_20261005_050129/
   Coverage: required 100% | effective 100% | raw backend 100%
   missing required: 0 | ignored returned: 0 | suspicious: 0
   Report: .nx-mk/coverage-report.json
-  Generated DSL: .nx-mk/runs/run_20261005_045222/dsl.generated.yml (5 requests, 5 with status expect)
+  Generated DSL: .nx-mk/runs/run_20261005_050129/dsl.generated.yml (5 requests, 5 with status expect)
 ```
 
 验收（`node verify-coverage.mjs`，退出码 **0**）：
@@ -54,7 +59,7 @@ node verify-coverage.mjs
 [verify-coverage] 断言 A–H 全过 —— requiredCoverage=1 (100%) ✅
 ```
 
-`coverage-report.json` 的 metrics（run `run_20261005_045222` 实测）：
+`coverage-report.json` 的 metrics（run `run_20261005_050129` 实测）：
 
 | 指标 | 实测值 |
 |---|---|
@@ -108,8 +113,12 @@ node verify-coverage.mjs
 
 ## 已知限制
 
-本次验证未发现 nx-mk 核心能力缺口。以下三点是**设计取舍**而非缺口，记录以免后人误判：
+本次验证未发现 nx-mk 核心能力缺口。以下是**设计取舍与复现前置条件**，记录以免后人误判：
 
+0. **`swagger/openapi.json` 不入库**（项目 `.gitignore` 忽略派生 spec）。
+   全新 clone 必须先跑 `pnpm medical:openapi`，否则 `nx-mk run` 以
+   `PLUGIN_HOOK_FAILED`（ENOENT）退出。本 README 的步骤 1 就是它 ——
+   实测：删掉 spec 与 `.nx-mk/` 后按本文步骤重跑，可复现上述全部数字。
 1. **`generateSdk` 丢弃可空性** —— spec 声明 `notes: string | null`，生成类型却是 `notes: string`。
    TS 不会提醒 null 防护，故三个组件里的 `|| DASH` 兜底是刻意写的，不依赖类型系统。
 2. **对象级 required 字段** —— `schema-walker` 对 plain object 属性会产父描述符
