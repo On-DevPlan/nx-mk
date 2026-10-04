@@ -16,7 +16,13 @@
  *   唯一「自己写的」部分是把这些结果按 manifest 分母复算成比值 —— 因为
  *   analyzeCoverage 需要 sqlite + policy decision，本脚本不建库（见文末「与 run 的差异」）。
  *
- * 用法（需先起 server(8801) 与 app(5201)）：
+ * 用法（三项前置，缺一即报错退出）：
+ *   1. plugin 已构建 —— 本脚本从 packages/plugin-playwright/dist/index.js 提取
+ *      PAGE_SCAN_SCRIPT。全新克隆或 `pnpm clean` 后需先 `pnpm --filter @nx-mk/plugin-playwright build`
+ *      （未构建时脚本会明确报「找不到 PAGE_SCAN_SCRIPT」而不是静默降级）。
+ *   2. server(8801)：pnpm --filter @nx-mk-example/medical-server dev
+ *   3. app(5201)   ：MK_ANALYSIS=true pnpm --filter @nx-mk-example/medical-app dev
+ * 然后：
  *   node verify-scan.mjs                       # 默认 http://localhost:5201
  *   APP_URL=http://localhost:5201 node verify-scan.mjs
  * 或经根 package.json：pnpm medical:scan

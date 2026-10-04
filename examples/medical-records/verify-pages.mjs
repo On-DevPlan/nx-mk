@@ -31,6 +31,7 @@ const m = JSON.parse(readFileSync(new URL('./.nx-mk/manifest.json', import.meta.
 const paths = new Set(m.fields.map((f) => f.normalizedPath))
 
 const PAGES = ['./app/src/PatientDetail.tsx', './app/src/VisitHistory.tsx']
+const ENTRY = './app/src/main.tsx'
 const problems = []
 const rendered = new Set()
 
@@ -91,45 +92,80 @@ function inspectFields(src, rel) {
   /**
    * A1/A2：children 是否保证产出非空可见文本。
    *
-   * 穿透两类间接层（页面把它们放在声明处兜底一次、Field 处只引用）：
-   *   1. 局部 const 引用 —— `const nameText = patient.name || DASH` 后 `{nameText}`
-   *   2. 模块内函数调用 —— `const heartRateText = formatVital(v)` 而 formatVital 内部 `?? DASH`
-   *      函数体一旦自身不可判定就不穿透（宁可误报也不漏判，见 formatVital 的 ?? DASH）。
-   *   3. 模板字面量 —— 对象级字段的摘要 `` {`（${a} · ${b}）`} ``：模板恒有非空字面量
-   *      前后缀（'（' 与 '）'），且插值逐个判定 —— 任一插值不安全即整体不安全。
+   * 判定对象是「这个表达式本身的值」，不是「它内部任意角落有没有兜底」。
+   * 前一版用 forEachChild 满树找 ?? / ||，导致三处假阴性（全部实测 exit=0）：
+   *   - `{x ? a : b}`  —— 只看「有 ternary」，不看哪个分支空
+   *   - `{x ?? ''}`    —— 只看「有 ??」，不看右操作数是空串
+   *   - `{f(x || D)}`  —— 调用**参数**里的兜底被当成了调用**结果**的兜底
+   * 现在按节点类型严格判定：
+   *   ?? / ||   → 仅当右操作数自身非空（见 isNonEmptyValue）
+   *   三元       → 仅当 whenTrue 与 whenFalse 各自都非空
+   *   模板字面量 → head 非空 且 每个插值各自非空
+   *   标识符     → 穿透到局部 const 的 initializer
+   *   模块内纯函数调用 → 穿透函数体（返回值即调用结果，参数不参与判定）
+   *   其他        → 一律 false（不向子树搜索兜底）
    *
-   * 关键：`?.`（QuestionDotToken）刻意不算兜底 —— a?.b 在 a=null 时求值为 undefined，
+   * 刻意排除 `?.`（QuestionDotToken）：a?.b 在 a=null 时求值为 undefined，
    * React 渲染不出内容，正是 A1 要防的空 span（Finding 3）。
+   * 宁可误报：误报 exit 1 并点名字段，代价小；漏报会让假 100% 静默通过。
    */
   function hasFallbackGuarantee(node, depth = 0) {
     if (!node || depth > 6) return false
+    // 穿透局部 const：`const nameText = patient.name || DASH` 后 `{nameText}`
     if (ts.isIdentifier(node) && bindings.has(node.text)) {
       return hasFallbackGuarantee(bindings.get(node.text), depth + 1)
     }
-    // 本文件内定义的纯函数调用：函数体自身可判定才认
+    // 模块内纯函数：返回值即结果，只看函数体，不看实参
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && localFns.has(node.expression.text)) {
-      const body = localFns.get(node.expression.text)
-      return stmtsHaveGuarantee(body.statements, depth + 1)
+      return stmtsHaveGuarantee(localFns.get(node.expression.text).statements, depth + 1)
     }
-    // 模板字面量：前后缀非空 且 每个插值都安全
-    if (ts.isTemplateExpression(node)) {
-      if (node.head.text === '') return false
-      for (const span of node.templateSpans) {
-        if (!hasFallbackGuarantee(span.expression, depth + 1)) return false
-      }
-      return true
+    return isNonEmptyValue(node, depth)
+  }
+
+  /**
+   * 「这个表达式求值后是否恒为非空字符串」。
+   * 注意与 hasFallbackGuarantee 的区别：这里**只看节点自身**，
+   * 绝不递归进子表达式去找兜底 —— 那正是 `f(x || D)` 假阴性的成因。
+   */
+  function isNonEmptyValue(node, depth = 0) {
+    if (!node || depth > 6) return false
+    if (ts.isIdentifier(node)) {
+      const text = node.getText(sf)
+      // 已兜底过的局部变量（DASH 等常量本身就是非空字面量）
+      if (text === 'DASH') return true
+      if (bindings.has(text)) return isNonEmptyValue(bindings.get(text), depth + 1)
+      return false
     }
+    // 兜底算子：只有当**右操作数**自身非空才算数
     if (ts.isBinaryExpression(node)) {
-      if (
-        node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
-        node.operatorToken.kind === ts.SyntaxKind.BarBarToken
-      ) {
-        return true
+      const k = node.operatorToken.kind
+      if (k === ts.SyntaxKind.QuestionQuestionToken || k === ts.SyntaxKind.BarBarToken) {
+        return isNonEmptyValue(node.right, depth + 1)
       }
+      return false
     }
-    if (ts.isConditionalExpression(node)) return true
-    // String(x) / Number(x) 等：递归进参数
-    return ts.forEachChild(node, (c) => hasFallbackGuarantee(c, depth + 1)) ?? false
+    // 三元：两个分支都要非空
+    if (ts.isConditionalExpression(node)) {
+      return isNonEmptyValue(node.whenTrue, depth + 1) && isNonEmptyValue(node.whenFalse, depth + 1)
+    }
+    // 模板：head 非空 且 每个插值非空
+    if (ts.isTemplateExpression(node)) {
+      if (node.head.text.trim() === '') return false
+      return node.templateSpans.every((sp) => isNonEmptyValue(sp.expression, depth + 1))
+    }
+    if (ts.isNoSubstitutionTemplateLiteral(node)) return node.text.trim() !== ''
+    if (ts.isStringLiteral(node) || ts.isNumericLiteral(node)) return node.text.trim() !== ''
+    // String(x) / Number(x) 等简单包装：包住一个非空值即可（实参本身仍须非空）
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const fn = node.expression.text
+      if ((fn === 'String' || fn === 'Number') && node.arguments.length === 1) {
+        return isNonEmptyValue(node.arguments[0], depth + 1)
+      }
+      // 模块内纯函数：返回值即结果（formatVital 的 `String(v ?? DASH)`）
+      if (localFns.has(fn)) return stmtsHaveGuarantee(localFns.get(fn).statements, depth + 1)
+      return false
+    }
+    return false
   }
 
   /** 一组语句里是否存在兜底（用于穿透函数体） */
@@ -142,12 +178,28 @@ function inspectFields(src, rel) {
         (n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
           n.operatorToken.kind === ts.SyntaxKind.BarBarToken)
       ) {
-        ok = true
-        return
+        // 右操作数必须自身非空，否则 `x ?? ''` 这类空兜底会被放过
+        if (isNonEmptyValue(n.right)) {
+          ok = true
+          return
+        }
       }
       if (ts.isConditionalExpression(n)) {
-        ok = true
-        return
+        if (isNonEmptyValue(n.whenTrue) && isNonEmptyValue(n.whenFalse)) {
+          ok = true
+          return
+        }
+      }
+      if (
+        ts.isReturnStatement(n) &&
+        n.expression &&
+        (ts.isStringLiteral(n.expression) || ts.isNoSubstitutionTemplateLiteral(n.expression))
+      ) {
+        // 直接 return 非空字面量也算（如 formatVital 的兜底分支）
+        if (n.expression.text.trim() !== '') {
+          ok = true
+          return
+        }
       }
       ts.forEachChild(n, scan)
     }
@@ -155,13 +207,32 @@ function inspectFields(src, rel) {
     return ok
   }
 
-  /** A3：children 是否是纯字面量；取其运行时文本（解掉 {"name"} 的引号） */
-  function literalValueOf(node, depth = 0) {
-    if (depth > 2) return undefined
-    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text
-    if (ts.isJsxExpression(node) && node.expression) return literalValueOf(node.expression, depth + 1)
-    if (ts.isIdentifier(node) && bindings.has(node.text)) return literalValueOf(bindings.get(node.text), depth + 1)
-    return undefined
+  /**
+   * A3：children 的**渲染文本**是否恰为字段名末段。
+   * 解引号（{"name"} / {`name`}），并穿透局部 const 与三元两个分支 ——
+   * `<span>{'id'}</span>` 这类包裹形态在旧实现里被整体跳过（只收顶层 JsxExpression）。
+   */
+  function literalTextsOf(node, depth = 0) {
+    if (!node || depth > 3) return []
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return [node.text]
+    if (ts.isJsxExpression(node)) return node.expression ? literalTextsOf(node.expression, depth + 1) : []
+    if (ts.isJsxElement(node)) {
+      // 包裹元素：递归其 children 的全部字面量（<span>{'id'}</span>）
+      return (node.children ?? []).flatMap((c) => literalTextsOf(c, depth + 1))
+    }
+    if (ts.isJsxFragment(node)) {
+      return (node.children ?? []).flatMap((c) => literalTextsOf(c, depth + 1))
+    }
+    if (ts.isIdentifier(node) && bindings.has(node.text)) {
+      return literalTextsOf(bindings.get(node.text), depth + 1)
+    }
+    if (ts.isConditionalExpression(node)) {
+      return [
+        ...literalTextsOf(node.whenTrue, depth + 1),
+        ...literalTextsOf(node.whenFalse, depth + 1),
+      ]
+    }
+    return []
   }
 
   const visit = (node) => {
@@ -203,17 +274,42 @@ function inspectFields(src, rel) {
     }
     // 表达式 children：逐个判 A3 与 A1/A2
     const problems = []
+    // 收集所有「含表达式的子树」：顶层 JsxExpression 一律收；
+    // 嵌套 JsxElement / JsxFragment 也要递归进去 —— 否则 <span>{x}</span> 会被整体跳过。
+    const exprNodes = []
+    const collectExprs = (n) => {
+      if (ts.isJsxExpression(n)) {
+        if (n.expression) exprNodes.push(n.expression)
+        return
+      }
+      // JsxElement / JsxFragment：递归其 children（<span>{x}</span> 不能被跳过）
+      if (ts.isJsxElement(n) || ts.isJsxFragment(n)) {
+        for (const c of n.children ?? []) collectExprs(c)
+      }
+    }
+    for (const child of e.children) collectExprs(child)
+    // 包裹元素自身也可能带字面量文本（<span>id</span>）
     for (const child of e.children) {
-      const expr = ts.isJsxExpression(child) ? child.expression : undefined
-      if (!expr) continue
-      const lit = literalValueOf(expr)
-      if (lit !== undefined) {
-        // A3：字面量字符串（含 {"name"} 形态）等于末段 → weak
-        if (lit === leaf) problems.push(`${at} 的 children 字面量 "${lit}" 恰为末段 → weak（A3）`)
-        if (lit.trim() === '') problems.push(`${at} 的 children 是空字面量 → 空 span（A1/A2）`)
+      for (const lit of literalTextsOf(child)) {
+        if (lit === leaf) problems.push(`${at} 的 children 含字面量 "${lit}" 恰为末段 → weak（A3）`)
+        if (lit.trim() === '' && child !== undefined) {
+          // 空字面量单独判：仅当整个 children 就是它时才判空 span
+          if (literalTextsOf(child).length === 1 && e.children.length === 1) {
+            problems.push(`${at} 的 children 是空字面量 → 空 span（A1/A2）`)
+          }
+        }
+      }
+    }
+    for (const expr of exprNodes) {
+      const lits = literalTextsOf(expr)
+      if (lits.length) {
+        // A3：字面量字符串（含 {"name"} / {`name`} / <span>{'id'}</span>）等于末段 → weak
+        if (lits.some((l) => l === leaf)) {
+          problems.push(`${at} 的 children 字面量 ${JSON.stringify(lits)} 含末段 "${leaf}" → weak（A3）`)
+        }
         continue
       }
-      // A1/A2：非字面量表达式必须自带兜底。模板字面量（含对象摘要）也算，
+      // A1/A2：非字面量表达式必须自身保证非空。模板字面量（含对象摘要）也算，
       // 故不再用 includes('.') 前置 —— 四个对象级字段同样受守卫。
       if (!hasFallbackGuarantee(expr)) {
         const text = expr.getText(sf)
@@ -267,11 +363,65 @@ if (ownedPaths.size === 0) {
   }
 }
 
+/**
+ * 挂载点断言 —— main.tsx 必须为**每个** fixture 患者挂上 PatientDetail / VisitHistory。
+ *
+ * 为什么需要（Finding 1）：p_002 承载 nullable 与空数组两个验证点
+ * （notes: null、medications: []）。只挂 p_001 时页面仍能通过上面所有检查，
+ * 两个分支却在运行时永远走不到 —— A1/A2 防护退化为「构造正确但无法观测」。
+ * 场景 DSL 无 click/fill，无法靠第二个 goto 切换，故只能靠 render-both：
+ * 单页挂两个实例，一次 goto 覆盖两个分支。
+ *
+ * 患者 id 从 server 源码的 PATIENTS fixture 读出（而非写死 p_001/p_002）：
+ * 以后增删 fixture，本断言自动跟随，不会悄悄失效。
+ */
+function checkMounts() {
+  const serverRel = './server/src/index.ts'
+  let serverSrc
+  let entrySrc
+  try {
+    serverSrc = readFileSync(new URL(serverRel, import.meta.url), 'utf8')
+    entrySrc = readFileSync(new URL(ENTRY, import.meta.url), 'utf8')
+  } catch (e) {
+    problems.push(`挂载点断言无法读取 ${serverRel} / ${ENTRY}：${e.message}`)
+    return
+  }
+  // PATIENTS 数组里的 id: 'p_001' / 'p_002'
+  const fixtureBlock = serverSrc.match(/const PATIENTS\s*=\s*\[([\s\S]*?)\n\]/)
+  if (!fixtureBlock) {
+    problems.push(`${serverRel}: 找不到 PATIENTS fixture，无法确定应挂载哪些患者`)
+    return
+  }
+  const patientIds = [...fixtureBlock[1].matchAll(/\bid:\s*'([^']+)'/g)].map((m) => m[1])
+  if (patientIds.length === 0) {
+    problems.push(`${serverRel}: PATIENTS fixture 里解析不到任何 id`)
+    return
+  }
+  const entry = stripComments(entrySrc)
+  for (const id of patientIds) {
+    for (const comp of ['PatientDetail', 'VisitHistory']) {
+      // 该组件必须至少一处带 patientId="<id>" 挂载
+      const re = new RegExp(`<${comp}\\b[^>]*\\bpatientId=["'{]\\s*["']?${id}\\b`, 's')
+      if (!re.test(entry)) {
+        problems.push(
+          `${ENTRY}: 没有找到 <${comp} patientId="${id}" /> 的挂载 —— ` +
+            `fixture 患者 ${id} 的运行时数据不会被渲染，A1/A2 分支无法观测`,
+        )
+      }
+    }
+  }
+  return patientIds
+}
+
+const mountedPatients = checkMounts()
+
 if (problems.length) {
   console.error('页面静态验证失败:\n  ' + problems.join('\n  '))
   process.exit(1)
 }
 console.log(
   `[verify-pages] 页面 Field 字面量全部合法（${PAGES.length} 个文件，` +
-    `渲染 ${rendered.size} 个唯一路径，本任务分母 ${ownedPaths.size} 个全命中）`,
+    `渲染 ${rendered.size} 个唯一路径，本任务分母 ${ownedPaths.size} 个全命中` +
+    (mountedPatients ? `，main.tsx 覆盖 ${mountedPatients.length} 个 fixture 患者` : '') +
+    `）`,
 )
