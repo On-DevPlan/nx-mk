@@ -21,7 +21,7 @@ pnpm install && npx playwright install chromium
 
 # 1. 生成 OpenAPI spec —— 必须先跑！
 #    swagger/openapi.json 是派生产物（项目 .gitignore 忽略了它），不入库。
-#    少了这一步，step 3 会以 PLUGIN_HOOK_FAILED 退出（ENOENT）。
+#    少了这一步，下面的采集步骤会以 PLUGIN_HOOK_FAILED 退出（ENOENT）。
 pnpm medical:openapi
 
 # 2. 后端（8801）
@@ -93,8 +93,10 @@ node verify-coverage.mjs
 - **P1**：coverage 分母只含响应字段。本项目 `GET /patients/{patientId}` 的路径参数
   `patientId` 不进分母，页面不渲染它。`POST /patients` 的请求体字段同理 ——
   改用 **201 回显**设计：响应体回显写入的 `name`，页面渲染同一 `data.name` 路径。
-- **A1/A2**：所有 Field 的 children 过 `?? '—'` 兜底（`notes` 可为 null、空 medications 数组）。
-  字符串用 `||`、数值用 `??` —— 后者的 `0` 是合法测量值，`||` 会把 `heartRate=0` 吞成 `—`。
+- **A1/A2**：所有 Field 的 children 都过占位符兜底（`'—'`），保证 span 内恒有非零可见文本 ——
+  空 span 会同时踩 A1（`visible:false` → suspicious）与 A2（`textSample` 为空 → weak），
+  比不渲染更糟：既丢覆盖又进清单。字符串用 `||`、数值用 `??` —— 后者的 `0` 是合法测量值，
+  `||` 会把 `heartRate=0` 吞成 `—`（虽不算 suspicious 但失真）。
 - **A3**：enum 映射中文标签（`female→女`、`O→O 型`）、布尔渲染「在服用/已停用」，均不等于字段名末段。
   三个嵌套对象（`data.contact` / `data.emergencyContact` / `data.insurance`）渲染**叶子摘要**
   而非空 span 或裸 JSON —— 空 span 会踩 A1（比不渲染更糟：既丢覆盖又进 suspicious）。
