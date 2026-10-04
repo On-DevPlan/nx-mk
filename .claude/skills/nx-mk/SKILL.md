@@ -45,6 +45,25 @@ skill 里的 code-map / 口径 / 已知限制是快照，会随代码漂移。**
 
 判断标准：下次会话读该 skill 的人，会不会被本次改动产生的过时信息误导？会 → 必须更新。
 
+## ref 命名预留（未启用）
+
+**当前未启用序列化编号**，8 个板块 skill ref 数均为 3-4，未达 `key_board` A03 的 `ref > 5` 门槛——不为编号而编号。
+
+已确立的约定：
+
+- `*-code-map` = 行为落点定位（文件/行号），8/8 板块齐备，**恒为 ref-map 末行**；新增板块必须补此 ref
+- 跨 skill 引用 ref 必须带属主前缀：`[[nx-mk-coverage-analysis/sqlite-schema]]`，禁止裸 `[[sqlite-schema]]`——同名列会静默撞车
+
+任一 skill ref 破 5 时，按下列序列落地（`X00` 为序列元数据，动作从 `X01` 起）：
+
+| 序列 | 类别 | 成员 |
+| --- | --- | --- |
+| A | 协议 / 口径 | *-协议、*-口径（pipeline-arch、runstate-events、policy-口径…） |
+| B | 构建 / 验收 | *-验收、build-* |
+| C | 行为落点 | *-code-map |
+
+`code-map` 8 板块同名不同义，是最先撞车的类别——破 5 时优先靠 C 序列隔开。
+
 ## 状态与背景
 
 Phase 3 完成（policy-analyzer 全量 + goal 闭环）；Phase 4/4.5 dashboard ops 已合并（PR #17）；已知 v0 限制（endpointId unknown fallback、整页导航丢缓冲、cross-document 持久化后置）见 README 和 plan。阶段 spec 在 `docs/superpowers/specs/`。

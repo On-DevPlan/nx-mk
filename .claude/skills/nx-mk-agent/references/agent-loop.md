@@ -19,5 +19,5 @@ plan 对应：§32 Agent 设计 + §33 Agent SDK + §35 内置 Agent 插件 + §
 
 ## 易错
 
-- loop 事件名与 kernel event-bus union 对齐（[[nx-mk-kernel-core]] [[runstate-events]]）——改事件三处同步（agent 发、kernel 落、dashboard 读）
+- loop 事件名与 kernel event-bus union 对齐（[[nx-mk-kernel-core/runstate-events]]）——改事件三处同步（agent 发、kernel 落、dashboard 读）
 - 回滚语义见 §38 裁决，禁止把回滚当重试用

@@ -5,7 +5,7 @@ plan 对应：§30 Dashboard 页面设计 + §31 插件设置页面（数据供�
 ## 主干
 
 - 路由族（packages/dashboard/src/server/routes/）：runs / events / metrics / fields / requests / ignored / replay / manifest / plugins——一一对应 ui 页面，不引入额外聚合端点
-- store/queries.ts 是 SQL 唯一真相（表结构见 [[nx-mk-coverage-analysis]] [[sqlite-schema]]）；plugins-reader.ts 提供 per-run manifest 视图（plugins-manifest 产物，kernel 侧）
+- store/queries.ts 是 SQL 唯一真相（表结构见 [[nx-mk-coverage-analysis/sqlite-schema]]）；plugins-reader.ts 提供 per-run manifest 视图（plugins-manifest 产物，kernel 侧）
 - event-tail.ts 提供 events.jsonl 尾读；replay.ts 处理回放数据拼装
 
 ## 代码落点
