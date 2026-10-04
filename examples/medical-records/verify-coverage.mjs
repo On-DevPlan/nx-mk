@@ -141,9 +141,12 @@ if (!existsSync(dbPath)) {
       // 这不是罕见窗口，本项目自己的 PLUGIN_HOOK_FAILED(ENOENT) 就是这个形状：
       // run 早死、报告幸存。若只按 report.runId 收窄，收窄键本身就来自那个幸存文件。
       //
-      // 故先验「报告是不是在描述最新一次 run」。只有 run 会插 runs 行（全仓 grep：
-      // openCoverageDb/insertRun 仅 run.ts:104-105），且成功的 run 必然写报告 ——
-      // 所以「最新行 ≠ 报告 runId」等价于「最新那次 run 没有产出报告」，
+      // 故先验「报告是不是在描述最新一次 run」。写入 runs 行的有两个入口：
+      //   run.ts:104-105（run，成功必写报告）与 agent/src/runtime.ts:129（agent-loop，
+      //   由 `nx-mk loop` 触发，不写 coverage-report.json）。
+      // 故「最新行 ≠ 报告 runId」有两种成因，都判失败：最新那次 run 没产出报告，
+      // 或最新那次是 agent-loop（它本就不写报告，此时应当重跑 run 让报告追上）。
+      // 两种成因的补救动作相同，故合并为一条断言，不区分。
       // 两种子情形都判失败：
       //   (a) 最新行更新的 failed 行：报告是上一次成功 run 的陈旧文件；
       //   (b) 最新行更新的 completed 行但报告没跟上：报告写失败（run.ts:190-195 的

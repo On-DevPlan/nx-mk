@@ -46,9 +46,10 @@ node ../../packages/cli/dist/index.js run
 node verify-coverage.mjs
 ```
 
-`verify-coverage.mjs` 本身也是构建依赖：它锚定 `@nx-mk/coverage`（main 指向
-`./dist/index.js`）与 `packages/config/dist/index.js`。没构建则两条断言降级为
-「未能验证」（exit 2），不会假绿，但也过不了。
+`verify-coverage.mjs` 不依赖构建产物：它经 `createRequire` 从 `packages/<pkg>` 的路径
+解析 `yaml` 与 `better-sqlite3`，Node 按路径逐级上溯，**不 stat 那个基准文件**，
+所以即使 `packages/*/dist/` 不存在也能解析（两包各自声明了这两个依赖）。
+真正需要构建的只有步骤 5 里的 CLI（`packages/cli/dist/index.js`）。
 
 `verify-coverage.mjs` 只读 `nx-mk run` 的产物做断言，**不自己重算覆盖率** ——
 100% 的账本只有 `coverage-report.json` 与 `coverage.db` 一处。
@@ -133,7 +134,7 @@ node verify-coverage.mjs
 
 0. **`swagger/openapi.json` 不入库**（项目 `.gitignore` 忽略派生 spec）。
    全新 clone 必须先跑 `pnpm medical:openapi`，否则 `nx-mk run` 以
-   `PLUGIN_HOOK_FAILED`（ENOENT）退出。本 README 的步骤 1 就是它 ——
+   `PLUGIN_HOOK_FAILED`（ENOENT）退出。本 README 的步骤 2 就是它 ——
    实测：删掉 spec 与 `.nx-mk/` 后按本文步骤重跑，可复现上述全部数字。
 1. **`generateSdk` 丢弃可空性** —— spec 声明 `notes: string | null`，生成类型却是 `notes: string`。
    TS 不会提醒 null 防护，故三个组件里的 `|| DASH` 兜底是刻意写的，不依赖类型系统。
@@ -149,7 +150,10 @@ node verify-coverage.mjs
    `nx-mk run` 会以 ENOENT / `PLUGIN_HOOK_FAILED` 退出。
 5. **⚠️ 已知的活口：验收靠人记得重跑。** `pnpm medical:verify-full`
    （= `verify-pages` + `verify-scan` + 本门）**没有任何东西会自动调用它** ——
-   前两个不需要服务、一直能过；只有本门会发现「采集其实已经失败」。
+   第一个（`verify-pages`）是纯静态、只需要 `.nx-mk/manifest.json`，不需要服务；
+   第二个（`verify`）会链到 `medical:scan`，它要起 chromium 打 5201，同样需要两个服务。
+   也就是说三个都不需要采集、但后两个需要服务 —— 真正能发现「采集其实已经失败」的
+   只有本门（断言 A-0 比对报告与 runs 最新行）。
    断言 A-0 能拦住「陈旧报告冒充最新一次 run」，但前提是**有人跑了它**。
    在 Task 7 定下 CI 形态之前，重跑验收请显式执行：
 
