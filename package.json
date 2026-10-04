@@ -21,7 +21,7 @@
     "demo:openapi": "pnpm --filter @nx-mk-example/server openapi",
     "demo:codegen": "pnpm --filter @nx-mk-example/server openapi && pnpm --filter @nx-mk/cli build && cd examples/react-vite-demo && node ../../packages/cli/dist/index.js run && pnpm exec tsx generate-sdk.ts",
     "medical:openapi": "pnpm --filter @nx-mk-example/medical-server openapi",
-    "medical:codegen": "pnpm --filter @nx-mk-example/medical-server openapi && pnpm --filter @nx-mk/cli build && cd examples/medical-records && node ../../packages/cli/dist/index.js run || true && cd ../.. && pnpm exec tsx ./examples/medical-records/generate-sdk.ts",
+    "medical:codegen": "pnpm --filter @nx-mk-example/medical-server openapi && pnpm --filter @nx-mk/cli build && cd examples/medical-records && (node ../../packages/cli/dist/index.js run || test -f .nx-mk/manifest.json) && cd ../.. && pnpm exec tsx ./examples/medical-records/generate-sdk.ts",
     "medical:typecheck": "corepack pnpm --filter @nx-mk-example/medical-app typecheck && corepack pnpm --filter @nx-mk-example/medical-server typecheck",
     "demo:typecheck": "corepack pnpm --filter @nx-mk-example/app typecheck && corepack pnpm --filter @nx-mk-example/server typecheck",
     "clean": "pnpm -r clean && rm -rf node_modules"
