@@ -11,6 +11,8 @@ build/
 # Runtime artifacts
 .mk/
 .nx-mk/
+# demo 的 mk/scenarios/*.yml 是 §26 Scenario DSL 本地验收场景（文件自述「不随 PR 提交」）
+mk/
 
 # Environment
 .env
