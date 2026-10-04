@@ -13,6 +13,12 @@ build/
 .nx-mk/
 # demo 的 mk/scenarios/*.yml 是 §26 Scenario DSL 本地验收场景（文件自述「不随 PR 提交」）
 mk/
+# 但三个验证项目的场景套件是**可复现交付物**（spec §4/§10：任何人 clone 后按项目 README
+# 跑 nx-mk run 就能复现 100%），不跟踪就断了这条链。故逐项目显式否定。
+# G9：examples/react-vite-demo 完全不动，其 mk/ 保持忽略。
+!examples/medical-records/mk/
+!examples/commerce-orders/mk/
+!examples/devops-incidents/mk/
 
 # Environment
 .env
