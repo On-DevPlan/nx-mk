@@ -423,6 +423,9 @@ function checkMounts() {
     return
   }
   const entry = stripComments(entrySrc)
+  // 只断言带 patientId 的两个组件。NewPatientForm 是自驱动（mount 即 POST，无 patientId
+  // prop），fixture 驱动的挂载断言对它不适用 —— 它的 Field 字面量仍由 PAGES 扫描 + 反向
+  // 断言覆盖，只是不在此处断言挂载存在。
   for (const id of patientIds) {
     for (const comp of ['PatientDetail', 'VisitHistory']) {
       // 该组件必须至少一处带 patientId="<id>" 挂载
@@ -432,8 +435,7 @@ function checkMounts() {
           `${ENTRY}: 没有找到 <${comp} patientId="${id}" /> 的挂载 —— ` +
             `fixture 患者 ${id} 的运行时数据不会被渲染，A1/A2 分支无法观测`,
         )
-      }
-    }
+      }    }
   }
   return patientIds
 }
