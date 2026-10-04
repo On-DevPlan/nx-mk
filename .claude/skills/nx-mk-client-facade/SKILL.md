@@ -27,11 +27,12 @@ SDK Facade 与浏览器端采集注入。主干导航，采集协议与迁移细
 
 ## 引用索引（按需加载）
 
-| ref | 何时读取 | 路径 |
-| --- | --- | --- |
-| [[facade-codegen]] | 动 SDK 生成、emit 模板、codegen 输出契约前 | references/facade-codegen.md |
-| [[runtime-instrumentation]] | 动 fetch/shim/proxy 拦截、缓冲回捞协议前 | references/runtime-instrumentation.md |
-| [[client-code-map]] | 在 client 七个子模块定位行为落点 | references/client-code-map.md |
+<!-- 序列：A 协议/口径 · B 实现/验收 · C 行为落点（code-map） -->
+| 代号 | ref | 何时读取 | 路径 |
+| --- | --- | --- | --- |
+| B | [[B01-facade-codegen]] | 动 SDK 生成、emit 模板、codegen 输出契约前 | references/B01-facade-codegen.md |
+| B | [[B02-runtime-instrumentation]] | 动 fetch/shim/proxy 拦截、缓冲回捞协议前 | references/B02-runtime-instrumentation.md |
+| C | [[C01-client-code-map]] | 在 client 七个子模块定位行为落点 | references/C01-client-code-map.md |
 
 ## 校验
 

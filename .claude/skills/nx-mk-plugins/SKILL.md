@@ -20,12 +20,13 @@ description: Use when writing a new nx-mk plugin or working on packages/plugin-p
 
 ## 引用索引（按需加载）
 
-| ref | 何时读取 | 路径 |
-| --- | --- | --- |
-| [[playwright-采集]] | 动 chromium 采集驱动、addInitScript 注入、scanner/runner 时 | references/playwright-采集.md |
-| [[swagger-插件]] | 动 manifest 到 swagger 视图/插件注册时 | references/swagger-插件.md |
-| [[plugins-code-map]] | 定位两个插件包与反射契约的落点 | references/plugins-code-map.md |
+<!-- 序列：A 协议/口径 · B 实现/验收 · C 行为落点（code-map） -->
+| 代号 | ref | 何时读取 | 路径 |
+| --- | --- | --- | --- |
+| B | [[B01-playwright-采集]] | 动 chromium 采集驱动、addInitScript 注入、scanner/runner 时 | references/B01-playwright-采集.md |
+| B | [[B02-swagger-插件]] | 动 manifest 到 swagger 视图/插件注册时 | references/B02-swagger-插件.md |
+| C | [[C01-plugins-code-map]] | 定位两个插件包与反射契约的落点 | references/C01-plugins-code-map.md |
 
 ## 校验
 
-`corepack pnpm --filter @nx-mk/plugin-playwright build && corepack pnpm --filter @nx-mk/plugin-swagger build`；playwright 插件改动需 chromium 可执行 + Phase 3 验收链（[[nx-mk-cli-config]] [[build-验收]]）。
+`corepack pnpm --filter @nx-mk/plugin-playwright build && corepack pnpm --filter @nx-mk/plugin-swagger build`；playwright 插件改动需 chromium 可执行 + Phase 3 验收链（[[nx-mk-cli-config/B01-build-验收]]）。

@@ -25,8 +25,9 @@ CLI 命令编排与工程构建。主干导航，命令协议与构建顺序在 
 
 ## 引用索引（按需加载）
 
-| ref | 何时读取 | 路径 |
-| --- | --- | --- |
-| [[commands-协议]] | 动命令 flag、fail-fast、退出码、events 驱动前 | references/commands-协议.md |
-| [[build-验收]] | 改构建顺序、demo 验收、watch/CI 后置项时 | references/build-验收.md |
-| [[cli-code-map]] | 定位 cli 行为落点 | references/cli-code-map.md |
+<!-- 序列：A 协议/口径 · B 实现/验收 · C 行为落点（code-map） -->
+| 代号 | ref | 何时读取 | 路径 |
+| --- | --- | --- | --- |
+| A | [[A01-commands-协议]] | 动命令 flag、fail-fast、退出码、events 驱动前 | references/A01-commands-协议.md |
+| B | [[B01-build-验收]] | 改构建顺序、demo 验收、watch/CI 后置项时 | references/B01-build-验收.md |
+| C | [[C01-cli-code-map]] | 定位 cli 行为落点 | references/C01-cli-code-map.md |

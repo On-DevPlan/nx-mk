@@ -26,11 +26,12 @@ coverage policy → 反作弊 → analyzer 三指标 → SQLite 落库 → cover
 
 ## 引用索引（按需加载）
 
-| ref | 何时读取 | 路径 |
-| --- | --- | --- |
-| [[policy-口径]] | 动 ignored/glob 规则、优先级、四态判定前 | references/policy-口径.md |
-| [[sqlite-schema]] | 动库表、悝 ASC 查询、审计字段前 | references/sqlite-schema.md |
-| [[coverage-code-map]] | 在 coverage 内定位行为落点 | references/coverage-code-map.md |
+<!-- 序列：A 协议/口径 · B 实现/验收 · C 行为落点（code-map） -->
+| 代号 | ref | 何时读取 | 路径 |
+| --- | --- | --- | --- |
+| A | [[A01-policy-口径]] | 动 ignored/glob 规则、优先级、四态判定前 | references/A01-policy-口径.md |
+| A | [[A02-sqlite-schema]] | 动库表、悝 ASC 查询、审计字段前 | references/A02-sqlite-schema.md |
+| C | [[C01-coverage-code-map]] | 在 coverage 内定位行为落点 | references/C01-coverage-code-map.md |
 
 ## 校验
 
