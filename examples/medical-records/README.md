@@ -16,25 +16,39 @@
 ## 启动与验收
 
 ```bash
-# 0. 依赖
+# 0. 依赖 + 浏览器
 pnpm install && npx playwright install chromium
 
-# 1. 生成 OpenAPI spec —— 必须先跑！
+# 1. 构建工作区包 —— 必须先跑，且顺序有讲究！
+#    nx-mk CLI 走 packages/cli/dist/index.js、各包 main 都指 dist/，
+#    而 dist/ 被根 .gitignore 忽略（.gitignore:6）、仓库无 postinstall/prepare 钩子，
+#    故全新 clone 后不构建就没有 CLI 可执行 —— 下面第 5 步会 ENOENT。
+#    kernel 要先单独构建（config 与 kernel 互为 workspace 依赖，
+#    pnpm 拓扑排序会把 config 排在 kernel 之前，导致 config 的 dts 读不到 kernel 类型）。
+#    照根 README「开发」节的写法：
+cd packages/kernel && node ../../node_modules/tsup/dist/cli-default.js && cd ../..
+pnpm -r --workspace-concurrency=1 build
+
+# 2. 生成 OpenAPI spec —— 也必须先跑！
 #    swagger/openapi.json 是派生产物（项目 .gitignore 忽略了它），不入库。
-#    少了这一步，下面的采集步骤会以 PLUGIN_HOOK_FAILED 退出（ENOENT）。
+#    少了这一步，第 5 步会以 PLUGIN_HOOK_FAILED 退出（ENOENT）。
 pnpm medical:openapi
 
-# 2. 后端（8801）
+# 3. 后端（8801）
 pnpm --filter @nx-mk-example/medical-server dev
 
-# 3. 前端（5201）—— MK_ANALYSIS 必须给 vite 进程，不是给 CLI
+# 4. 前端（5201）—— MK_ANALYSIS 必须给 vite 进程，不是给 CLI
 MK_ANALYSIS=true pnpm --filter @nx-mk-example/medical-app dev
 
-# 4. 采集 + 验收（项目目录内）
+# 5. 采集 + 验收（项目目录内）
 cd examples/medical-records
 node ../../packages/cli/dist/index.js run
 node verify-coverage.mjs
 ```
+
+`verify-coverage.mjs` 本身也是构建依赖：它锚定 `@nx-mk/coverage`（main 指向
+`./dist/index.js`）与 `packages/config/dist/index.js`。没构建则两条断言降级为
+「未能验证」（exit 2），不会假绿，但也过不了。
 
 `verify-coverage.mjs` 只读 `nx-mk run` 的产物做断言，**不自己重算覆盖率** ——
 100% 的账本只有 `coverage-report.json` 与 `coverage.db` 一处。
@@ -130,6 +144,22 @@ node verify-coverage.mjs
 3. **场景结果不落 `scenarios.json`** —— `plugin-playwright` 只把 `scenario:done` 事件
    emit 进 `.nx-mk/runs/<runId>/events.jsonl`，且**场景失败不影响进程退出码**（只 warn）。
    故断言 G 必须解析事件流；「run 退出码 0」不能代表场景全过。
+4. **`swagger/openapi.json` 与全部 `dist/` 都不入库**（派生产物）——
+   全新 clone 必须先跑上面步骤 1 的构建与步骤 2 的 spec 生成。缺任一步，
+   `nx-mk run` 会以 ENOENT / `PLUGIN_HOOK_FAILED` 退出。
+5. **⚠️ 已知的活口：验收靠人记得重跑。** `pnpm medical:verify-full`
+   （= `verify-pages` + `verify-scan` + 本门）**没有任何东西会自动调用它** ——
+   前两个不需要服务、一直能过；只有本门会发现「采集其实已经失败」。
+   断言 A-0 能拦住「陈旧报告冒充最新一次 run」，但前提是**有人跑了它**。
+   在 Task 7 定下 CI 形态之前，重跑验收请显式执行：
+
+   ```bash
+   pnpm medical:verify-full
+   ```
+
+   陈旧性为什么危险：一次失败的采集**不会删除**上一次成功的报告
+   （`coverage-report.json` 只在成功路径写），只看磁盘上「有报告、指标是 100%」
+   会得到一个已被推翻的结论。
 
 ## 配套校验脚本
 

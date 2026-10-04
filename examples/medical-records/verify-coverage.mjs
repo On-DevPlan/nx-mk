@@ -22,6 +22,12 @@
  *   所以「run 退出码 0」不能代表场景全过 —— 断言 A 的 exit code 那一半与断言 G
  *   是两个独立事实，必须分别查。
  *
+ * ⚠️ 断言 A-0（review Critical，本脚本最关键的一条）：**先验报告不是陈旧的**。
+ *   coverage-report.json 只在成功路径写（run.ts:192 在 try 内）；失败路径
+ *   （run.ts:222-228）只把 runs 行标 failed 后 rethrow，**从不碰报告文件**。
+ *   若直接按 report.runId 收窄其余断言，收窄键本身就来自那个幸存文件 ——
+ *   采集崩了之后八条断言会读上一次的成功报告全绿。见下方「断言 A-0」处的注释。
+ *
  * 用法（必须先跑采集，否则报「缺产物」而非静默通过）：
  *   1. server(8801)：pnpm --filter @nx-mk-example/medical-server dev
  *   2. app(5201)   ：MK_ANALYSIS=true pnpm --filter @nx-mk-example/medical-app dev
@@ -67,8 +73,13 @@ let report = null
  * 故分别锚到确实声明了它们的仓库内工作区包上：
  *   better-sqlite3 → packages/coverage 的 dependencies
  *   yaml           → packages/config    的 dependencies
- * 用 createRequire 而非 import()：动态 import 的解析基准是**本文件**（examples/ 下），
- * 命中不了 monorepo 根的安装布局。锚点写成仓库内相对路径，不依赖 node_modules 布局的偶然性。
+ * 为什么必须锚：`import.meta.resolve('@nx-mk/coverage')` 本身**能**解析成功（根
+ * devDependencies 里有它），但裸 `require('better-sqlite3')` 从本目录会 MISSING ——
+ * 缺的不是包，是 pnpm 虚拟 store 的可见性：better-sqlite3 只被 packages/coverage
+ * 声明，故只对该包（及 monorepo 根）的解析基准可见。createRequire 以目标包的
+ * 真实路径为基准，正好落进那个可见范围。yaml 同理（只被 packages/config 声明）。
+ * 用 import() 而非 createRequire 则不行：动态 import 的解析基准恒是**本文件**。
+ * 锚点写成仓库内相对路径，不依赖安装布局的偶然性。
  * 任一锚点失效（包未构建 / 依赖被移除）时抛 —— 落到 skip，不静默降级成「跳过这些断言也算过」。
  */
 const coverageRequire = createRequire(import.meta.resolve('@nx-mk/coverage'))
@@ -123,25 +134,46 @@ if (!existsSync(dbPath)) {
   if (Database) {
     const db = new Database(dbPath, { readonly: true })
     try {
-      // —— 断言 A：Goal Loop 以 goal-met 终止（非 max-turns / idle / timeout）——
-      // 这才是「100% 是达成后停的」而非「跑满轮次碰巧停了」的证据。
-      // 同时校验 status='completed'：terminated_by 与 status 是两个独立列，
-      // 失败收尾路径（run.ts catch 分支）只写 status='failed'、terminated_by 留 NULL。
-      const run = db
-        .prepare('SELECT id, status, terminated_by FROM runs ORDER BY started_at DESC LIMIT 1')
+      // ── 断言 A-0（防「陈旧报告」——本脚本最关键的一条）──
+      // coverage-report.json **只在成功路径写**（run.ts:192 在 try 内），失败路径
+      // （run.ts:222-228）只把 runs 行标 failed 后 rethrow，**从不碰报告文件**。
+      // 于是：采集崩了 → 上一次的报告仍在磁盘上 → 八条断言全部读它 → 全绿。
+      // 这不是罕见窗口，本项目自己的 PLUGIN_HOOK_FAILED(ENOENT) 就是这个形状：
+      // run 早死、报告幸存。若只按 report.runId 收窄，收窄键本身就来自那个幸存文件。
+      //
+      // 故先验「报告是不是在描述最新一次 run」。只有 run 会插 runs 行（全仓 grep：
+      // openCoverageDb/insertRun 仅 run.ts:104-105），且成功的 run 必然写报告 ——
+      // 所以「最新行 ≠ 报告 runId」等价于「最新那次 run 没有产出报告」，
+      // 两种子情形都判失败：
+      //   (a) 最新行更新的 failed 行：报告是上一次成功 run 的陈旧文件；
+      //   (b) 最新行更新的 completed 行但报告没跟上：报告写失败（run.ts:190-195 的
+      //       try 只 warn 不阻断），同样无法证明任何东西。
+      // 附带把 runId 收窄键本身也钉住：matched 取不到行（报告指向的 run 不存在）
+      // 同样落到下面的 status 断言失败，不静默跳过。
+      const newest = db
+        .prepare('SELECT id, started_at, status, terminated_by FROM runs ORDER BY started_at DESC, id DESC LIMIT 1')
         .get()
       if (runId === null) {
         skip('断言 A: coverage-report.json 无 runId —— 无法把 runs 行与报告对上')
+      } else if (newest === undefined) {
+        skip('断言 A: runs 表为空 —— 无法判断报告是否描述最新一次 run')
       } else {
+        ok(
+          newest.id === runId,
+          `断言 A: runs 表最新行是 ${newest.id}（${newest.status}，started_at=${newest.started_at}），` +
+            `但报告描述的是 ${runId} —— 报告已陈旧，不能证明最新一次 run（先重跑 nx-mk run）`,
+        )
+
+        // —— 断言 A：Goal Loop 以 goal-met 终止（非 max-turns / idle / timeout）——
+        // 这才是「100% 是达成后停的」而非「跑满轮次碰巧停了」的证据。
+        // 同时校验 status='completed'：terminated_by 与 status 是两个独立列，
+        // 失败收尾路径只写 status='failed'、terminated_by 留 NULL。
         const matched = db.prepare('SELECT id, status, terminated_by FROM runs WHERE id = ?').get(runId)
         ok(
           matched?.terminated_by === 'goal-met',
           `断言 A: run ${runId} 的 terminated_by=${matched?.terminated_by ?? 'NULL'}（应为 goal-met）`,
         )
         ok(matched?.status === 'completed', `断言 A: run ${runId} 的 status=${matched?.status}（应为 completed）`)
-      }
-      if (run && run.id !== runId) {
-        console.warn(`[verify] 注意：runs 表最新行是 ${run.id}，报告 runId 是 ${runId}`)
       }
 
       // —— 断言 H：本次 run 的三表均非空 ——
