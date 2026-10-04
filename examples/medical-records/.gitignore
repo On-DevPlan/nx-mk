@@ -1,0 +1,8 @@
+# openapi 产物 —— 由 pnpm medical:openapi 落盘
+swagger/openapi.json
+
+# 构建产物
+app/dist
+server/dist
+app/*.tsbuildinfo
+server/*.tsbuildinfo
