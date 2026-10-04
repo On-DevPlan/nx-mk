@@ -155,6 +155,12 @@ function inspectFields(src, rel) {
     }
     if (ts.isNoSubstitutionTemplateLiteral(node)) return node.text.trim() !== ''
     if (ts.isStringLiteral(node) || ts.isNumericLiteral(node)) return node.text.trim() !== ''
+    // 属性访问链（visit.diagnosis / patient.contact.phone）：非空类型字段的读取本身可信。
+    // 只在链上出现 undefined / 空字面量 / 可选链时才判不可信 —— 否则「两分支皆可信」的
+    // 三元写法（如 {c ? p.name : p.name || DASH}）会被误报，而它运行时确实非空。
+    if (ts.isPropertyAccessExpression(node)) {
+      return !chainHasHole(node)
+    }
     // String(x) / Number(x) 等简单包装：包住一个非空值即可（实参本身仍须非空）
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       const fn = node.expression.text
@@ -164,6 +170,17 @@ function inspectFields(src, rel) {
       // 模块内纯函数：返回值即结果（formatVital 的 `String(v ?? DASH)`）
       if (localFns.has(fn)) return stmtsHaveGuarantee(localFns.get(fn).statements, depth + 1)
       return false
+    }
+    return false
+  }
+
+  /** 属性访问链上是否存在空洞：可选链 ?.、字面量 undefined/null/'' 、或可选索引 */
+  function chainHasHole(node) {
+    let cur = node
+    while (cur) {
+      if (ts.isPropertyAccessChain(cur) || ts.isElementAccessChain(cur)) return true
+      if (ts.isIdentifier(cur) && cur.getText(sf) === 'undefined') return true
+      cur = cur.expression
     }
     return false
   }
