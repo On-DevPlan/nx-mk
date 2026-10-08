@@ -128,6 +128,22 @@ agent:
 
 模板格式、内置清单与 G5 className 校验行为见 [`docs/style-templates.md`](./docs/style-templates.md)。
 
+## 多域真 100% 验证项目
+
+三个入git 的完整可跑项目，验证 nx-mk pipeline 在不同 OpenAPI 形状下能让前端达
+`requiredCoverage=100%` 且 `coverage.ignored=[]`（不靠豁免任何字段）：
+
+| 项目 | 形状族 | 端口 | 状态 |
+|---|---|---|---|
+| `examples/medical-records` | 嵌套关联 / $ref 复用 / enum / nullable | 8801 / 5201 | ✅ 100% |
+| `examples/commerce-orders` | 分页 envelope / 三层数组 / 双 nullable | 8802 / 5202 | ✅ 100% |
+| `examples/devops-incidents` | 错误响应体 / 同 path 多状态码（200+503） | 8803 / 5203 | ✅ 100% |
+| `examples/react-vite-demo`（对照基线） | 混合，7 条 ignored 校准 | 8787 / 5173 | 对照组 |
+
+一键汇总验收：`node scripts/verify-examples.mjs`
+验证报告与能力缺口清单：[`docs/verification-report.md`](./docs/verification-report.md)
+设计与计划：[`docs/superpowers/specs/2026-10-03-nx-mk-multi-domain-100pct-verification-design.md`](./docs/superpowers/specs/2026-10-03-nx-mk-multi-domain-100pct-verification-design.md)
+
 ## §26 Scenario DSL（套件采集 + 场景回放）
 
 config 加 `scenarios:` 段，`nx-mk run` 就从「自由探索采集」切成「按场景套件采集」（无此段 → legacy collect 行为分毫不差）：
