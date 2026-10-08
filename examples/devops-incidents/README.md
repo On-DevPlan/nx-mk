@@ -12,7 +12,7 @@
 | `getServiceHealth` | GET | `/services/{name}/health` | **503** | 4（`data.code` / `data.message` / `data.retryAfterSeconds` / `data.contact`） |
 | `createIncidentNote` | POST | `/incidents/{incidentId}/notes` | 201 | 2（**201 回显** `data.body` / `data.createdAt`） |
 
-35 条 manifest 字段里 `data[].id` 同时是 `listServices` 与 `listServiceIncidents` 的
+32 字段 / 31 唯一路径里 `data[].id` 同时是 `listServices` 与 `listServiceIncidents` 的
 manifest 字段（同 normalizedPath、不同 fieldId）；按 A4 跨 endpoint 取最差质量。
 **`data.status`（200 分支）与 `data.code`（503 分支）是不同的 normalizedPath**
 （field-id 派生键含 status 段，`packages/manifest-schema/src/field-id.ts:20`），两组互不相干。
@@ -27,8 +27,8 @@ spec §3.3 / §9 的头号风险点：
   503 的 4 个字段通过 SDK 走不通。`HealthChecker` 用**原生 fetch** 绕开 SDK
   （`fetch('/api/services/down-api/health')`），拿到响应体后**渲染成带 `data-mk-field`
   的可见元素**，DOM 扫描产出 `ui_evidence` → analyzer 的 `accessHit || uiHit`
-  （`coverage-analyzer.ts:102`）判 covered。
-- **shim 前缀要求**：原生 fetch 必须打 `/api` 前缀路径 —— `scanner.ts:132` 的 shim
+  （`coverage-analyzer.ts:106`）判 covered。
+- **shim 前缀要求**：原生 fetch 必须打 `/api` 前缀路径 —— `scanner.ts:133` 的 shim
   只观测 `/api` 前缀（不影响 evidence，但保证 `request_traces` 非空）。
 
 ## 启动与验收
@@ -97,8 +97,8 @@ node verify-coverage.mjs
   拿不到。`HealthChecker` 用**原生 fetch**（`fetch('/api/services/{name}/health')`）
   绕开 SDK，拿到响应体后渲染成带 `data-mk-field` 的元素。DOM 扫描产出 `ui_evidence`
   （与 HTTP 通道无关），analyzer 的 `accessHit || uiHit` 判 covered
-  （`coverage-analyzer.ts:102`）。故**非 2xx 响应字段在真 100% 口径下可达**。
-- **shim 前缀要求（spec §5）**：`scanner.ts:132` 的 shim 只观测 `/api` 前缀请求
+  （`coverage-analyzer.ts:106`）。故**非 2xx 响应字段在真 100% 口径下可达**。
+- **shim 前缀要求（spec §5）**：`scanner.ts:133` 的 shim 只观测 `/api` 前缀请求
   （`pathname === '/api' || pathname.indexOf('/api/') === 0`），故原生 fetch 必须打
   `/api` 前缀路径 —— 否则该请求不进 `request_traces` 表，断言 H 必红。
 - **P1**：coverage 分母只含响应字段。`listServiceIncidents` 的路径参数 `serviceId`、
@@ -116,7 +116,7 @@ node verify-coverage.mjs
   analyzer 按 `normalizedPath` 单独索引并取最差质量。两处 children 均为 valid，无相互拖累。
 - **S2/S4/S5**：场景 DSL 只有 `goto`/`waitFor`/`waitForRequest`/`assertFieldVisible`/`screenshot`
   五种 step，无 `click`/`fill`；整页导航会重置 collector 缓冲，故场景只含**一个** `goto`
-  （`verify-coverage.mjs` 静态断言）；步数上限 50，本套件 38 步。
+  （`verify-coverage.mjs` 静态断言）；步数上限 50，本套件 39 步。
 - **S3（套件是子集）**：`assertFieldVisible` 只要有**一个** `[data-mk-field="X"]` 可见即过。
   真正的门是 `verify-coverage.mjs` 的断言 B/C/D/E —— 以 `coverage-report.json` 为准。
 
@@ -173,6 +173,14 @@ node verify-coverage.mjs
    没渲染 → scan 报 4 个 missing。**这是 C2 绕行的关键不变量**：server 的触发条件必须真
    触发，页面与 server 任一端偷改会让 503 路径静默失效。**mutation-test 必跑**（见
    `nx-mk run` 前的「自检」流程，Task 4 纪律）。
+8. **503 路径的 `request_traces` 通道实际为空**（重要 · review 实证）：
+   实测 `coverage.db` 0 条 path 含 `down-api`、0 条 status=503。根因是 shim 在
+   `__MK_SDK_INFLIGHT__` 为真时跳过原生 fetch（`scanner.ts:129`），503 与 SDK fetch
+   在极窄窗口内同窗导致 trace 不写入 —— 与 SDK 路径（24 条 trace 全部 SDK 调用）相比
+   503 完全缺席。判定 503 字段 covered 的**唯一通道**是 `ui_evidence`（验证报告中 4
+   条 ui_evidence 字段均带正确中文标签与 visible=1）。属于 packages 侧结构性 bug
+   （`scanner.ts:129` 的 inflight 检查应区分模式），本计划 G8 冻结仅记录。
+   任何依赖「503 请求被 trace 服务可见」的诊断都会盲。
 
 ## 配套校验脚本
 
