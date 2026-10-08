@@ -4,7 +4,7 @@ plan 对应：§21 Coverage Policy（含 §21.3 四态与优先级）+ §22 Retu
 
 ## 主干
 
-- glob 语义 `*`（单段）/ `**`（跨段）/ 字面，与 manifest-schema normalizer 同语义——见 [[nx-mk-manifest-pipeline/manifest-walk]]
+- glob 语义 `*`（单段）/ `**`（跨段）/ 字面，与 manifest-schema normalizer 同语义——见 [[nx-mk-manifest-pipeline/A02-manifest-walk]]
 - §22: returned-but-ignored = 后端返回且被页面读取、但 config 显式忽略——internalRiskScore 无 accessHit 即不进该集合（demo 实证）
 - 三指标（§28）：requiredCoverage=1 是 goal 硬指标；raw backend 视页面读取比例（demo ≈36% 是预期不是 bug）
 - anti-cheat v0（§29）：hidden DOM → suspicious、空 Field → weak；loophole 严禁堵在 client 拦截层以外（如手改指标）

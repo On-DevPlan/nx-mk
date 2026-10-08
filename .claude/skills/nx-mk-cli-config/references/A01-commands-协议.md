@@ -6,7 +6,7 @@ plan 对应：§9 CLI 命令设计（命令面与 flag 语义唯一真相）。
 
 - 命名：`npx nx-mk <command>`，命令面以 §9 表为准——不引入未登记命令
 - `run` fail-fast（spec §4）：vite/后端未起先报错退出，不许静默等待
-- `run` 驱动 Goal Loop 后验收三点互证（stdout 三行 / events.jsonl goal:met / ANALYSIS db terminated_by）——见 [[nx-mk-coverage-analysis/sqlite-schema]] 验收查询
+- `run` 驱动 Goal Loop 后验收三点互证（stdout 三行 / events.jsonl goal:met / ANALYSIS db terminated_by）——见 [[nx-mk-coverage-analysis/A02-sqlite-schema]] 验收查询
 - `loop` 编排多轮：未达成 → 重启动 run，允许 2-3 轮校准回路后人工介入
 
 ## 代码落点

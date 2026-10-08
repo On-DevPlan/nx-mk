@@ -1,0 +1,190 @@
+# commerce-orders 场景套件（spec §26 / nx-mk.config.yml 的 scenarios.include: "mk/scenarios/*.yml"）
+#
+# 字段集来源纪律（Task 4 同款）：42 个 field 字面量逐字取自 .nx-mk/manifest.json 的
+# 42 条唯一 normalizedPath（44 个 fieldId：data.id / data.status 被 createOrder 与
+# getOrder 共用，按 A4 跨 endpoint 取最差质量，故唯一路径 42 而非 44）。
+# **不抄 brief**：brief 的列表含不存在的 data.createdAt、漏四个对象级父路径
+# （data.items[].supplier / data[].shipping / data[].shipping.address / data[].payment）。
+#
+# S4：整页导航会重置 collector 缓冲，故整条套件只能 goto 一次 —— 单页自驱动渲染
+# 全部视图（ProductList / OrderList 列表区+详情区 / CheckoutForm）。
+# S2：DSL 只有 goto / waitFor / waitForRequest / assertFieldVisible / screenshot 五种
+# step（packages/scenario/src/dsl-schema.ts），无 click/fill —— 一切依赖页面自驱动。
+#
+# S3（套件是子集）：assertFieldVisible 只要有一个 [data-mk-field="X"] 可见即过。
+# 真正的门是 verify-coverage.mjs 的断言 B/C/D/E（以 coverage-report.json 为准），
+# G 不能替代之 —— 本套件取「与分母逐字相等」的更强口径（42/42）。
+#
+# 数据流前提（G6）：MK_ANALYSIS=true 启的 vite 进程才有 collector 投递口，
+# 否则 app 走 production 分支、请求不进 trace 通道，request_traces 表会空。
+version: 1
+scenarios:
+  - id: commerce-orders-full
+    name: 商品分页 + 订单列表 + 订单详情 + 下单回显 全字段覆盖（42 条唯一 normalizedPath）
+    route: /
+    steps:
+      - id: goto-app
+        type: goto
+        url: http://localhost:5202/
+
+      # ─── 四个视图都渲染完，才进入断言 ───
+      # order-detail 是最晚就绪的信号之一（第二个 useEffect 的 getOrder 全部回来）；
+      # checkout 的 dl 只在 created 就绪后出现（提交中/错误态不渲染 Field）。
+      - id: wait-products
+        type: waitFor
+        selector: "[data-page='product-list']"
+      - id: wait-orders
+        type: waitFor
+        selector: "[data-page='order-list']"
+      - id: wait-order-detail
+        type: waitFor
+        selector: "[data-testid='order-detail']"
+      - id: wait-checkout
+        type: waitFor
+        selector: "[data-page='checkout'] dl"
+
+      # ─── envelope 标量（4，spec §9 分区渲染：在数组循环外）───
+      - id: assert-total
+        type: assertFieldVisible
+        field: data.total
+      - id: assert-page
+        type: assertFieldVisible
+        field: data.page
+      - id: assert-page-size
+        type: assertFieldVisible
+        field: data.pageSize
+      - id: assert-has-next
+        type: assertFieldVisible
+        field: data.hasNext
+
+      # ─── 商品数组元素（11 = 7 叶子 + supplier 父 + 3 供应商叶子）───
+      - id: assert-item-id
+        type: assertFieldVisible
+        field: data.items[].id
+      - id: assert-item-sku
+        type: assertFieldVisible
+        field: data.items[].sku
+      - id: assert-item-name
+        type: assertFieldVisible
+        field: data.items[].name
+      - id: assert-item-price
+        type: assertFieldVisible
+        field: data.items[].price
+      - id: assert-item-currency
+        type: assertFieldVisible
+        field: data.items[].currency
+      - id: assert-item-category
+        type: assertFieldVisible
+        field: data.items[].category
+      # 三层数组叶（envelope → 元素 → 标签数组，array-of-primitive 带 []）
+      - id: assert-item-tags
+        type: assertFieldVisible
+        field: data.items[].tags[]
+      # 对象级父：supplier 是 plain object，schema-walker 产父描述符（在分母里）
+      - id: assert-supplier
+        type: assertFieldVisible
+        field: data.items[].supplier
+      - id: assert-supplier-id
+        type: assertFieldVisible
+        field: data.items[].supplier.id
+      - id: assert-supplier-name
+        type: assertFieldVisible
+        field: data.items[].supplier.name
+      - id: assert-supplier-region
+        type: assertFieldVisible
+        field: data.items[].supplier.region
+
+      # ─── 订单数组元素（21）───
+      - id: assert-order-id
+        type: assertFieldVisible
+        field: data[].id
+      - id: assert-order-status
+        type: assertFieldVisible
+        field: data[].status
+      - id: assert-order-placed
+        type: assertFieldVisible
+        field: data[].placedAt
+      - id: assert-order-total-amount
+        type: assertFieldVisible
+        field: data[].totalAmount
+      - id: assert-order-currency
+        type: assertFieldVisible
+        field: data[].currency
+      # 三层数组（订单 → 行项数组 → 叶子）
+      - id: assert-line-sku
+        type: assertFieldVisible
+        field: data[].items[].sku
+      - id: assert-line-name
+        type: assertFieldVisible
+        field: data[].items[].name
+      - id: assert-line-qty
+        type: assertFieldVisible
+        field: data[].items[].quantity
+      - id: assert-line-unit-price
+        type: assertFieldVisible
+        field: data[].items[].unitPrice
+      - id: assert-line-total
+        type: assertFieldVisible
+        field: data[].items[].lineTotal
+      # 数组→对象→对象：shipping 父 + recipient 叶 + address 父 + 5 叶
+      - id: assert-shipping
+        type: assertFieldVisible
+        field: data[].shipping
+      - id: assert-recipient
+        type: assertFieldVisible
+        field: data[].shipping.recipient
+      - id: assert-shipping-address
+        type: assertFieldVisible
+        field: data[].shipping.address
+      # nullable 验证点 1：ord_002 的 line2 为 null，页面渲染 '—' 占位（A1/A2）
+      - id: assert-addr-line1
+        type: assertFieldVisible
+        field: data[].shipping.address.line1
+      - id: assert-addr-line2
+        type: assertFieldVisible
+        field: data[].shipping.address.line2
+      - id: assert-addr-city
+        type: assertFieldVisible
+        field: data[].shipping.address.city
+      - id: assert-addr-postal
+        type: assertFieldVisible
+        field: data[].shipping.address.postalCode
+      - id: assert-addr-country
+        type: assertFieldVisible
+        field: data[].shipping.address.country
+      # payment 父 + 2 叶
+      - id: assert-payment
+        type: assertFieldVisible
+        field: data[].payment
+      - id: assert-pay-method
+        type: assertFieldVisible
+        field: data[].payment.method
+      # nullable 验证点 2：ord_002 的 paidAt 为 null，页面渲染 '—' 占位（A1/A2）
+      - id: assert-pay-at
+        type: assertFieldVisible
+        field: data[].payment.paidAt
+
+      # ─── 下单回显 + 订单详情（6 唯一路径；data.id/data.status 双归属，A4 共享）───
+      # ⚠️ 没有 data.createdAt —— CreatedOrderSchema 是 { id, status, totalAmount, placedAt }。
+      - id: assert-created-id
+        type: assertFieldVisible
+        field: data.id
+      - id: assert-created-status
+        type: assertFieldVisible
+        field: data.status
+      - id: assert-total-amount
+        type: assertFieldVisible
+        field: data.totalAmount
+      - id: assert-placed-at
+        type: assertFieldVisible
+        field: data.placedAt
+      - id: assert-customer-name
+        type: assertFieldVisible
+        field: data.customerName
+      # nullable 验证点 3：getOrder 的 note 恒为 null，页面渲染 '—' 占位（A1/A2）
+      - id: assert-order-note
+        type: assertFieldVisible
+        field: data.note
+
+      - id: shot
+        type: screenshot

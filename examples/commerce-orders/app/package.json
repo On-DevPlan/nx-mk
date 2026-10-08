@@ -1,0 +1,28 @@
+{
+  "name": "@nx-mk-example/orders-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "nx-mk 验证项目二前端 —— React + Vite + SDK Facade（分页 envelope + 深层数组）",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'demo lint skipped'",
+    "test": "echo 'demo tests skipped'",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@nx-mk/client": "workspace:*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "typescript": "^5.3.3",
+    "vite": "^5.4.10"
+  }
+}

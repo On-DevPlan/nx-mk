@@ -24,8 +24,9 @@ id-space 唯一真相是 normalizedPath（plan §17 裁决）——一切 id 对
 
 ## 引用索引（按需加载）
 
-| ref | 何时读取 | 路径 |
-| --- | --- | --- |
-| [[config-schema]] | 加配置段/字段、改校验规则前 | references/config-schema.md |
-| [[manifest-walk]] | 动解析遍历、normalizer、field-id 生成前 | references/manifest-walk.md |
-| [[manifest-code-map]] | 在四个包内定位行为落点 | references/manifest-code-map.md |
+<!-- 序列：A 协议/口径 · B 实现/验收 · C 行为落点（code-map） -->
+| 代号 | ref | 何时读取 | 路径 |
+| --- | --- | --- | --- |
+| A | [[A01-config-schema]] | 加配置段/字段、改校验规则前 | references/A01-config-schema.md |
+| A | [[A02-manifest-walk]] | 动解析遍历、normalizer、field-id 生成前 | references/A02-manifest-walk.md |
+| C | [[C01-manifest-code-map]] | 在四个包内定位行为落点 | references/C01-manifest-code-map.md |

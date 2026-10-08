@@ -20,11 +20,12 @@ Agent SDK + Runtime + Provider + 内置 agents（plan §32-38）。主干导航�
 
 ## 引用索引（按需加载）
 
-| ref | 何时读取 | 路径 |
-| --- | --- | --- |
-| [[agent-loop]] | 动 turn loop、终止/回滚、集成点前 | references/agent-loop.md |
-| [[provider-d1]] | 动 provider 调用、权限 patches、事件对齐前 | references/provider-d1.md |
-| [[agent-code-map]] | 在 agent 包定位行为落点 | references/agent-code-map.md |
+<!-- 序列：A 协议/口径 · B 实现/验收 · C 行为落点（code-map） -->
+| 代号 | ref | 何时读取 | 路径 |
+| --- | --- | --- | --- |
+| A | [[A01-agent-loop]] | 动 turn loop、终止/回滚、集成点前 | references/A01-agent-loop.md |
+| A | [[A02-provider-d1]] | 动 provider 调用、权限 patches、事件对齐前 | references/A02-provider-d1.md |
+| C | [[C01-agent-code-map]] | 在 agent 包定位行为落点 | references/C01-agent-code-map.md |
 
 ## 校验
 

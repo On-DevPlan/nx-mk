@@ -6,7 +6,7 @@ plan 对应：§34 Agent Provider（claude-code 单实现）+ §36 Agent 权限�
 
 - provider/claude-code.ts 是唯一 provider；MVP 不做多 provider 抽象——加 provider 属于 plan 层决策不是实现顺手改
 - D1 权限模型（§36）：patches.ts 集中收敛工具调用白名单——绕过 patches 直调工具是漏洞，测试 patches.test.ts 守护
-- claude-provider.test.ts 守 provider 契约；事件命名对齐 patch 见 [[nx-mk-kernel-core/runstate-events]]
+- claude-provider.test.ts 守 provider 契约；事件命名对齐 patch 见 [[nx-mk-kernel-core/A02-runstate-events]]
 
 ## 代码落点
 

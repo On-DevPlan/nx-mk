@@ -1,0 +1,41 @@
+# nx-mk 多域验证项目二 —— 订单/商品（spec §3.2 / §4.2）
+# 用法：先起 server(8802) 与 app(5202, MK_ANALYSIS=true)，再在本目录跑 nx-mk run
+version: 1
+
+project:
+  name: nx-mk-commerce-orders
+
+openapi: ./swagger/openapi.json
+
+plugins:
+  - '@nx-mk/plugin-swagger'
+
+collect:
+  url: http://localhost:5202
+  maxTurns: 3
+
+# G3：Goal Loop 以 100% 为终止条件
+goal:
+  targetRatio: 1.0
+  maxTurns: 5
+  idleTurnsLimit: 2
+  absoluteTimeoutMs: 60000
+
+# G1/G2：真 100% —— ignored 必须为空数组，required 空即全字段 required
+coverage:
+  required: []
+  optional: []
+  ignored: []
+
+# §26 场景套件（S4：单场景单 goto，靠页面自驱动覆盖全部视图）
+scenarios:
+  include:
+    - "mk/scenarios/*.yml"
+  concurrency: 1
+
+runtime:
+  retainRuns: 5
+
+dashboard:
+  port: 4319
+  open: false

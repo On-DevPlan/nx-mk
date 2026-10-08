@@ -20,11 +20,12 @@ Phase 4+ 工作台：只读 server + 轮询 ui。主干导航，页面与路由�
 
 ## 引用索引（按需加载）
 
-| ref | 何时读取 | 路径 |
-| --- | --- | --- |
-| [[server-read-routes]] | 新增/修改 /api 路由、reader 查询前 | references/server-read-routes.md |
-| [[ui-pages]] | 动页面组件、路由接线、useEventSource 消费前 | references/ui-pages.md |
-| [[dashboard-code-map]] | 定位 dashboard 行为落点 | references/dashboard-code-map.md |
+<!-- 序列：A 协议/口径 · B 实现/验收 · C 行为落点（code-map） -->
+| 代号 | ref | 何时读取 | 路径 |
+| --- | --- | --- | --- |
+| B | [[B01-server-read-routes]] | 新增/修改 /api 路由、reader 查询前 | references/B01-server-read-routes.md |
+| B | [[B02-ui-pages]] | 动页面组件、路由接线、useEventSource 消费前 | references/B02-ui-pages.md |
+| C | [[C01-dashboard-code-map]] | 定位 dashboard 行为落点 | references/C01-dashboard-code-map.md |
 
 ## 校验
 

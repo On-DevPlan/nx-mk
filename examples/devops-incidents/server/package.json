@@ -1,0 +1,27 @@
+{
+  "name": "@nx-mk-example/incidents-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "nx-mk 多域验证项目三 —— DevOps 服务/事件后端（错误响应 + 同 path 多状态码）",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit",
+    "start": "tsx src/index.ts",
+    "openapi": "tsx src/generate-openapi.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no server tests' && exit 0",
+    "clean": "rm -rf dist *.tsbuildinfo ../swagger/openapi.json"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@hono/zod-openapi": "^0.19.1",
+    "hono": "^4.6.10",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

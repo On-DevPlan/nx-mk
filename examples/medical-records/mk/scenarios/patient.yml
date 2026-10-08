@@ -1,0 +1,143 @@
+# medical-records 场景套件（spec §26 / nx-mk.config.yml 的 scenarios.include: "mk/scenarios/*.yml"）
+#
+# S4：整页导航会重置 collector 缓冲，故整条套件只能 goto 一次 —— 单页自驱动渲染
+# 全部视图。app/src/main.tsx 把 PatientDetail / VisitHistory 各挂两个实例
+# （p_001 与 p_002），一次 goto 即同时覆盖：
+#   - p_001 的非空路径（notes 有值、medications 两条）
+#   - p_002 的 nullable 与空数组分支（notes=null、medications=[]）← A1/A2 的验证点
+# 若只请求 p_001，这两个分支在运行时永远走不到。
+#
+# S2：DSL 只有 goto / waitFor / waitForRequest / assertFieldVisible / screenshot 五种 step
+# （packages/scenario/src/dsl-schema.ts），无 click/fill —— 故一切依赖页面自驱动。
+#
+# S3：本套件断言的 28 个 field 字面量逐字等于 manifest 的 28 条唯一 normalizedPath
+# （getPatient 16 + listPatientVisits 11 + createPatient 新增 data.createdAt；
+#   createPatient 的 data.id / data.name 与 getPatient 同名，按 A4 共享最差质量，
+#   故唯一路径 28 而非 30）。但 S3 明确：套件断言是 coverage 的**子集** ——
+# assertFieldVisible 只要有一个 [data-mk-field="X"] 可见即过。真正的 100% 门在
+# verify-coverage.mjs 的断言 B/C/D/E（以 coverage-report.json 为准），G 不能替代之。
+#
+# 数据流前提（G6）：MK_ANALYSIS=true 启的 vite 进程才有 collector 投递口，
+# 否则 app 走 production 分支、请求不进 trace 通道，request_traces 表会空。
+version: 1
+scenarios:
+  - id: medical-patient-full
+    name: 患者详情 + 就诊记录 + 新建回显 全字段覆盖（28 条唯一 normalizedPath）
+    route: /
+    steps:
+      - id: open-app
+        type: goto
+        url: http://localhost:5201/
+
+      # ─── 三个视图都渲染完，才进入断言 ───
+      # 属性前缀选择器（^=）：data-page 实际值带患者 id 后缀（patient-detail-p_001），
+      # 用等值选择器 [data-page='patient-detail'] 匹配不到。
+      # 等 p_002 是最晚就绪的两个实例之一，作为「详情 + 就诊都已渲染」的收敛信号。
+      - id: wait-detail
+        type: waitFor
+        selector: "[data-page^='patient-detail-']"
+      - id: wait-visits
+        type: waitFor
+        selector: "[data-page^='visit-history-']"
+      # 201 回显区：dl 只在 created 就绪后出现（提交中/错误态不渲染 Field）
+      - id: wait-created
+        type: waitFor
+        selector: "[data-page='new-patient'] dl"
+
+      # ─── 患者详情 16 条（getPatient：13 叶子 + 3 嵌套对象本身）───
+      - id: assert-id
+        type: assertFieldVisible
+        field: data.id
+      - id: assert-name
+        type: assertFieldVisible
+        field: data.name
+      - id: assert-birth-date
+        type: assertFieldVisible
+        field: data.birthDate
+      - id: assert-gender
+        type: assertFieldVisible
+        field: data.gender
+      - id: assert-blood-type
+        type: assertFieldVisible
+        field: data.bloodType
+      - id: assert-contact
+        type: assertFieldVisible
+        field: data.contact
+      - id: assert-contact-phone
+        type: assertFieldVisible
+        field: data.contact.phone
+      - id: assert-contact-email
+        type: assertFieldVisible
+        field: data.contact.email
+      - id: assert-emergency-contact
+        type: assertFieldVisible
+        field: data.emergencyContact
+      - id: assert-emergency-name
+        type: assertFieldVisible
+        field: data.emergencyContact.name
+      - id: assert-emergency-relation
+        type: assertFieldVisible
+        field: data.emergencyContact.relation
+      - id: assert-insurance
+        type: assertFieldVisible
+        field: data.insurance
+      - id: assert-policy-number
+        type: assertFieldVisible
+        field: data.insurance.policyNumber
+      - id: assert-expiry-date
+        type: assertFieldVisible
+        field: data.insurance.expiryDate
+      - id: assert-last-visit
+        type: assertFieldVisible
+        field: data.lastVisitAt
+      # nullable 验证点：p_002 的 notes 为 null，页面渲染 '—' 占位而非空 span（A1/A2）
+      - id: assert-notes
+        type: assertFieldVisible
+        field: data.notes
+
+      # ─── 就诊记录 11 条（listPatientVisits：10 叶子 + 1 嵌套对象 data[].vitals）───
+      # P3：数组路径用 [] 归一化形态，非下标形态
+      - id: assert-visit-id
+        type: assertFieldVisible
+        field: data[].id
+      - id: assert-visit-at
+        type: assertFieldVisible
+        field: data[].visitAt
+      - id: assert-department
+        type: assertFieldVisible
+        field: data[].department
+      - id: assert-diagnosis
+        type: assertFieldVisible
+        field: data[].diagnosis
+      - id: assert-vitals
+        type: assertFieldVisible
+        field: data[].vitals
+      - id: assert-heart-rate
+        type: assertFieldVisible
+        field: data[].vitals.heartRate
+      - id: assert-height
+        type: assertFieldVisible
+        field: data[].vitals.heightCm
+      - id: assert-weight
+        type: assertFieldVisible
+        field: data[].vitals.weightKg
+      # 空数组验证点：p_002 的 v_003 medications=[]，三个字段仍须各自有 evidence
+      - id: assert-med-name
+        type: assertFieldVisible
+        field: data[].medications[].name
+      - id: assert-med-dosage
+        type: assertFieldVisible
+        field: data[].medications[].dosage
+      - id: assert-med-prescribed
+        type: assertFieldVisible
+        field: data[].medications[].prescribed
+
+      # ─── 新建回显 1 条（createPatient 独有的路径）───
+      # data.id / data.name 与上方患者详情同名字段共用（A4 跨 endpoint 取最差质量），
+      # 故这里只需断言本套件新增的那一条。
+      - id: assert-created-at
+        type: assertFieldVisible
+        field: data.createdAt
+
+      - id: shot
+        type: screenshot

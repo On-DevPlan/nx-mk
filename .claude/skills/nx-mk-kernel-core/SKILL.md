@@ -26,12 +26,13 @@ description: Use when working on packages/kernel (微内核、event-bus、goal-l
 
 ## 引用索引（按需加载）
 
-| ref | 何时读取 | 路径 |
-| --- | --- | --- |
-| [[pipeline-arch]] | 改 Pipeline 阶段顺序、新增 lifecycle 钩子前 | references/pipeline-arch.md |
-| [[runstate-events]] | 动 RunState 字段、events.jsonl 事件 schema、消费端 poller 对齐前 | references/runstate-events.md |
-| [[goal-loop-协议]] | 调 goal 判定逻辑、三指标取数、terminated_by 枚举 | references/goal-loop-协议.md |
-| [[kernel-code-map]] | 在 kernel 内定位某个行为的落点（文件/行号） | references/kernel-code-map.md |
+<!-- 序列：A 协议/口径 · B 实现/验收 · C 行为落点（code-map） -->
+| 代号 | ref | 何时读取 | 路径 |
+| --- | --- | --- | --- |
+| A | [[A01-pipeline-arch]] | 改 Pipeline 阶段顺序、新增 lifecycle 钩子前 | references/A01-pipeline-arch.md |
+| A | [[A02-runstate-events]] | 动 RunState 字段、events.jsonl 事件 schema、消费端 poller 对齐前 | references/A02-runstate-events.md |
+| A | [[A03-goal-loop-协议]] | 调 goal 判定逻辑、三指标取数、terminated_by 枚举 | references/A03-goal-loop-协议.md |
+| C | [[C01-kernel-code-map]] | 在 kernel 内定位某个行为的落点（文件/行号） | references/C01-kernel-code-map.md |
 
 ## 校验
 
