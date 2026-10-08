@@ -109,7 +109,8 @@ node verify-coverage.mjs
 
 场景套件：`commerce-orders-full`，48 步（`goto`×1 + `waitFor`×4 + `assertFieldVisible`×42 +
 `screenshot`×1）。42 个 `field` 字面量与 manifest 的 42 条唯一 `normalizedPath`
-**逐字相等**（`verify-manifest.mjs` 双向断言）。
+**逐字相等**（脚本实测：页面字面量集 ≡ 场景断言集 ≡ manifest 唯一路径集；
+`verify-manifest.mjs` 的双向断言独立验证「REQUIRED ≡ manifest」这一环）。
 
 `request_traces` 的 10 行 = 5 个 endpoint 调用 × 2 —— React 18 StrictMode 开发模式
 effect 双调用（`listProducts` / `listOrders` / `getOrder`×2 / `createOrder` 各两次），
