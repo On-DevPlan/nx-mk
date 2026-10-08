@@ -116,9 +116,9 @@ node scripts/verify-examples.mjs
 
 | 项目 | server | vite | dashboard |
 |---|---|---|---|
-| medical-records | 8801 | 5201 | 4311 |
+| medical-records | 8801 | 5201 | 4318 |
 | commerce-orders | 8802 | 5202 | 4319 |
-| devops-incidents | 8803 | 5203 | 4327 |
+| devops-incidents | 8803 | 5203 | 4320 |
 | react-vite-demo（基线） | 8787 | 5173 | 4317 |
 
 ### 已知限制

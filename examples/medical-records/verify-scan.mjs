@@ -132,6 +132,20 @@ async function scanApp() {
     if (!response || !response.ok()) {
       throw new Error(`打开 ${APP_URL} 失败：HTTP ${response?.status() ?? '无响应'}`)
     }
+    // G6 孤儿端口防护（commerce/devops 在 Task 5/6 都加了，medical 补回填）：
+    // 旧 vite 占 5201 静默换端口 → 扫到非 analysis 页 → 双通道静默哑掉。检查页面全局
+    // __MK_ANALYSIS__ 是否真为 'true'；任何其他都抛 runbook 报错。
+    const analysisFlag = await page.evaluate(() =>
+      typeof __MK_ANALYSIS__ === 'undefined' ? 'undefined' : String(__MK_ANALYSIS__),
+    )
+    if (analysisFlag !== 'true') {
+      throw new Error(
+        `页面全局 __MK_ANALYSIS__ = ${analysisFlag}（应为 true）—— ${APP_URL} 背后的 vite 不是以 MK_ANALYSIS=true 启动的。\n` +
+          `排查：看 vite 启动 banner 的 Local 端口是否真是 ${new URL(APP_URL).port}（"Port in use, trying another one" 即中招）；\n` +
+          `netstat -ano | findstr :${new URL(APP_URL).port} 找占端口的孤儿进程杀掉，再以\n` +
+          `MK_ANALYSIS=true pnpm --filter @nx-mk-example/medical-app dev 重启。`,
+      )
+    }
     // 等两个患者的数据都渲染完（页面上有 4 个实例级 section）
     await page.waitForSelector("[data-page^='patient-detail-']", { timeout: 15000 })
     await page.waitForSelector("[data-page^='visit-history-']", { timeout: 15000 })
